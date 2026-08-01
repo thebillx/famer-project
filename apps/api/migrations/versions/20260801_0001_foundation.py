@@ -71,15 +71,17 @@ def upgrade() -> None:
         sa.Column("token_hash", sa.String(length=128), nullable=False),
         sa.Column("status", sa.String(length=32), nullable=False, server_default="active"),
         sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
-        sa.Column("rotated_from", postgresql.UUID(as_uuid=True)),
+        sa.Column("rotated_from", postgresql.UUID(as_uuid=True), sa.ForeignKey("refresh_sessions.id", ondelete="SET NULL")),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
     )
     op.create_index("ix_refresh_sessions_user_id", "refresh_sessions", ["user_id"])
     op.create_index("ix_refresh_sessions_token_hash", "refresh_sessions", ["token_hash"], unique=True)
+    op.create_index("ix_refresh_sessions_rotated_from", "refresh_sessions", ["rotated_from"])
 
 
 def downgrade() -> None:
+    op.drop_index("ix_refresh_sessions_rotated_from", table_name="refresh_sessions")
     op.drop_index("ix_refresh_sessions_token_hash", table_name="refresh_sessions")
     op.drop_index("ix_refresh_sessions_user_id", table_name="refresh_sessions")
     op.drop_table("refresh_sessions")

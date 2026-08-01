@@ -20,7 +20,14 @@ The selected browser session strategy is database-backed refresh sessions plus s
 - Logout revokes the current refresh session and deletes the cookie.
 - Generic login failure messages prevent account enumeration.
 
-The current execution environment does not have `argon2-cffi` installed, so dependency-backed password hashing tests are deferred. The runtime code requires `argon2-cffi` for password hashing and does not silently downgrade in production.
+Cookie behavior:
+
+- Access token cookie: HttpOnly, short-lived, path `/`.
+- Refresh token cookie: HttpOnly, path `/api/v1/auth`, rotated on refresh.
+- Production settings require Secure cookies.
+- Logout revokes the current refresh session and deletes both cookies.
+
+CSRF implications: browser cookie authentication requires CSRF protection before unsafe product endpoints are exposed beyond this foundation. FOUNDATION-001 scopes refresh cookies to auth routes and does not add cross-site flows. A later CSRF slice must add token or double-submit protection for state-changing browser requests.
 
 ## Authorization
 

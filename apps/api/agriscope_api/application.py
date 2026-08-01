@@ -10,6 +10,7 @@ from apps.api.agriscope_api.core.middleware import REQUEST_ID_HEADER, SECURITY_H
 def create_app():
     try:
         from fastapi import FastAPI, Request
+        from fastapi.exceptions import RequestValidationError
         from fastapi.responses import JSONResponse
     except Exception as exc:  # pragma: no cover - dependency-light validation path
         raise RuntimeError("FastAPI is required to create the application") from exc
@@ -18,6 +19,16 @@ def create_app():
 
     settings = load_settings()
     app = FastAPI(title=settings.app_name, version="0.1.0")
+    app.state.settings = settings
+
+    from apps.api.agriscope_api.db.session import create_engine, create_session_factory
+
+    app.state.db_engine = create_engine(settings)
+    app.state.session_factory = create_session_factory(app.state.db_engine)
+
+    @app.on_event("shutdown")
+    async def shutdown_database() -> None:
+        await app.state.db_engine.dispose()
 
     @app.middleware("http")
     async def request_context_middleware(request: Request, call_next):
@@ -34,6 +45,17 @@ def create_app():
         request_id = getattr(request.state, "request_id", get_or_create_request_id({}))
         error = ApiError(exc.code, exc.message, request_id, exc.details)
         return JSONResponse(status_code=exc.status_code, content=error.to_response())
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_exception_handler(request: Request, exc: RequestValidationError):
+        request_id = getattr(request.state, "request_id", get_or_create_request_id({}))
+        error = ApiError(
+            "validation_error",
+            "Request validation failed",
+            request_id,
+            {"errors": exc.errors()},
+        )
+        return JSONResponse(status_code=422, content=error.to_response())
 
     @app.exception_handler(Exception)
     async def unhandled_exception_handler(request: Request, exc: Exception):

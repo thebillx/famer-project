@@ -45,8 +45,11 @@ Agents prepare task briefs, contracts, implementation handoffs, and internal QA 
 Runtime dependencies are pinned in `pyproject.toml`. After installing them in a project environment:
 
 ```bash
-uvicorn apps.api.agriscope_api.main:app --reload
-cd apps/api && alembic upgrade head
+python3 -m venv .venv
+.venv/bin/pip install -e ".[dev]"
+docker compose up -d postgres redis minio
+.venv/bin/alembic -c apps/api/alembic.ini upgrade head
+.venv/bin/uvicorn apps.api.agriscope_api.main:app --reload
 ```
 
 Do not reuse `.env.example` secrets outside development. Production must provide strong `SESSION_SECRET`, `ENCRYPTION_KEY`, database, Redis, and object-storage settings.
@@ -57,11 +60,16 @@ The backend foundation defines typed settings, API route contracts, request IDs,
 
 Selected refresh-session strategy: database-backed refresh sessions. Logout and refresh rotation must revoke or rotate the persisted refresh session; a fake logout that only deletes a cookie is not acceptable.
 
+Verified locally:
+
+- `alembic upgrade head`, `alembic downgrade base`, and `alembic upgrade head`.
+- Full pytest suite against PostgreSQL-backed auth and tenant-isolation routes.
+- Live Uvicorn smoke requests for health, register, login, me, refresh, logout, and organization list.
+
 Known limitations:
 
-- Runtime dependencies are not installed by this publishing task.
 - Farm/Field CRUD, Copernicus integration, worker scheduler, alerts, reports, and frontend are not part of FOUNDATION-001.
-- API route handlers define contracts and wiring; full persistence-backed endpoint execution requires installing locked dependencies and running migrations.
+- Redis and object storage are configured for local development but not used by the current Foundation endpoints.
 
 ## Repository map
 

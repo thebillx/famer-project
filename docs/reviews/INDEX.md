@@ -5,7 +5,7 @@ This index tracks permanent review records for external CTO and engineering revi
 | Review | Status | Reviewer | Date | Decision |
 | --- | --- | --- | --- | --- |
 | ARCH-001 | VERIFIED | qa-security-agent | 2026-08-01 | APPROVED_WITH_NOTES |
-| FOUNDATION-001 | VERIFIED | qa-security-agent | 2026-08-01 | APPROVED_WITH_NOTES |
+| FOUNDATION-001 | VERIFIED | qa-security-agent | 2026-08-01 | APPROVED |
 
 ## Future Reviews
 

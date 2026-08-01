@@ -4,9 +4,9 @@
 
 FOUNDATION-001 establishes the backend foundation for continued development on branch `feature/foundation-001`.
 
-Reviewed commit: `bdbace2d280974c05f886cebdc5a5cbb1efebec7`
+Reviewed commit: pending `fix(api): complete executable auth and tenant foundation`
 
-The review is based on repository inspection, `.agents/reviews/ARCH-001-review.md`, `.agents/reviews/FOUNDATION-001-review.md`, the committed code, and recorded validation outputs. It does not claim full runtime production readiness because local Python runtime dependencies were not installed.
+The review is based on repository inspection, `.agents/reviews/ARCH-001-review.md`, `.agents/reviews/FOUNDATION-001-review.md`, the committed code, and recorded validation outputs.
 
 ## Architecture
 
@@ -21,6 +21,7 @@ The review is based on repository inspection, `.agents/reviews/ARCH-001-review.m
 - Sensitive values are masked in settings representation.
 - Standard API error shape includes request ID and avoids stack traces.
 - Secret scan found only documented development placeholders in `.env.example`, docs, and tests.
+- Refresh tokens are stored only as hashes and are rotated/revoked in the database.
 - No live Copernicus call was made.
 
 ## RBAC
@@ -37,12 +38,12 @@ The review is based on repository inspection, `.agents/reviews/ARCH-001-review.m
 
 - Alembic structure was added under `apps/api/`.
 - Revision `20260801_0001_foundation.py` includes `upgrade()` and `downgrade()` and covers users, organizations, memberships, and refresh sessions.
-- Migration CLI execution was not run because `alembic` is not installed in the local host environment.
+- Migration CLI execution passed for upgrade, downgrade, and upgrade.
 
 ## FastAPI
 
 - Application factory, router structure, health routes, auth routes, organization routes, request ID middleware, security headers, and standard errors were added.
-- Full FastAPI route execution was not run locally because FastAPI and related dependencies are not installed in the host environment.
+- Full FastAPI route execution was verified by PostgreSQL-backed integration tests and live Uvicorn smoke requests.
 
 ## OpenAPI
 
@@ -55,37 +56,33 @@ Executed evidence:
 
 - `python3 -m unittest discover -s tests/unit`: passed, 33 tests.
 - `python3 -m unittest discover -s tests/contract`: passed, 6 tests.
-- `python3 -m py_compile ...`: passed for project Python files in the slice.
-- JSON schema parsing: passed.
+- `.venv/bin/pytest -q`: passed, 45 tests.
+- `.venv/bin/pytest tests/integration/test_foundation_api.py -q`: passed, 6 tests.
 - `docker compose config`: passed.
 - `docker compose up -d postgres redis minio`: passed.
 - `docker compose ps`: passed; PostgreSQL and Redis reported healthy, MinIO running.
+- `.venv/bin/alembic -c apps/api/alembic.ini upgrade head`: passed.
+- `.venv/bin/alembic -c apps/api/alembic.ini downgrade base`: passed.
+- `.venv/bin/alembic -c apps/api/alembic.ini upgrade head`: passed after downgrade.
+- `.venv/bin/ruff check .`: passed.
+- `.venv/bin/mypy apps/api packages/geospatial`: passed.
+- Live Uvicorn smoke requests passed for health, register, login, me, refresh, logout, and organization list.
 - `git diff --check`: passed.
-
-Not run:
-
-- `pytest`: executable unavailable.
-- `ruff`: executable unavailable.
-- `mypy`: executable unavailable.
-- `alembic upgrade head` and `alembic downgrade base`: executable unavailable.
-- Full API and database integration tests: blocked by missing host runtime dependencies.
 
 ## Known Limitations
 
-- Runtime dependency-backed API behavior still requires verification after installing locked Python dependencies.
-- Alembic migration upgrade/downgrade must be executed in a dependency-installed environment.
 - Farm/Field CRUD, Copernicus integration, satellite analysis, worker, scheduler, alerts, reports, and frontend remain out of scope.
 - FOUNDATION-001 is verified for internal review but is not `DONE` until external GitHub review and merge approval.
+- Redis and object storage are configured but not used by Foundation endpoints.
 
 ## Future Work
 
 - Open and complete external GitHub review for `feature/foundation-001`.
-- Run dependency-backed API, migration, and integration tests in CI or a prepared local environment.
 - Begin FIELD-001 only after merge approval.
 
 ## Decision
 
-`APPROVED_WITH_NOTES`
+`APPROVED`
 
 ## ARCH-001 status
 

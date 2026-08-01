@@ -31,4 +31,6 @@ class User(TimestampMixin, Base):
     email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
-    memberships = relationship("Membership", back_populates="user")
+    memberships = relationship(
+        "Membership", back_populates="user", foreign_keys="Membership.user_id"
+    )

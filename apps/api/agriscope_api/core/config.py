@@ -96,7 +96,7 @@ def settings_from_env(environ: dict[str, str] | None = None) -> SettingsSnapshot
         api_v1_prefix=env.get("API_V1_PREFIX", "/api/v1"),
         database_url=env.get(
             "DATABASE_URL",
-            "postgresql+asyncpg://agriscope:agriscope_dev_password@localhost:5432/agriscope",
+            "postgresql+psycopg://agriscope:agriscope_dev_password@localhost:5432/agriscope",
         ),
         redis_url=env.get("REDIS_URL", "redis://localhost:6379/0"),
         object_storage_endpoint=env.get("OBJECT_STORAGE_ENDPOINT", "http://localhost:9000"),

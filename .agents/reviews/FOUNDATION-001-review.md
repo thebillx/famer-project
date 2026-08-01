@@ -10,7 +10,7 @@ qa-security-agent
 
 ## Decision
 
-APPROVED_WITH_NOTES
+APPROVED
 
 ## Requirement coverage
 
@@ -21,7 +21,7 @@ APPROVED_WITH_NOTES
 - Covered: Alembic initialization with executable upgrade and downgrade revision for User, Organization, Membership, and RefreshSession tables.
 - Covered: Argon2id password hashing boundary, password validation, HMAC token foundation, token type validation, expiration validation, refresh-session rotation/revocation model, RBAC role hierarchy, and tenant-scoped repository pattern.
 - Covered: Docker dependency configuration validation and local service startup for PostgreSQL/PostGIS, Redis, and MinIO.
-- Not covered in executable local runtime: FastAPI route execution, Alembic CLI migration execution, pytest suite, ruff, and mypy because required Python packages are not installed in the current host environment.
+- Covered: executable FastAPI auth, health, and organization routes with database-backed refresh-session persistence.
 
 ## Evidence
 
@@ -30,38 +30,40 @@ APPROVED_WITH_NOTES
 - API contract exists at `docs/api/openapi.yaml` with standard error response and security metadata.
 - Alembic revision exists at `apps/api/migrations/versions/20260801_0001_foundation.py` with `upgrade()` and `downgrade()`.
 - ORM model files exist for `User`, `Organization`, `Membership`, and `RefreshSession`.
+- Auth and organization routes no longer contain `NotImplementedError`.
 - No frontend files were created and no Copernicus integration was invoked.
 
 ## Tests
 
 - `python3 -m unittest discover -s tests/unit`: passed, 33 tests.
 - `python3 -m unittest discover -s tests/contract`: passed, 6 tests.
-- `python3 -m py_compile ...`: passed for project Python files in this slice.
+- `.venv/bin/pytest -q`: passed, 45 tests.
+- `.venv/bin/pytest tests/integration/test_foundation_api.py -q`: passed, 6 tests.
 - `python3 -c "import json, pathlib; ..."`: passed for shared JSON schemas.
 - `docker compose config`: passed.
 - `docker compose up -d postgres redis minio`: passed after approved Docker daemon access.
 - `docker compose ps`: passed; PostgreSQL and Redis reported healthy, MinIO running.
+- `.venv/bin/alembic -c apps/api/alembic.ini upgrade head`: passed.
+- `.venv/bin/alembic -c apps/api/alembic.ini downgrade base`: passed.
+- `.venv/bin/alembic -c apps/api/alembic.ini upgrade head`: passed after downgrade.
+- `.venv/bin/ruff check .`: passed.
+- `.venv/bin/mypy apps/api packages/geospatial`: passed.
+- Live Uvicorn smoke requests passed for `/health/live`, `/health/ready`, `/health/dependencies`, register, login, me, refresh, logout, and organization list.
 - `git diff --check`: passed.
-- `pytest`: not run; `pytest` executable is not installed.
-- `ruff check .`: not run; `ruff` executable is not installed.
-- `mypy apps/api packages/geospatial`: not run; `mypy` executable is not installed.
-- `alembic upgrade head` / `alembic downgrade base`: not run; `alembic` executable is not installed.
-- API and database integration tests: not run; host runtime dependencies are missing.
 
 ## Security findings
 
 - No real secrets were introduced.
 - `.env.example` contains development placeholders and documented local Docker credentials only.
 - Production settings reject missing critical secrets, known development secrets, and insecure production cookies.
-- Token and refresh-session tests verify expiry, token type, rotation, and revocation behavior at the foundation layer.
-- Tenant-scope tests verify role checks, disabled membership rejection, and route-independent scope enforcement helpers.
+- Token and refresh-session tests verify expiry, token type, database-backed rotation, and revocation behavior.
+- Tenant-scope tests verify route-level own-organization access, cross-tenant 404 behavior, random UUID rejection, and disabled membership rejection.
 - Request/error helpers avoid stack traces and include request IDs.
 
 ## Regression risks
 
-- Runtime API behavior still needs dependency-installed verification because FastAPI/Pydantic/SQLAlchemy/Alembic are not installed in the host environment.
-- Alembic migration is contract-reviewed and syntax-compiled, but upgrade/downgrade execution still needs a dependency-installed API environment.
-- Auth endpoints expose the contract and service boundaries; full persisted endpoint execution should be verified in the next environment with locked dependencies installed.
+- FastAPI reports `on_event` deprecation warnings; this is non-blocking and can move to lifespan handlers in a later maintenance slice.
+- Redis and object storage health are intentionally reported as `not_checked` because Foundation endpoints do not use those dependencies yet.
 
 ## Required changes
 
