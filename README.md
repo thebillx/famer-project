@@ -22,6 +22,24 @@ python3 -m unittest discover -s tests/unit
 python3 -m unittest discover -s tests/contract
 ```
 
+## Development Workflow
+
+All feature work must move through the permanent review flow:
+
+```text
+Requirement
+-> Task Brief
+-> Contract Review
+-> Implementation
+-> Internal QA
+-> CTO Review
+-> Fix
+-> Approve
+-> Merge
+```
+
+Agents prepare task briefs, contracts, implementation handoffs, and internal QA evidence. CTO review is recorded under `docs/reviews/` before a feature is approved for merge. A feature is not `DONE` just because code is pushed.
+
 ## API foundation commands
 
 Runtime dependencies are pinned in `pyproject.toml`. After installing them in a project environment:
