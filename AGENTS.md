@@ -14,7 +14,7 @@
 ## Repository state at bootstrap
 
 - The repository had no tracked files and no visible working-tree files before this agent bootstrap.
-- No pre-existing `AGENTS.md`, `.agents/`, Codex, OpenCode, or agent instruction files were found.
+- No pre-existing `AGENTS.md`, `.agents/`, Codex, or agent instruction files were found.
 - Git branch state was `master...origin/master [ahead 9, behind 4]`.
 - This bootstrap adds governance files only. It does not create application source code.
 

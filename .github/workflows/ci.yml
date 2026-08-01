@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - feature/**
+
+jobs:
+  validation:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Unit tests
+        run: python3 -m unittest discover -s tests/unit
+
+      - name: Contract tests
+        run: python3 -m unittest discover -s tests/contract
+
+      - name: Whitespace check
+        run: git diff --check
+
+      - name: JSON validation
+        run: |
+          python3 - <<'PY'
+          import json
+          import pathlib
+
+          for path in pathlib.Path(".").rglob("*.json"):
+              if any(part in {".git", "node_modules", ".venv", "venv"} for part in path.parts):
+                  continue
+              with path.open() as file:
+                  json.load(file)
+              print(f"json-ok {path}")
+          PY
+
+      - name: YAML validation where available
+        run: |
+          python3 - <<'PY'
+          import pathlib
+
+          try:
+              import yaml
+          except ModuleNotFoundError:
+              print("YAML validation NOT_RUN: PyYAML is not installed")
+              raise SystemExit(0)
+
+          for suffix in ("*.yaml", "*.yml"):
+              for path in pathlib.Path(".").rglob(suffix):
+                  if any(part in {".git", "node_modules", ".venv", "venv"} for part in path.parts):
+                      continue
+                  with path.open() as file:
+                      yaml.safe_load(file)
+                  print(f"yaml-ok {path}")
+          PY
+
+      - name: Optional tool availability
+        run: |
+          for tool in ruff mypy; do
+            if command -v "$tool" >/dev/null 2>&1; then
+              echo "$tool available"
+            else
+              echo "$tool NOT_RUN: executable is not installed"
+            fi
+          done

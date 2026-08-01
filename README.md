@@ -19,7 +19,57 @@ This repository has started Phase 1 and the first foundation slice:
 
 ```bash
 python3 -m unittest discover -s tests/unit
+python3 -m unittest discover -s tests/contract
 ```
+
+## Development Workflow
+
+All feature work must move through the permanent review flow:
+
+```text
+Requirement
+-> Task Brief
+-> Contract Review
+-> Implementation
+-> Internal QA
+-> CTO Review
+-> Fix
+-> Approve
+-> Merge
+```
+
+Agents prepare task briefs, contracts, implementation handoffs, and internal QA evidence. CTO review is recorded under `docs/reviews/` before a feature is approved for merge. A feature is not `DONE` just because code is pushed.
+
+## API foundation commands
+
+Runtime dependencies are pinned in `pyproject.toml`. After installing them in a project environment:
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -e ".[dev]"
+docker compose up -d postgres redis minio
+.venv/bin/alembic -c apps/api/alembic.ini upgrade head
+.venv/bin/uvicorn apps.api.agriscope_api.main:app --reload
+```
+
+Do not reuse `.env.example` secrets outside development. Production must provide strong `SESSION_SECRET`, `ENCRYPTION_KEY`, database, Redis, and object-storage settings.
+
+## FOUNDATION-001 status
+
+The backend foundation defines typed settings, API route contracts, request IDs, standard error shape, SQLAlchemy/Alembic structure, User/Organization/Membership/RefreshSession models, password/token/session policies, RBAC roles, and tenant-scope repository patterns.
+
+Selected refresh-session strategy: database-backed refresh sessions. Logout and refresh rotation must revoke or rotate the persisted refresh session; a fake logout that only deletes a cookie is not acceptable.
+
+Verified locally:
+
+- `alembic upgrade head`, `alembic downgrade base`, and `alembic upgrade head`.
+- Full pytest suite against PostgreSQL-backed auth and tenant-isolation routes.
+- Live Uvicorn smoke requests for health, register, login, me, refresh, logout, and organization list.
+
+Known limitations:
+
+- Farm/Field CRUD, Copernicus integration, worker scheduler, alerts, reports, and frontend are not part of FOUNDATION-001.
+- Redis and object storage are configured for local development but not used by the current Foundation endpoints.
 
 ## Repository map
 

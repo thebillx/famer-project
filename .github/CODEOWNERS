@@ -1,0 +1,10 @@
+# Default ownership for all repository changes.
+* @thebillx
+
+# Future ownership areas can be split here as the team grows:
+# apps/api/                 backend and API owners
+# packages/geospatial/      geospatial and remote-sensing owners
+# docs/api/                 API contract owners
+# apps/web/                 frontend owners
+# infrastructure/           DevOps/SRE owners
+# docs/reviews/             CTO and engineering governance owners

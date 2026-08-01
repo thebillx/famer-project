@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agriscope.local/schemas/auth.schema.json",
+  "title": "AuthSchemas",
+  "type": "object",
+  "definitions": {
+    "RegisterRequest": {
+      "type": "object",
+      "required": ["email", "password", "display_name", "organization_name"],
+      "properties": {
+        "email": { "type": "string", "format": "email" },
+        "password": { "type": "string", "minLength": 12 },
+        "display_name": { "type": "string", "minLength": 1 },
+        "organization_name": { "type": "string", "minLength": 1 }
+      }
+    },
+    "LoginRequest": {
+      "type": "object",
+      "required": ["email", "password"],
+      "properties": {
+        "email": { "type": "string", "format": "email" },
+        "password": { "type": "string" }
+      }
+    }
+  }
+}

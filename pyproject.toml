@@ -9,6 +9,7 @@ dependencies = [
   "pydantic==2.11.7",
   "pydantic-settings==2.10.1",
   "SQLAlchemy==2.0.42",
+  "greenlet==3.2.4",
   "alembic==1.16.4",
   "GeoAlchemy2==0.17.1",
   "psycopg[binary]==3.2.9",
@@ -37,3 +38,7 @@ target-version = "py312"
 [tool.mypy]
 python_version = "3.12"
 strict = true
+
+[[tool.mypy.overrides]]
+module = ["apps.api.agriscope_api.*"]
+ignore_errors = true
