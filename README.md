@@ -66,6 +66,8 @@ npm -w apps/web run typecheck
 npm -w apps/web run build
 ```
 
+`NEXT_PUBLIC_MAP_STYLE_URL` controls the MapLibre basemap. The development default is `https://tiles.openfreemap.org/styles/liberty`, a no-token OpenFreeMap style with attribution included by the map control. Production deployments should configure an approved provider/style URL that matches expected traffic and terms.
+
 With the API and web app running, open `http://localhost:3000/login`, register or log in, create a farm, draw a field, save it, and reload the farm page to confirm the field remains visible.
 
 ## FOUNDATION-001 status

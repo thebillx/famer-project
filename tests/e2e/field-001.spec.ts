@@ -19,14 +19,23 @@ test("farmer creates farm, draws field, saves, and sees it after reload", async 
   await page.getByRole("button", { name: "Draw first field" }).click();
   await expect(page.getByRole("heading", { name: "Draw field" })).toBeVisible();
   const map = page.locator(".maplibregl-canvas");
+  const mapContainer = page.getByLabel("Field map");
+  await expect(mapContainer).toHaveAttribute("data-map-style-url", /tiles\.openfreemap\.org|style/);
   const box = await map.boundingBox();
   expect(box).not.toBeNull();
   if (!box) return;
 
   await map.click({ position: { x: box.width * 0.35, y: box.height * 0.35 } });
   await map.click({ position: { x: box.width * 0.65, y: box.height * 0.35 } });
+  await expect(mapContainer).toHaveAttribute("data-vertex-count", "2");
+  await page.mouse.move(box.x + box.width * 0.5, box.y + box.height * 0.5);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.52, box.y + box.height * 0.52, { steps: 4 });
+  await page.mouse.up();
+  await expect(mapContainer).toHaveAttribute("data-vertex-count", "2");
   await map.click({ position: { x: box.width * 0.65, y: box.height * 0.65 } });
   await map.click({ position: { x: box.width * 0.35, y: box.height * 0.65 } });
+  await expect(mapContainer).toHaveAttribute("data-vertex-count", "4");
   await page.getByRole("button", { name: "Save field" }).click();
 
   await expect(page.getByText("Field 1")).toBeVisible();
@@ -34,4 +43,5 @@ test("farmer creates farm, draws field, saves, and sees it after reload", async 
   await page.reload();
   await expect(page.getByText("Field 1")).toBeVisible();
   await expect(page.getByText(/sqm \/ .* rai/)).toBeVisible();
+  await expect(page.locator(".maplibregl-canvas")).toBeVisible();
 });

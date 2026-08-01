@@ -40,6 +40,7 @@ def upgrade() -> None:
         sa.Column("status", sa.String(length=32), nullable=False, server_default="active"),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.UniqueConstraint("id", "organization_id", name="uq_farms_id_organization_id"),
     )
     op.create_index("ix_farms_organization_id", "farms", ["organization_id"])
     op.create_index("ix_farms_status", "farms", ["status"])
@@ -55,7 +56,6 @@ def upgrade() -> None:
         sa.Column(
             "farm_id",
             postgresql.UUID(as_uuid=True),
-            sa.ForeignKey("farms.id", ondelete="RESTRICT"),
             nullable=False,
         ),
         sa.Column(
@@ -71,6 +71,12 @@ def upgrade() -> None:
         sa.Column("status", sa.String(length=32), nullable=False, server_default="active"),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.ForeignKeyConstraint(
+            ["farm_id", "organization_id"],
+            ["farms.id", "farms.organization_id"],
+            name="fk_fields_farm_organization",
+            ondelete="RESTRICT",
+        ),
     )
     op.create_index("ix_fields_farm_id", "fields", ["farm_id"])
     op.create_index("ix_fields_organization_id", "fields", ["organization_id"])

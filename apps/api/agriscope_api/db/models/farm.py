@@ -7,12 +7,13 @@ from uuid import UUID as PyUUID
 from apps.api.agriscope_api.db.base import Base, TimestampMixin, mapped_column, uuid_pk
 
 try:
-    from sqlalchemy import ForeignKey, String
+    from sqlalchemy import ForeignKey, String, UniqueConstraint
     from sqlalchemy.dialects.postgresql import UUID
     from sqlalchemy.orm import Mapped, relationship
 except Exception:  # pragma: no cover
     ForeignKey = None  # type: ignore[assignment]
     String = None  # type: ignore[assignment]
+    UniqueConstraint = None  # type: ignore[assignment]
     UUID = None  # type: ignore[assignment]
     Mapped = object  # type: ignore[assignment]
 
@@ -22,6 +23,7 @@ except Exception:  # pragma: no cover
 
 class Farm(TimestampMixin, Base):
     __tablename__ = "farms"
+    __table_args__ = (UniqueConstraint("id", "organization_id", name="uq_farms_id_organization_id"),)
 
     id: Mapped[PyUUID] = uuid_pk()
     organization_id: Mapped[PyUUID] = mapped_column(

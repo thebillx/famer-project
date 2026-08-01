@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
+import json
 from uuid import UUID, uuid4
 
 import psycopg
@@ -348,6 +349,40 @@ def test_farm_and_field_crud_persists_geometry_and_area(client: TestClient):
     delete_farm = client.delete(f"/api/v1/farms/{farm['id']}")
     assert delete_farm.status_code == 204
     assert client.get(f"/api/v1/farms/{farm['id']}").status_code == 404
+
+
+def test_field_farm_organization_integrity_is_enforced_by_database(client: TestClient):
+    first = _register(client, "db-owner-one@example.com")
+    first_farm = _create_farm(client, first["organization"]["id"], "Farm One")
+
+    second_client = TestClient(client.app)
+    second = _register(second_client, "db-owner-two@example.com")
+    second_farm = _create_farm(second_client, second["organization"]["id"], "Farm Two")
+
+    api_field = client.post(
+        f"/api/v1/farms/{first_farm['id']}/fields",
+        json={"name": "Valid DB Field", "geometry": VALID_FIELD_GEOMETRY},
+    )
+    assert api_field.status_code == 201, api_field.text
+
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            with pytest.raises(psycopg.errors.ForeignKeyViolation):
+                cur.execute(
+                    """
+                    INSERT INTO fields (farm_id, organization_id, name, geometry, area_sqm, area_rai, status)
+                    VALUES (
+                      %s,
+                      %s,
+                      'Mismatched tenant field',
+                      ST_SetSRID(ST_GeomFromGeoJSON(%s), 4326)::geometry(Polygon, 4326),
+                      1.00,
+                      0.0006,
+                      'active'
+                    )
+                    """,
+                    (second_farm["id"], first["organization"]["id"], json.dumps(VALID_FIELD_GEOMETRY)),
+                )
 
 
 def test_invalid_field_geometry_rejected(client: TestClient):

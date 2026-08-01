@@ -56,11 +56,13 @@ FIELD-001 adds executable Alembic migration `apps/api/migrations/versions/202608
 - `farms`
 - `fields`
 
-`farms.organization_id` is required and indexed. Reads and mutations are scoped through active user membership before returning records.
+`farms.organization_id` is required and indexed. Reads and mutations are scoped through active user membership before returning records. `farms` also has `UNIQUE (id, organization_id)` so child rows can enforce tenant consistency at the database layer.
 
 `fields.geometry` is stored as PostGIS `geometry(Polygon, 4326)`. The backend validates GeoJSON Polygon input before persistence and calculates:
 
 - `area_sqm` with `ST_Area(geometry::geography)`.
 - `area_rai` as `area_sqm / 1600`.
+
+`fields` keeps `organization_id` for tenant-scoped queries and enforces `FOREIGN KEY (farm_id, organization_id) REFERENCES farms (id, organization_id) ON DELETE RESTRICT`, preventing a field from pointing to a farm in another organization.
 
 Field and farm deletes are soft deletes using `status = 'deleted'` for this slice. Foreign keys remain `RESTRICT`; destructive cascading is intentionally avoided.

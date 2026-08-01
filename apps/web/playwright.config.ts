@@ -19,7 +19,8 @@ export default defineConfig({
       timeout: 30_000
     },
     {
-      command: "NEXT_PUBLIC_API_BASE_URL=http://localhost:8000 npm -w apps/web run dev",
+      command:
+        "NEXT_PUBLIC_API_BASE_URL=http://localhost:8000 NEXT_PUBLIC_MAP_STYLE_URL=https://tiles.openfreemap.org/styles/liberty npm -w apps/web run dev",
       url: "http://localhost:3000",
       reuseExistingServer: true,
       cwd: "../..",
