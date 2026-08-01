@@ -178,22 +178,34 @@ export function FieldMap({
 
   return (
     <section className="space-y-3">
-      <div className="relative">
+      <div className="relative overflow-hidden rounded-[var(--as-radius-xl)] border border-[var(--as-border)] bg-[var(--as-surface-map)] shadow-[var(--as-shadow-lg)]">
         <div
           ref={containerRef}
-          className="overflow-hidden rounded-md border border-[#b8c5b0] bg-[#e6efe8]"
+          className="bg-[var(--as-surface-map)]"
           style={{ height: "62vh", minHeight: 420 }}
           aria-label="Field map"
           data-map-style-url={styleUrl}
           data-vertex-count={points.length}
         />
+        <div className="pointer-events-none absolute left-3 right-3 top-3 flex flex-wrap items-center justify-between gap-3">
+          <div className="pointer-events-auto flex flex-wrap gap-2 rounded-2xl border border-[var(--as-border)] bg-white/90 p-1.5 shadow-[var(--as-shadow-sm)] backdrop-blur">
+            <span className={`as-pill ${editable ? "text-[var(--as-primary)]" : ""}`}>
+              <span className="as-dot" aria-hidden="true" />
+              {editable ? "Draw mode" : "Saved boundary"}
+            </span>
+            <span className="as-pill">Vertices: {points.length}</span>
+          </div>
+          <div className="pointer-events-auto rounded-2xl border border-[var(--as-border)] bg-white/90 px-3 py-2 text-xs font-bold text-[var(--as-ink-muted)] shadow-[var(--as-shadow-sm)] backdrop-blur">
+            MapLibre
+          </div>
+        </div>
         {!mapLoaded ? (
-          <div className="absolute left-3 top-3 rounded-md bg-white px-3 py-2 text-sm text-[#173f35] shadow">
+          <div className="absolute bottom-4 left-4 rounded-[var(--as-radius-md)] bg-white px-3 py-2 text-sm font-semibold text-[var(--as-primary)] shadow-[var(--as-shadow-sm)]">
             กำลังโหลดแผนที่...
           </div>
         ) : null}
         {mapError ? (
-          <div className="absolute left-3 top-3 max-w-sm rounded-md border border-[#8f2435] bg-white px-3 py-2 text-sm text-[#8f2435] shadow">
+          <div className="absolute bottom-4 left-4 max-w-sm rounded-[var(--as-radius-md)] border border-[var(--as-danger)] bg-[var(--as-danger-soft)] px-3 py-2 text-sm font-semibold text-[var(--as-danger)] shadow-[var(--as-shadow-sm)]">
             {mapError}
           </div>
         ) : null}
@@ -201,34 +213,34 @@ export function FieldMap({
           <button
             type="button"
             onClick={locateMe}
-            className="absolute bottom-8 left-3 rounded-md bg-white px-3 py-2 text-sm font-medium text-[#173f35] shadow"
+            className="absolute bottom-4 right-4 min-h-11 rounded-[var(--as-radius-sm)] border border-[var(--as-border)] bg-white/92 px-4 text-sm font-bold text-[var(--as-primary)] shadow-[var(--as-shadow-sm)] backdrop-blur transition hover:bg-[var(--as-surface-soft)]"
           >
             ใช้ตำแหน่งฉัน
           </button>
         ) : null}
         {locationStatus ? (
-          <div className="absolute bottom-8 left-36 rounded-md bg-white px-3 py-2 text-sm text-[#526057] shadow">
+          <div className="absolute bottom-4 right-36 rounded-[var(--as-radius-sm)] border border-[var(--as-border)] bg-white/92 px-3 py-2 text-sm text-[var(--as-ink-muted)] shadow-[var(--as-shadow-sm)]">
             {locationStatus}
           </div>
         ) : null}
       </div>
       {editable ? (
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2 rounded-[var(--as-radius-lg)] border border-[var(--as-border)] bg-white/80 p-2 shadow-[var(--as-shadow-sm)]">
           <Button
             type="button"
             variant="secondary"
+            size="sm"
             onClick={() => setPoints((current) => current.slice(0, -1))}
             disabled={!points.length}
           >
             Undo
           </Button>
-          <Button type="button" variant="danger" onClick={() => setPoints([])} disabled={!points.length}>
+          <Button type="button" variant="danger" size="sm" onClick={() => setPoints([])} disabled={!points.length}>
             Delete polygon
           </Button>
-          <span className="self-center text-sm text-[#526057]">
+          <span className="self-center text-sm text-[var(--as-ink-muted)]">
             Click the map to add vertices. Drag markers to edit before saving.
           </span>
-          <span className="self-center text-sm text-[#526057]">Vertices: {points.length}</span>
         </div>
       ) : null}
     </section>

@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "./Button";
 import { apiFetch } from "../lib/api";
 import type { SatelliteLatest } from "../lib/types";
+import { Badge, Card } from "./Primitives";
 
 export function SatelliteStatusCard({ fieldId }: { fieldId: string }) {
   const queryClient = useQueryClient();
@@ -25,58 +26,64 @@ export function SatelliteStatusCard({ fieldId }: { fieldId: string }) {
   const unavailable = search.isError || result?.status === "temporarily_unavailable";
 
   return (
-    <section className="rounded-md border border-[#d7decc] bg-white p-5">
+    <Card premium className="p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold text-[#173f35]">ภาพดาวเทียมล่าสุด</h2>
-          <p className="text-sm text-[#526057]">ค้นหาเฉพาะข้อมูล Sentinel-2 Level-2A จากแปลงที่บันทึกไว้</p>
+          <Badge tone="satellite">Sentinel metadata</Badge>
+          <h2 className="mt-3 text-xl font-bold text-[var(--as-ink)]">ภาพดาวเทียมล่าสุด</h2>
+          <p className="mt-1 text-sm text-[var(--as-ink-muted)]">ค้นหาเฉพาะข้อมูล Sentinel-2 Level-2A จากแปลงที่บันทึกไว้</p>
         </div>
-        <Button type="button" onClick={() => search.mutate()} disabled={search.isPending}>
+        <Button type="button" variant="secondary" onClick={() => search.mutate()} disabled={search.isPending}>
           {search.isPending ? "กำลังตรวจสอบ..." : "ตรวจสอบภาพดาวเทียมล่าสุด"}
         </Button>
       </div>
 
-      <div className="mt-4 rounded-md bg-[#f7f4ea] p-4" aria-live="polite">
-        {latest.isLoading ? <p className="text-[#526057]">กำลังโหลดสถานะดาวเทียม...</p> : null}
+      <div className="mt-5 rounded-[var(--as-radius-lg)] border border-[var(--as-border)] bg-[var(--as-blue-soft)] p-4" aria-live="polite">
+        {latest.isLoading ? <p className="text-[var(--as-ink-muted)]">กำลังโหลดสถานะดาวเทียม...</p> : null}
         {unavailable ? (
-          <p className="font-medium text-[#8a4b18]">ยังไม่สามารถตรวจสอบข้อมูลดาวเทียมได้ กรุณาลองใหม่ภายหลัง</p>
+          <p className="font-semibold text-[var(--as-warning)]">ยังไม่สามารถตรวจสอบข้อมูลดาวเทียมได้ กรุณาลองใหม่ภายหลัง</p>
         ) : null}
         {!unavailable && result?.status === "available" && result.acquisition ? (
-          <div className="space-y-2">
-            <p className="font-semibold text-[#173f35]">พบภาพล่าสุด</p>
-            <Info label="วันที่ดาวเทียมบันทึกภาพ" value={formatThaiDate(result.acquisition.acquired_at)} />
-            <Info
-              label="ปริมาณเมฆตามข้อมูลประกอบภาพ"
-              value={
-                result.acquisition.cloud_cover_percent === null
-                  ? "ไม่มีข้อมูลเมฆ"
-                  : `${result.acquisition.cloud_cover_percent.toFixed(1)}%`
-              }
-            />
-            <Info label="แหล่งข้อมูล" value="Sentinel-2 Level-2A" />
-            <Info label="เวลาที่ค้นหา" value={formatThaiDate(result.searched_at)} />
-            <details className="text-sm text-[#526057]">
-              <summary className="cursor-pointer font-medium text-[#173f35]">Product / item ID</summary>
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-lg font-bold text-[var(--as-ink)]">พบภาพล่าสุด</p>
+              <span className="as-pill text-[var(--as-satellite)]">ข้อมูลพร้อมสำหรับการวิเคราะห์ขั้นถัดไป</span>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              <Info label="วันที่ดาวเทียมบันทึกภาพ" value={formatThaiDate(result.acquisition.acquired_at)} />
+              <Info
+                label="ปริมาณเมฆตามข้อมูลประกอบภาพ"
+                value={
+                  result.acquisition.cloud_cover_percent === null
+                    ? "ไม่มีข้อมูลเมฆ"
+                    : `${result.acquisition.cloud_cover_percent.toFixed(1)}%`
+                }
+              />
+              <Info label="แหล่งข้อมูล" value="Sentinel-2 Level-2A" />
+              <Info label="เวลาที่ค้นหา" value={formatThaiDate(result.searched_at)} />
+            </div>
+            <details className="text-sm text-[var(--as-ink-muted)]">
+              <summary className="cursor-pointer font-semibold text-[var(--as-primary)]">Product / item ID</summary>
               <p className="mt-1 break-all">{result.acquisition.item_id}</p>
             </details>
           </div>
         ) : null}
         {!unavailable && result?.status === "no_data" ? (
-          <p className="font-medium text-[#526057]">ยังไม่พบภาพ Sentinel-2 ที่ตรงกับเงื่อนไขในช่วงเวลาที่ค้นหา</p>
+          <p className="font-semibold text-[var(--as-ink-muted)]">ยังไม่พบภาพ Sentinel-2 ที่ตรงกับเงื่อนไขในช่วงเวลาที่ค้นหา</p>
         ) : null}
         {!latest.isLoading && !result && !unavailable ? (
-          <p className="text-[#526057]">ยังไม่มีการตรวจสอบภาพดาวเทียมล่าสุด</p>
+          <p className="text-[var(--as-ink-muted)]">ยังไม่มีการตรวจสอบภาพดาวเทียมล่าสุด</p>
         ) : null}
       </div>
-    </section>
+    </Card>
   );
 }
 
 function Info({ label, value }: { label: string; value: string }) {
   return (
-    <div>
-      <p className="text-xs uppercase text-[#526057]">{label}</p>
-      <p className="font-medium text-[#173f35]">{value}</p>
+    <div className="rounded-[var(--as-radius-md)] bg-white/70 p-3">
+      <p className="text-xs font-bold uppercase text-[var(--as-ink-muted)]">{label}</p>
+      <p className="as-number mt-1 font-bold text-[var(--as-ink)]">{value}</p>
     </div>
   );
 }
