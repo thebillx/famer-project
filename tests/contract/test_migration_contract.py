@@ -4,6 +4,7 @@ import unittest
 
 
 MIGRATION = pathlib.Path("apps/api/migrations/versions/20260801_0001_foundation.py")
+FIELD_MIGRATION = pathlib.Path("apps/api/migrations/versions/20260801_0002_farm_field.py")
 
 
 class MigrationContractTests(unittest.TestCase):
@@ -18,6 +19,13 @@ class MigrationContractTests(unittest.TestCase):
         for table in ["users", "organizations", "memberships", "refresh_sessions"]:
             self.assertIn(f'"{table}"', text)
         self.assertIn("uq_membership_org_user", text)
+
+    def test_field_migration_enforces_farm_organization_integrity(self):
+        text = FIELD_MIGRATION.read_text()
+        self.assertIn("uq_farms_id_organization_id", text)
+        self.assertIn("fk_fields_farm_organization", text)
+        self.assertIn('["farm_id", "organization_id"]', text)
+        self.assertIn('["farms.id", "farms.organization_id"]', text)
 
 
 if __name__ == "__main__":

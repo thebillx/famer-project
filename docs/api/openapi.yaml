@@ -98,6 +98,123 @@ components:
         name: { type: string, minLength: 1, maxLength: 200 }
       example:
         name: North Field Cooperative
+    FarmCreateRequest:
+      type: object
+      required: [organization_id, name]
+      properties:
+        organization_id: { type: string, format: uuid }
+        name: { type: string, minLength: 1, maxLength: 200 }
+        province: { type: string, maxLength: 120, nullable: true }
+      example:
+        organization_id: 018f1b46-0637-7000-9000-000000000010
+        name: Farm 1
+        province: Chiang Mai
+    FarmUpdateRequest:
+      type: object
+      properties:
+        name: { type: string, minLength: 1, maxLength: 200 }
+        province: { type: string, maxLength: 120, nullable: true }
+      example:
+        name: Farm 1 North
+        province: Chiang Mai
+    Farm:
+      type: object
+      required: [id, organization_id, name, status, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        organization_id: { type: string, format: uuid }
+        name: { type: string }
+        province: { type: string, nullable: true }
+        status: { type: string, enum: [active, deleted] }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+      example:
+        id: 018f1b46-0637-7000-9000-000000000020
+        organization_id: 018f1b46-0637-7000-9000-000000000010
+        name: Farm 1
+        province: Chiang Mai
+        status: active
+        created_at: "2026-08-01T09:00:00Z"
+        updated_at: "2026-08-01T09:00:00Z"
+    GeoJsonPolygon:
+      type: object
+      required: [type, coordinates]
+      properties:
+        type: { type: string, enum: [Polygon] }
+        coordinates:
+          type: array
+          minItems: 1
+          items:
+            type: array
+            minItems: 4
+            items:
+              type: array
+              minItems: 2
+              maxItems: 2
+              items: { type: number }
+      example:
+        type: Polygon
+        coordinates:
+          - - [98.9801, 18.7901]
+            - [98.9811, 18.7901]
+            - [98.9811, 18.7911]
+            - [98.9801, 18.7911]
+            - [98.9801, 18.7901]
+    FieldCreateRequest:
+      type: object
+      required: [name, geometry]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 200 }
+        geometry: { $ref: "#/components/schemas/GeoJsonPolygon" }
+      example:
+        name: Field A
+        geometry:
+          type: Polygon
+          coordinates:
+            - - [98.9801, 18.7901]
+              - [98.9811, 18.7901]
+              - [98.9811, 18.7911]
+              - [98.9801, 18.7911]
+              - [98.9801, 18.7901]
+    FieldUpdateRequest:
+      type: object
+      properties:
+        name: { type: string, minLength: 1, maxLength: 200 }
+        geometry: { $ref: "#/components/schemas/GeoJsonPolygon" }
+      example:
+        name: Field A North
+    Field:
+      type: object
+      required: [id, farm_id, organization_id, name, geometry, area_sqm, area_rai, status, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        farm_id: { type: string, format: uuid }
+        organization_id: { type: string, format: uuid }
+        name: { type: string }
+        geometry: { $ref: "#/components/schemas/GeoJsonPolygon" }
+        area_sqm: { type: number }
+        area_rai: { type: number }
+        status: { type: string, enum: [active, deleted] }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+      example:
+        id: 018f1b46-0637-7000-9000-000000000030
+        farm_id: 018f1b46-0637-7000-9000-000000000020
+        organization_id: 018f1b46-0637-7000-9000-000000000010
+        name: Field A
+        geometry:
+          type: Polygon
+          coordinates:
+            - - [98.9801, 18.7901]
+              - [98.9811, 18.7901]
+              - [98.9811, 18.7911]
+              - [98.9801, 18.7911]
+              - [98.9801, 18.7901]
+        area_sqm: 11726.42
+        area_rai: 7.329
+        status: active
+        created_at: "2026-08-01T09:00:00Z"
+        updated_at: "2026-08-01T09:00:00Z"
 paths:
   /health/live:
     get:
@@ -324,3 +441,278 @@ paths:
               schema:
                 type: array
                 items: { $ref: "#/components/schemas/Member" }
+  /api/v1/farms:
+    post:
+      summary: Create a farm in an organization visible to the current user.
+      security:
+        - cookieSession: []
+      x-required-role: field_manager
+      x-organization-scope: request organization_id must match an active current-user membership.
+      x-validation: name required; province optional; viewer role cannot create.
+      x-rate-limit: authenticated mutation limit.
+      x-idempotency: not idempotent.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/FarmCreateRequest" }
+      responses:
+        "201":
+          description: Created farm.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Farm" }
+        "401":
+          description: Authentication required.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Role cannot create farms.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Organization is not visible.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+    get:
+      summary: List active farms visible through current user's active organization memberships.
+      security:
+        - cookieSession: []
+      x-required-role: viewer
+      x-organization-scope: optional organization_id query is checked against active membership; otherwise all current-user organizations.
+      x-validation: foreign organization returns 404.
+      x-rate-limit: authenticated read limit.
+      x-idempotency: safe read-only operation.
+      parameters:
+        - name: organization_id
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Farms.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Farm" }
+  /api/v1/farms/{farm_id}:
+    get:
+      summary: Get an active farm scoped by current-user membership.
+      security:
+        - cookieSession: []
+      x-required-role: viewer
+      x-organization-scope: farm lookup joins active membership before returning a row.
+      x-validation: invalid UUID rejected; foreign or deleted farm returns 404.
+      x-rate-limit: authenticated read limit.
+      x-idempotency: safe read-only operation.
+      parameters:
+        - name: farm_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Farm.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Farm" }
+        "404":
+          description: Not found or not visible.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+    patch:
+      summary: Update an active farm scoped by current-user membership.
+      security:
+        - cookieSession: []
+      x-required-role: field_manager
+      x-organization-scope: farm lookup joins active membership before mutation.
+      x-validation: at least one supported field required; viewer role cannot update.
+      x-rate-limit: authenticated mutation limit.
+      x-idempotency: not idempotent, but repeated identical requests produce the same farm representation.
+      parameters:
+        - name: farm_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/FarmUpdateRequest" }
+      responses:
+        "200":
+          description: Updated farm.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Farm" }
+        "403":
+          description: Role cannot update farms.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Not found or not visible.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+    delete:
+      summary: Soft delete an active farm scoped by current-user membership.
+      security:
+        - cookieSession: []
+      x-required-role: field_manager
+      x-organization-scope: farm lookup joins active membership before mutation.
+      x-validation: viewer role cannot delete; deleted farm is omitted from reads.
+      x-rate-limit: authenticated mutation limit.
+      x-idempotency: effectively idempotent once deleted.
+      parameters:
+        - name: farm_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204": { description: Deleted farm. }
+        "403":
+          description: Role cannot delete farms.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Not found or not visible.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+  /api/v1/farms/{farm_id}/fields:
+    post:
+      summary: Create a field polygon in an active farm.
+      security:
+        - cookieSession: []
+      x-required-role: field_manager
+      x-organization-scope: farm and field are scoped by active current-user membership.
+      x-validation: GeoJSON Polygon only; closed ring; no self-intersection; backend calculates area.
+      x-rate-limit: authenticated mutation limit.
+      x-idempotency: not idempotent.
+      parameters:
+        - name: farm_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/FieldCreateRequest" }
+      responses:
+        "201":
+          description: Created field with authoritative area.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Field" }
+        "422":
+          description: Invalid polygon geometry.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+    get:
+      summary: List active fields in an active farm.
+      security:
+        - cookieSession: []
+      x-required-role: viewer
+      x-organization-scope: farm lookup joins active membership before listing fields.
+      x-validation: foreign or deleted farm returns 404.
+      x-rate-limit: authenticated read limit.
+      x-idempotency: safe read-only operation.
+      parameters:
+        - name: farm_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Fields.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Field" }
+  /api/v1/fields/{field_id}:
+    get:
+      summary: Get an active field scoped by current-user membership.
+      security:
+        - cookieSession: []
+      x-required-role: viewer
+      x-organization-scope: field lookup joins active membership before returning a row.
+      x-validation: foreign or deleted field returns 404.
+      x-rate-limit: authenticated read limit.
+      x-idempotency: safe read-only operation.
+      parameters:
+        - name: field_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Field.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Field" }
+        "404":
+          description: Not found or not visible.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+    patch:
+      summary: Update an active field polygon or name.
+      security:
+        - cookieSession: []
+      x-required-role: field_manager
+      x-organization-scope: field lookup joins active membership before mutation.
+      x-validation: at least one supported field required; geometry is validated and area recalculated.
+      x-rate-limit: authenticated mutation limit.
+      x-idempotency: not idempotent, but repeated identical requests produce the same field representation.
+      parameters:
+        - name: field_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/FieldUpdateRequest" }
+      responses:
+        "200":
+          description: Updated field.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Field" }
+        "422":
+          description: Invalid polygon geometry.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+    delete:
+      summary: Soft delete an active field scoped by current-user membership.
+      security:
+        - cookieSession: []
+      x-required-role: field_manager
+      x-organization-scope: field lookup joins active membership before mutation.
+      x-validation: viewer role cannot delete; deleted field is omitted from reads.
+      x-rate-limit: authenticated mutation limit.
+      x-idempotency: effectively idempotent once deleted.
+      parameters:
+        - name: field_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204": { description: Deleted field. }
+        "404":
+          description: Not found or not visible.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }

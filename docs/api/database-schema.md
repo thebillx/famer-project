@@ -48,3 +48,21 @@ The original SQL seed remains as an architectural reference for the broader doma
 Refresh sessions store only token hashes. `refresh_sessions.rotated_from` is a nullable self-referencing foreign key with `SET NULL` on delete so refresh-token rotation can be audited without storing raw refresh tokens.
 
 Deletion behavior is intentionally restrictive. Foreign keys use `RESTRICT` for core user, organization, membership, and refresh-session ownership so deletion must be explicit and audited in later privacy/account-deletion slices.
+
+## FIELD-001 executable models
+
+FIELD-001 adds executable Alembic migration `apps/api/migrations/versions/20260801_0002_farm_field.py` and ORM models for:
+
+- `farms`
+- `fields`
+
+`farms.organization_id` is required and indexed. Reads and mutations are scoped through active user membership before returning records. `farms` also has `UNIQUE (id, organization_id)` so child rows can enforce tenant consistency at the database layer.
+
+`fields.geometry` is stored as PostGIS `geometry(Polygon, 4326)`. The backend validates GeoJSON Polygon input before persistence and calculates:
+
+- `area_sqm` with `ST_Area(geometry::geography)`.
+- `area_rai` as `area_sqm / 1600`.
+
+`fields` keeps `organization_id` for tenant-scoped queries and enforces `FOREIGN KEY (farm_id, organization_id) REFERENCES farms (id, organization_id) ON DELETE RESTRICT`, preventing a field from pointing to a farm in another organization.
+
+Field and farm deletes are soft deletes using `status = 'deleted'` for this slice. Foreign keys remain `RESTRICT`; destructive cascading is intentionally avoided.

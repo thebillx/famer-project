@@ -1,6 +1,6 @@
 # AgriScope Thailand
 
-AgriScope Thailand is a production-oriented SaaS foundation for monitoring agricultural fields with free satellite data. It helps users answer:
+AgriScope Thailand is a production-oriented SaaS foundation for managing agricultural fields and later monitoring them with free satellite data. It helps users answer:
 
 > แปลงของฉันมีการเปลี่ยนแปลงผิดปกติหรือไม่ เกิดขึ้นตรงบริเวณไหน และควรไปตรวจตรงไหนก่อน
 
@@ -8,9 +8,10 @@ The system uses satellite observations to prioritize field inspection. It does n
 
 ## Current status
 
-This repository has started Phase 1 and the first foundation slice:
+This repository has completed the backend foundation slice and is adding the first user-visible farm/field slice:
 
 - Architecture, data flow, ER model, API contract, security model, quota strategy, and roadmap are documented.
+- Authenticated users can create farms and save field polygons through the FIELD-001 flow.
 - Core remote-sensing index formulas and quality gates are implemented in a dependency-light Python package.
 - Unit tests cover NDVI, EVI, SAVI, NDMI, NDWI, NDRE, NBR, BSI, division-by-zero behavior, cloud quality gates, and safe wording policy.
 - No live Copernicus API calls are made by tests.
@@ -54,6 +55,21 @@ docker compose up -d postgres redis minio
 
 Do not reuse `.env.example` secrets outside development. Production must provide strong `SESSION_SECRET`, `ENCRYPTION_KEY`, database, Redis, and object-storage settings.
 
+## Web application commands
+
+Frontend dependencies are locked in `package-lock.json`.
+
+```bash
+npm install
+NEXT_PUBLIC_API_BASE_URL=http://localhost:8000 npm -w apps/web run dev
+npm -w apps/web run typecheck
+npm -w apps/web run build
+```
+
+`NEXT_PUBLIC_MAP_STYLE_URL` controls the MapLibre basemap. The development default is `https://tiles.openfreemap.org/styles/liberty`, a no-token OpenFreeMap style with attribution included by the map control. Production deployments should configure an approved provider/style URL that matches expected traffic and terms.
+
+With the API and web app running, open `http://localhost:3000/login`, register or log in, create a farm, draw a field, save it, and reload the farm page to confirm the field remains visible.
+
 ## FOUNDATION-001 status
 
 The backend foundation defines typed settings, API route contracts, request IDs, standard error shape, SQLAlchemy/Alembic structure, User/Organization/Membership/RefreshSession models, password/token/session policies, RBAC roles, and tenant-scope repository patterns.
@@ -68,7 +84,8 @@ Verified locally:
 
 Known limitations:
 
-- Farm/Field CRUD, Copernicus integration, worker scheduler, alerts, reports, and frontend are not part of FOUNDATION-001.
+- Copernicus integration, worker scheduler, alerts, reports, and satellite overlays are not part of FIELD-001.
+- FIELD-001 uses a minimal MapLibre drawing canvas and intentionally does not add a production basemap provider.
 - Redis and object storage are configured for local development but not used by the current Foundation endpoints.
 
 ## Repository map

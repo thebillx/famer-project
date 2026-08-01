@@ -1,20 +1,11 @@
 {
-  "name": "agriscope-thailand",
+  "name": "@agriscope/web",
   "version": "0.1.0",
   "private": true,
-  "packageManager": "npm@10.9.2",
-  "engines": {
-    "node": "23.6.0"
-  },
-  "workspaces": [
-    "apps/web",
-    "packages/ui",
-    "packages/config",
-    "packages/shared-types"
-  ],
   "scripts": {
-    "test:unit:python": "python3 -m unittest discover -s tests/unit",
-    "validate:contracts": "python3 -m unittest discover -s tests/contract"
+    "dev": "next dev",
+    "build": "next build",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@hookform/resolvers": "3.10.0",
@@ -27,7 +18,6 @@
     "zod": "4.0.14"
   },
   "devDependencies": {
-    "@playwright/test": "1.54.2",
     "@types/node": "24.1.0",
     "@types/react": "19.1.9",
     "@types/react-dom": "19.1.7",

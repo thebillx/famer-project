@@ -21,6 +21,16 @@ def create_app():
     app = FastAPI(title=settings.app_name, version="0.1.0")
     app.state.settings = settings
 
+    from fastapi.middleware.cors import CORSMiddleware
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[settings.app_url],
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=["authorization", "content-type", "x-request-id"],
+    )
+
     from apps.api.agriscope_api.db.session import create_engine, create_session_factory
 
     app.state.db_engine = create_engine(settings)
