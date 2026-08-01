@@ -48,6 +48,18 @@
 - Frontend and backend implementation must not start until the orchestrator marks the task `CONTRACT_READY`.
 - Any contract change during implementation returns the task to contract review.
 
+## MVP delivery rules
+
+- Prioritize user-visible vertical slices.
+- Every feature must state what the end user can do after merge.
+- Avoid new process documents unless required for implementation or safety.
+- Do not add future infrastructure before the current feature needs it.
+- Push every feature branch for external GitHub review before merge.
+- External review decisions are `APPROVED` or `CHANGES_REQUIRED`.
+- Do not mark a feature `DONE` or merge it before external approval.
+- Do not automatically start the next feature.
+- Codex is the active coding workflow; do not add OpenCode or GLM workflows.
+
 ## Ownership rules
 
 - File ownership is assigned per task brief.
