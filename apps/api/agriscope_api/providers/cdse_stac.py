@@ -109,6 +109,23 @@ class CdseStacClient:
             "datetime": f"{_iso_z(start)}/{_iso_z(end)}",
             "intersects": geometry,
             "limit": 20,
+            "filter-lang": "cql2-json",
+            "filter": {
+                "op": "or",
+                "args": [
+                    {
+                        "op": "<=",
+                        "args": [
+                            {"property": "eo:cloud_cover"},
+                            self.max_cloud_cover_percent,
+                        ],
+                    },
+                    {
+                        "op": "isNull",
+                        "args": [{"property": "eo:cloud_cover"}],
+                    },
+                ],
+            },
             "sortby": [{"field": "properties.datetime", "direction": "desc"}],
             "fields": {
                 "include": [

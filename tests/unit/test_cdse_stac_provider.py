@@ -43,6 +43,23 @@ class CdseStacClientTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(payload["intersects"], GEOMETRY)
         self.assertEqual(payload["datetime"], "2026-05-03T12:00:00Z/2026-08-01T12:00:00Z")
         self.assertEqual(payload["sortby"], [{"field": "properties.datetime", "direction": "desc"}])
+        self.assertEqual(payload["filter-lang"], "cql2-json")
+        self.assertEqual(
+            payload["filter"],
+            {
+                "op": "or",
+                "args": [
+                    {
+                        "op": "<=",
+                        "args": [
+                            {"property": "eo:cloud_cover"},
+                            80.0,
+                        ],
+                    },
+                    {"op": "isNull", "args": [{"property": "eo:cloud_cover"}]},
+                ],
+            },
+        )
 
     def test_selects_newest_valid_item_and_applies_cloud_threshold(self):
         body = {
@@ -58,6 +75,16 @@ class CdseStacClientTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(selected)
         self.assertEqual(selected.item_id, "newest-valid")
         self.assertEqual(selected.cloud_cover_percent, 22.5)
+
+    def test_all_items_above_threshold_returns_no_data(self):
+        body = {
+            "features": [
+                feature("newest-too-cloudy", "2026-07-31T00:00:00Z", 95.0),
+                feature("older-too-cloudy", "2026-07-30T00:00:00Z", 81.0),
+            ]
+        }
+
+        self.assertIsNone(self.client().select_latest_valid_item(body))
 
     def test_missing_cloud_value_is_allowed(self):
         selected = self.client().select_latest_valid_item(
@@ -99,6 +126,22 @@ class CdseStacClientTests(unittest.IsolatedAsyncioTestCase):
         result = await self.client(post_json=post_json).search_latest(GEOMETRY)
 
         self.assertIsNone(result.item)
+
+    async def test_server_side_filter_prevents_first_page_false_no_data(self):
+        async def post_json(_url, payload, _timeout):
+            cloud_filter = payload["filter"]["args"][0]
+            self.assertEqual(cloud_filter["op"], "<=")
+            self.assertEqual(cloud_filter["args"], [{"property": "eo:cloud_cover"}, 80.0])
+            return 200, {
+                "features": [
+                    feature("older-acceptable-from-provider-filter", "2026-07-01T00:00:00Z", 12.0)
+                ]
+            }
+
+        result = await self.client(post_json=post_json).search_latest(GEOMETRY)
+
+        self.assertIsNotNone(result.item)
+        self.assertEqual(result.item.item_id, "older-acceptable-from-provider-filter")
 
 
 if __name__ == "__main__":
