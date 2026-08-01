@@ -60,6 +60,14 @@ Daily scheduler
 - `/health/ready`: app can serve traffic.
 - `/health/dependencies`: database, Redis, object storage, queue, and provider adapter status.
 
+## FOUNDATION-001 backend foundation
+
+The API foundation uses an application factory, versioned `/api/v1` router, standard error responses, request ID middleware, structured logging helpers, typed settings validation, async SQLAlchemy session wiring, and Alembic migrations.
+
+Refresh-session strategy is database-backed. `refresh_sessions` stores token hashes, status, expiration, and rotation lineage. Logout revokes the active refresh session; refresh rotates the session.
+
+Tenant-safe repositories must scope directly by `organization_id` and active membership before returning records. They must not fetch a tenant-owned entity by ID first and authorize afterward when a scoped query is possible.
+
 ## Production deployment shape
 
 - Reverse proxy terminates TLS and applies security headers.

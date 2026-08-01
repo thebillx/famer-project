@@ -10,11 +10,25 @@
 - Session expiration and refresh-token rotation.
 - Email verification.
 
+## FOUNDATION-001 session strategy
+
+The selected browser session strategy is database-backed refresh sessions plus short-lived access tokens:
+
+- Access tokens carry `typ=access` and expire quickly.
+- Refresh tokens carry `typ=refresh`, are stored only as hashes in `refresh_sessions`, and are delivered through HttpOnly cookies.
+- Refresh rotates the session and revokes the previous row.
+- Logout revokes the current refresh session and deletes the cookie.
+- Generic login failure messages prevent account enumeration.
+
+The current execution environment does not have `argon2-cffi` installed, so dependency-backed password hashing tests are deferred. The runtime code requires `argon2-cffi` for password hashing and does not silently downgrade in production.
+
 ## Authorization
 
 - RBAC roles: Platform Super Admin, Organization Owner, Organization Admin, Agronomist, Field Manager, Viewer.
 - Every tenant-owned query must enforce organization scope.
 - Knowing a record ID must never grant cross-organization access.
+- Disabled memberships cannot authorize.
+- Foreign organization existence should return 404 rather than disclose tenant boundaries.
 
 ## Application security
 

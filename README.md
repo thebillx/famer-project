@@ -19,7 +19,31 @@ This repository has started Phase 1 and the first foundation slice:
 
 ```bash
 python3 -m unittest discover -s tests/unit
+python3 -m unittest discover -s tests/contract
 ```
+
+## API foundation commands
+
+Runtime dependencies are pinned in `pyproject.toml`. After installing them in a project environment:
+
+```bash
+uvicorn apps.api.agriscope_api.main:app --reload
+cd apps/api && alembic upgrade head
+```
+
+Do not reuse `.env.example` secrets outside development. Production must provide strong `SESSION_SECRET`, `ENCRYPTION_KEY`, database, Redis, and object-storage settings.
+
+## FOUNDATION-001 status
+
+The backend foundation defines typed settings, API route contracts, request IDs, standard error shape, SQLAlchemy/Alembic structure, User/Organization/Membership/RefreshSession models, password/token/session policies, RBAC roles, and tenant-scope repository patterns.
+
+Selected refresh-session strategy: database-backed refresh sessions. Logout and refresh rotation must revoke or rotate the persisted refresh session; a fake logout that only deletes a cookie is not acceptable.
+
+Known limitations:
+
+- Runtime dependencies are not installed by this publishing task.
+- Farm/Field CRUD, Copernicus integration, worker scheduler, alerts, reports, and frontend are not part of FOUNDATION-001.
+- API route handlers define contracts and wiring; full persistence-backed endpoint execution requires installing locked dependencies and running migrations.
 
 ## Repository map
 

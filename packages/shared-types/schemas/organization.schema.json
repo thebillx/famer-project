@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agriscope.local/schemas/organization.schema.json",
+  "title": "Organization",
+  "type": "object",
+  "required": ["id", "name", "slug", "status"],
+  "properties": {
+    "id": { "type": "string", "format": "uuid" },
+    "name": { "type": "string" },
+    "slug": { "type": "string" },
+    "logo_url": { "type": ["string", "null"] },
+    "plan_code": { "type": "string" },
+    "status": { "type": "string", "enum": ["active", "suspended", "deleted"] }
+  }
+}

@@ -33,3 +33,16 @@ Required indexes:
 ## Multi-tenant rule
 
 Every tenant-owned table includes or joins to `organization_id`. Queries must enforce organization scope before returning records.
+
+## FOUNDATION-001 executable models
+
+FOUNDATION-001 implements ORM models for:
+
+- `users`
+- `organizations`
+- `memberships`
+- `refresh_sessions`
+
+The original SQL seed remains as an architectural reference for the broader domain schema. The executable Alembic migration for FOUNDATION-001 is `apps/api/migrations/versions/20260801_0001_foundation.py`; it creates the auth and tenancy tables with upgrade and downgrade paths.
+
+Deletion behavior is intentionally restrictive. Foreign keys use `RESTRICT` for core user, organization, membership, and refresh-session ownership so deletion must be explicit and audited in later privacy/account-deletion slices.

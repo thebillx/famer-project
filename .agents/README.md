@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This directory defines the lightweight agent, skill, workflow, ownership, and quality-gate system for AgriScope. It is framework-neutral and intended for Codex CLI, OpenCode CLI, and agents that read `AGENTS.md` plus Markdown instruction files.
+This directory defines the lightweight agent, skill, workflow, ownership, and quality-gate system for AgriScope. It is intended for Codex and agents that read `AGENTS.md` plus Markdown instruction files.
 
 ## Agents
 
@@ -75,7 +75,7 @@ Add a folder under `.agents/skills/<skill-name>/SKILL.md`, keep it procedural, a
 
 Split an agent only when ownership or review load creates repeated conflict. Candidate future splits include DevOps, Database, UX, Sentinel-1, AI/ML, Billing, Report, Notification, Mobile, Drone, or IoT, but none are active at bootstrap.
 
-## Codex/OpenCode usage
+## Codex usage
 
 - Start with `AGENTS.md`.
 - Load the assigned agent definition.
