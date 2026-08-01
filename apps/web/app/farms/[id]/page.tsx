@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 import { Button } from "../../../components/Button";
 import { FieldMap } from "../../../components/FieldMap";
 import { PageShell } from "../../../components/PageShell";
+import { SatelliteStatusCard } from "../../../components/SatelliteStatusCard";
 import { apiFetch } from "../../../lib/api";
 import type { Farm, FieldBoundary } from "../../../lib/types";
 
@@ -44,6 +45,7 @@ export default function FarmDetailPage() {
                 <Info label="Field" value={firstField.name} />
                 <Info label="Area" value={`${firstField.area_sqm} sqm / ${firstField.area_rai} rai`} />
               </div>
+              <SatelliteStatusCard fieldId={firstField.id} />
               <FieldMap initialGeometry={firstField.geometry} />
             </div>
           ) : (

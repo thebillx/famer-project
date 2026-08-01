@@ -11,10 +11,12 @@ def create_root_router(settings: SettingsSnapshot):
     from apps.api.agriscope_api.api.v1.farms import router as farms_router
     from apps.api.agriscope_api.api.v1.health import router as health_router
     from apps.api.agriscope_api.api.v1.organizations import router as organizations_router
+    from apps.api.agriscope_api.api.v1.satellite import router as satellite_router
 
     router = APIRouter()
     router.include_router(health_router)
     router.include_router(auth_router, prefix=settings.api_v1_prefix)
     router.include_router(farms_router, prefix=settings.api_v1_prefix)
     router.include_router(organizations_router, prefix=settings.api_v1_prefix)
+    router.include_router(satellite_router, prefix=settings.api_v1_prefix)
     return router

@@ -3,6 +3,7 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 import json
+from decimal import Decimal
 from uuid import UUID, uuid4
 
 import psycopg
@@ -11,6 +12,13 @@ from fastapi.testclient import TestClient
 
 from apps.api.agriscope_api.application import create_app
 from apps.api.agriscope_api.core.security import TokenClaims, TokenType, create_token, parse_token
+from apps.api.agriscope_api.providers.cdse_stac import (
+    CDSE_STAC_PROVIDER,
+    SENTINEL_2_L2A_COLLECTION,
+    CdseStacItem,
+    CdseStacSearchResult,
+    CdseStacUnavailable,
+)
 
 
 DATABASE_URL = "postgresql://agriscope:agriscope_dev_password@localhost:5432/agriscope"
@@ -25,7 +33,7 @@ def clean_database():
     with _connect() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "TRUNCATE fields, farms, refresh_sessions, memberships, organizations, users RESTART IDENTITY"
+                "TRUNCATE field_acquisitions, fields, farms, refresh_sessions, memberships, organizations, users RESTART IDENTITY"
             )
     yield
 
@@ -296,6 +304,45 @@ def _create_farm(client: TestClient, organization_id: str, name: str = "Farm 1")
     return response.json()
 
 
+def _create_field(client: TestClient, farm_id: str, name: str = "Field A") -> dict:
+    response = client.post(
+        f"/api/v1/farms/{farm_id}/fields",
+        json={"name": name, "geometry": VALID_FIELD_GEOMETRY},
+    )
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+class FakeAvailableProvider:
+    calls = 0
+    geometries: list[dict] = []
+
+    async def search_latest(self, geometry, *, now=None):
+        self.calls += 1
+        self.geometries.append(geometry)
+        searched_at = now or datetime.now(UTC)
+        return CdseStacSearchResult(
+            item=CdseStacItem(
+                provider=CDSE_STAC_PROVIDER,
+                collection=SENTINEL_2_L2A_COLLECTION,
+                item_id="S2A_MSIL2A_20260730T034541_TEST",
+                acquired_at=datetime(2026, 7, 30, 3, 45, 41, tzinfo=UTC),
+                cloud_cover_percent=12.4,
+            ),
+            searched_at=searched_at,
+        )
+
+
+class FakeNoDataProvider:
+    async def search_latest(self, geometry, *, now=None):
+        return CdseStacSearchResult(item=None, searched_at=now or datetime.now(UTC))
+
+
+class FakeUnavailableProvider:
+    async def search_latest(self, geometry, *, now=None):
+        raise CdseStacUnavailable("fixture unavailable")
+
+
 def test_farm_and_field_crud_persists_geometry_and_area(client: TestClient):
     registered = _register(client)
     organization_id = registered["organization"]["id"]
@@ -432,3 +479,116 @@ def test_farm_field_tenant_isolation_and_viewer_mutation_denial(client: TestClie
     assert viewer_create.status_code == 403
     viewer_read = other_client.get(f"/api/v1/farms/{farm['id']}")
     assert viewer_read.status_code == 200
+
+
+def test_satellite_search_persists_latest_acquisition_idempotently_and_uses_persisted_geometry(client: TestClient):
+    registered = _register(client, "satellite-owner@example.com")
+    farm = _create_farm(client, registered["organization"]["id"])
+    field = _create_field(client, farm["id"])
+    provider = FakeAvailableProvider()
+    client.app.state.cdse_stac_provider = provider
+
+    first = client.post(f"/api/v1/fields/{field['id']}/satellite/search-latest")
+    assert first.status_code == 200, first.text
+    body = first.json()
+    assert body["status"] == "available"
+    assert body["acquisition"]["collection"] == SENTINEL_2_L2A_COLLECTION
+    assert body["acquisition"]["item_id"] == "S2A_MSIL2A_20260730T034541_TEST"
+    assert body["acquisition"]["cloud_cover_percent"] == 12.4
+    assert provider.geometries == [field["geometry"]]
+
+    second = client.post(f"/api/v1/fields/{field['id']}/satellite/search-latest")
+    assert second.status_code == 200
+    latest = client.get(f"/api/v1/fields/{field['id']}/satellite/latest")
+    assert latest.status_code == 200
+    assert latest.json()["acquisition"]["item_id"] == body["acquisition"]["item_id"]
+
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT count(*), max(organization_id::text), max(provider_metadata::text)
+                FROM field_acquisitions
+                WHERE field_id = %s
+                """,
+                (field["id"],),
+            )
+            count, organization_id, metadata = cur.fetchone()
+            assert count == 1
+            assert str(organization_id) == field["organization_id"]
+            assert "features" not in metadata
+
+
+def test_satellite_no_data_unavailable_auth_and_tenant_scope(client: TestClient):
+    registered = _register(client, "satellite-scope@example.com")
+    farm = _create_farm(client, registered["organization"]["id"])
+    field = _create_field(client, farm["id"])
+
+    anonymous = TestClient(client.app)
+    assert anonymous.post(f"/api/v1/fields/{field['id']}/satellite/search-latest").status_code == 401
+
+    client.app.state.cdse_stac_provider = FakeNoDataProvider()
+    no_data = client.post(f"/api/v1/fields/{field['id']}/satellite/search-latest")
+    assert no_data.status_code == 200
+    assert no_data.json()["status"] == "no_data"
+
+    client.app.state.cdse_stac_provider = FakeUnavailableProvider()
+    unavailable = client.post(f"/api/v1/fields/{field['id']}/satellite/search-latest")
+    assert unavailable.status_code == 200
+    assert unavailable.json()["status"] == "temporarily_unavailable"
+
+    other_client = TestClient(client.app)
+    _register(other_client, "satellite-foreign@example.com")
+    assert other_client.post(f"/api/v1/fields/{field['id']}/satellite/search-latest").status_code == 404
+    assert client.post(f"/api/v1/fields/{uuid4()}/satellite/search-latest").status_code == 404
+
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute("UPDATE fields SET status = 'deleted' WHERE id = %s", (field["id"],))
+    assert client.post(f"/api/v1/fields/{field['id']}/satellite/search-latest").status_code == 404
+
+
+def test_satellite_viewer_can_search_and_database_rejects_mismatched_field_organization(client: TestClient):
+    owner = _register(client, "satellite-db-owner@example.com")
+    owner_org_id = owner["organization"]["id"]
+    farm = _create_farm(client, owner_org_id)
+    field = _create_field(client, farm["id"])
+
+    viewer = TestClient(client.app)
+    _register(viewer, "satellite-viewer@example.com")
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT id FROM users WHERE email = %s", ("satellite-viewer@example.com",))
+            viewer_user_id = cur.fetchone()[0]
+            cur.execute(
+                """
+                INSERT INTO memberships (organization_id, user_id, role, status, joined_at)
+                VALUES (%s, %s, 'viewer', 'active', now())
+                """,
+                (owner_org_id, viewer_user_id),
+            )
+    viewer.app.state.cdse_stac_provider = FakeAvailableProvider()
+    assert viewer.post(f"/api/v1/fields/{field['id']}/satellite/search-latest").status_code == 200
+
+    other = _register(TestClient(client.app), "satellite-db-other@example.com")
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            with pytest.raises(psycopg.errors.ForeignKeyViolation):
+                cur.execute(
+                    """
+                    INSERT INTO field_acquisitions (
+                      field_id,
+                      organization_id,
+                      provider,
+                      collection,
+                      provider_item_id,
+                      acquired_at,
+                      cloud_cover_percent,
+                      search_status,
+                      searched_at,
+                      provider_metadata
+                    )
+                    VALUES (%s, %s, 'cdse_stac', 'sentinel-2-l2a', 'mismatched-item', now(), %s, 'available', now(), '{}')
+                    """,
+                    (field["id"], other["organization"]["id"], Decimal("12.40")),
+                )

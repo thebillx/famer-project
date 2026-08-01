@@ -9,7 +9,7 @@ from apps.api.agriscope_api.db.base import Base, TimestampMixin, mapped_column, 
 
 try:
     from geoalchemy2 import Geometry
-    from sqlalchemy import ForeignKey, ForeignKeyConstraint, Numeric, String
+    from sqlalchemy import ForeignKey, ForeignKeyConstraint, Numeric, String, UniqueConstraint
     from sqlalchemy.dialects.postgresql import UUID
     from sqlalchemy.orm import Mapped, relationship
 except Exception:  # pragma: no cover
@@ -18,6 +18,7 @@ except Exception:  # pragma: no cover
     ForeignKeyConstraint = None  # type: ignore[assignment]
     Numeric = None  # type: ignore[assignment]
     String = None  # type: ignore[assignment]
+    UniqueConstraint = None  # type: ignore[assignment]
     UUID = None  # type: ignore[assignment]
     Mapped = object  # type: ignore[assignment]
 
@@ -34,6 +35,7 @@ class Field(TimestampMixin, Base):
             name="fk_fields_farm_organization",
             ondelete="RESTRICT",
         ),
+        UniqueConstraint("id", "organization_id", name="uq_fields_id_organization_id"),
     )
 
     id: Mapped[PyUUID] = uuid_pk()

@@ -5,6 +5,7 @@ import unittest
 
 MIGRATION = pathlib.Path("apps/api/migrations/versions/20260801_0001_foundation.py")
 FIELD_MIGRATION = pathlib.Path("apps/api/migrations/versions/20260801_0002_farm_field.py")
+SATELLITE_MIGRATION = pathlib.Path("apps/api/migrations/versions/20260801_0003_satellite_acquisitions.py")
 
 
 class MigrationContractTests(unittest.TestCase):
@@ -26,6 +27,15 @@ class MigrationContractTests(unittest.TestCase):
         self.assertIn("fk_fields_farm_organization", text)
         self.assertIn('["farm_id", "organization_id"]', text)
         self.assertIn('["farms.id", "farms.organization_id"]', text)
+
+    def test_satellite_migration_persists_acquisitions_with_field_organization_integrity(self):
+        text = SATELLITE_MIGRATION.read_text()
+        self.assertIn("field_acquisitions", text)
+        self.assertIn("uq_field_acquisition_item", text)
+        self.assertIn("uq_fields_id_organization_id", text)
+        self.assertIn("fk_field_acquisitions_field_organization", text)
+        self.assertIn('["field_id", "organization_id"]', text)
+        self.assertIn('["fields.id", "fields.organization_id"]', text)
 
 
 if __name__ == "__main__":

@@ -32,3 +32,19 @@ export type GeoJsonPolygon = {
   type: "Polygon";
   coordinates: number[][][];
 };
+
+export type SatelliteAcquisition = {
+  provider: string;
+  collection: string;
+  item_id: string;
+  acquired_at: string;
+  cloud_cover_percent: number | null;
+};
+
+export type SatelliteLatest = {
+  field_id: string;
+  status: "available" | "no_data" | "temporarily_unavailable";
+  acquisition: SatelliteAcquisition | null;
+  searched_at: string;
+  message_th: string;
+};
