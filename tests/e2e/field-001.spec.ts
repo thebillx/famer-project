@@ -40,8 +40,16 @@ test("farmer creates farm, draws field, saves, and sees it after reload", async 
 
   await expect(page.getByText("Field 1")).toBeVisible();
   await expect(page.getByText(/sqm \/ .* rai/)).toBeVisible();
+  await page.getByRole("button", { name: "ตรวจสอบภาพดาวเทียมล่าสุด" }).click();
+  await expect(page.getByText("พบภาพล่าสุด")).toBeVisible();
+  await expect(page.getByText("Sentinel-2 Level-2A", { exact: true })).toBeVisible();
+  await expect(page.getByText("12.4%")).toBeVisible();
+  await page.getByText("Product / item ID").click();
+  await expect(page.getByText("S2A_MSIL2A_20260730T034541_E2E")).toBeVisible();
   await page.reload();
   await expect(page.getByText("Field 1")).toBeVisible();
   await expect(page.getByText(/sqm \/ .* rai/)).toBeVisible();
+  await expect(page.getByText("พบภาพล่าสุด")).toBeVisible();
+  await expect(page.getByText("Sentinel-2 Level-2A", { exact: true })).toBeVisible();
   await expect(page.locator(".maplibregl-canvas")).toBeVisible();
 });

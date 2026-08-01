@@ -8,13 +8,13 @@ The system uses satellite observations to prioritize field inspection. It does n
 
 ## Current status
 
-This repository has completed the backend foundation slice and is adding the first user-visible farm/field slice:
+This repository has completed the backend foundation and farm/field slices, and SATELLITE-001 adds latest Sentinel-2 catalogue discovery for saved fields:
 
 - Architecture, data flow, ER model, API contract, security model, quota strategy, and roadmap are documented.
-- Authenticated users can create farms and save field polygons through the FIELD-001 flow.
+- Authenticated users can create farms, save field polygons, and search the public CDSE STAC catalogue for the latest Sentinel-2 Level-2A acquisition metadata.
 - Core remote-sensing index formulas and quality gates are implemented in a dependency-light Python package.
 - Unit tests cover NDVI, EVI, SAVI, NDMI, NDWI, NDRE, NBR, BSI, division-by-zero behavior, cloud quality gates, and safe wording policy.
-- No live Copernicus API calls are made by tests.
+- Automated tests use deterministic provider fixtures and do not call live Copernicus services.
 
 ## Run local validation
 
@@ -55,6 +55,15 @@ docker compose up -d postgres redis minio
 
 Do not reuse `.env.example` secrets outside development. Production must provide strong `SESSION_SECRET`, `ENCRYPTION_KEY`, database, Redis, and object-storage settings.
 
+SATELLITE-001 uses the public CDSE STAC search endpoint by default and does not require Copernicus client credentials for catalogue discovery:
+
+```bash
+CDSE_STAC_URL=https://stac.dataspace.copernicus.eu/v1/search
+SATELLITE_SEARCH_LOOKBACK_DAYS=90
+SATELLITE_SEARCH_TIMEOUT_SECONDS=15
+SATELLITE_MAX_CLOUD_COVER_PERCENT=80
+```
+
 ## Web application commands
 
 Frontend dependencies are locked in `package-lock.json`.
@@ -68,7 +77,7 @@ npm -w apps/web run build
 
 `NEXT_PUBLIC_MAP_STYLE_URL` controls the MapLibre basemap. The development default is `https://tiles.openfreemap.org/styles/liberty`, a no-token OpenFreeMap style with attribution included by the map control. Production deployments should configure an approved provider/style URL that matches expected traffic and terms.
 
-With the API and web app running, open `http://localhost:3000/login`, register or log in, create a farm, draw a field, save it, and reload the farm page to confirm the field remains visible.
+With the API and web app running, open `http://localhost:3000/login`, register or log in, create a farm, draw a field, save it, open the farm page, and click `ตรวจสอบภาพดาวเทียมล่าสุด` to find and persist the latest Sentinel-2 acquisition metadata.
 
 ## FOUNDATION-001 status
 
@@ -84,8 +93,8 @@ Verified locally:
 
 Known limitations:
 
-- Copernicus integration, worker scheduler, alerts, reports, and satellite overlays are not part of FIELD-001.
-- FIELD-001 uses a minimal MapLibre drawing canvas and intentionally does not add a production basemap provider.
+- SATELLITE-001 searches only catalogue metadata. NDVI, raster overlays, Process API, Statistical API, worker scheduler, alerts, and reports are not implemented.
+- FIELD-001 uses a minimal MapLibre drawing canvas. Production deployments should configure an approved basemap provider.
 - Redis and object storage are configured for local development but not used by the current Foundation endpoints.
 
 ## Repository map

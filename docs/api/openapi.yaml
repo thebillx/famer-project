@@ -215,6 +215,44 @@ components:
         status: active
         created_at: "2026-08-01T09:00:00Z"
         updated_at: "2026-08-01T09:00:00Z"
+    SatelliteAcquisition:
+      type: object
+      required: [provider, collection, item_id, acquired_at]
+      properties:
+        provider: { type: string, enum: [cdse_stac] }
+        collection: { type: string, enum: [sentinel-2-l2a] }
+        item_id: { type: string }
+        acquired_at: { type: string, format: date-time }
+        cloud_cover_percent: { type: number, nullable: true }
+      example:
+        provider: cdse_stac
+        collection: sentinel-2-l2a
+        item_id: S2B_MSIL2A_20260731T035529_N0511_R004_T47PPR_20260731T072142
+        acquired_at: "2026-07-31T03:55:29Z"
+        cloud_cover_percent: 12.4
+    SatelliteLatestResponse:
+      type: object
+      required: [field_id, status, searched_at]
+      properties:
+        field_id: { type: string, format: uuid }
+        status: { type: string, enum: [available, no_data, temporarily_unavailable] }
+        acquisition:
+          anyOf:
+            - { $ref: "#/components/schemas/SatelliteAcquisition" }
+            - { type: "null" }
+        searched_at: { type: string, format: date-time }
+        message_th: { type: string }
+      example:
+        field_id: 018f1b46-0637-7000-9000-000000000030
+        status: available
+        acquisition:
+          provider: cdse_stac
+          collection: sentinel-2-l2a
+          item_id: S2B_MSIL2A_20260731T035529_N0511_R004_T47PPR_20260731T072142
+          acquired_at: "2026-07-31T03:55:29Z"
+          cloud_cover_percent: 12.4
+        searched_at: "2026-08-01T03:00:00Z"
+        message_th: พบภาพดาวเทียมล่าสุด
 paths:
   /health/live:
     get:
@@ -713,6 +751,70 @@ paths:
         "204": { description: Deleted field. }
         "404":
           description: Not found or not visible.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+  /api/v1/fields/{field_id}/satellite/search-latest:
+    post:
+      summary: Search CDSE STAC for latest Sentinel-2 L2A acquisition intersecting a saved field.
+      security:
+        - cookieSession: []
+      x-required-role: viewer
+      x-organization-scope: field lookup joins active membership before provider request.
+      x-validation: persisted field geometry only; browser geometry is ignored; deleted or foreign fields return 404.
+      x-timeout: provider timeout returns status temporarily_unavailable without stack traces.
+      x-rate-limit: authenticated mutation/search limit; provider 429 returns temporarily_unavailable.
+      x-idempotency: repeated searches reuse field/provider/item acquisition records.
+      parameters:
+        - name: field_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Latest acquisition search result, no-data result, or temporary provider-unavailable result.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SatelliteLatestResponse" }
+        "401":
+          description: Authentication required.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Field not found or not visible.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+  /api/v1/fields/{field_id}/satellite/latest:
+    get:
+      summary: Return persisted latest Sentinel-2 L2A acquisition for a saved field.
+      security:
+        - cookieSession: []
+      x-required-role: viewer
+      x-organization-scope: field lookup joins active membership before acquisition read.
+      x-validation: deleted or foreign fields return 404.
+      x-timeout: no provider request is made.
+      x-rate-limit: authenticated read limit.
+      x-idempotency: safe read-only operation.
+      parameters:
+        - name: field_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Persisted acquisition or no_data when none has been selected.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SatelliteLatestResponse" }
+        "401":
+          description: Authentication required.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Field not found or not visible.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }

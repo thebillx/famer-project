@@ -33,6 +33,8 @@ class FoundationContractTests(unittest.TestCase):
             "/api/v1/farms/{farm_id}:",
             "/api/v1/farms/{farm_id}/fields:",
             "/api/v1/fields/{field_id}:",
+            "/api/v1/fields/{field_id}/satellite/search-latest:",
+            "/api/v1/fields/{field_id}/satellite/latest:",
         ]:
             self.assertIn(route, self.text)
 
@@ -50,6 +52,8 @@ class FoundationContractTests(unittest.TestCase):
             "/api/v1/farms/{farm_id}",
             "/api/v1/farms/{farm_id}/fields",
             "/api/v1/fields/{field_id}",
+            "/api/v1/fields/{field_id}/satellite/search-latest",
+            "/api/v1/fields/{field_id}/satellite/latest",
         ]:
             start = self.text.index(f"  {route}:")
             next_route = self.text.find("\n  /", start + 1)

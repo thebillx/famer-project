@@ -67,6 +67,10 @@ class SettingsSnapshot:
     cdse_catalog_url: str = "https://sh.dataspace.copernicus.eu/catalog/v1"
     cdse_process_url: str = "https://sh.dataspace.copernicus.eu/process/v1"
     cdse_statistical_url: str = "https://sh.dataspace.copernicus.eu/statistics/v1"
+    cdse_stac_url: str = "https://stac.dataspace.copernicus.eu/v1/search"
+    satellite_search_lookback_days: int = 90
+    satellite_search_timeout_seconds: int = 15
+    satellite_max_cloud_cover_percent: float = 80.0
     object_storage_secret_key: str = ""
 
     def safe_dict(self) -> dict[str, Any]:
@@ -124,6 +128,10 @@ def settings_from_env(environ: dict[str, str] | None = None) -> SettingsSnapshot
         cdse_statistical_url=env.get(
             "CDSE_STATISTICAL_URL", "https://sh.dataspace.copernicus.eu/statistics/v1"
         ),
+        cdse_stac_url=env.get("CDSE_STAC_URL", "https://stac.dataspace.copernicus.eu/v1/search"),
+        satellite_search_lookback_days=int(env.get("SATELLITE_SEARCH_LOOKBACK_DAYS", "90")),
+        satellite_search_timeout_seconds=int(env.get("SATELLITE_SEARCH_TIMEOUT_SECONDS", "15")),
+        satellite_max_cloud_cover_percent=float(env.get("SATELLITE_MAX_CLOUD_COVER_PERCENT", "80")),
         object_storage_secret_key=env.get("OBJECT_STORAGE_SECRET_KEY", ""),
     )
 
@@ -142,6 +150,12 @@ def validate_settings(settings: SettingsSnapshot) -> list[SettingsValidationIssu
         issues.append(SettingsValidationIssue("ACCESS_TOKEN_TTL_MINUTES", "must be positive"))
     if settings.refresh_token_ttl_days <= 0:
         issues.append(SettingsValidationIssue("REFRESH_TOKEN_TTL_DAYS", "must be positive"))
+    if settings.satellite_search_lookback_days <= 0:
+        issues.append(SettingsValidationIssue("SATELLITE_SEARCH_LOOKBACK_DAYS", "must be positive"))
+    if settings.satellite_search_timeout_seconds <= 0:
+        issues.append(SettingsValidationIssue("SATELLITE_SEARCH_TIMEOUT_SECONDS", "must be positive"))
+    if not 0 <= settings.satellite_max_cloud_cover_percent <= 100:
+        issues.append(SettingsValidationIssue("SATELLITE_MAX_CLOUD_COVER_PERCENT", "must be 0-100"))
 
     for field_name in ("session_secret", "encryption_key"):
         value = getattr(settings, field_name)

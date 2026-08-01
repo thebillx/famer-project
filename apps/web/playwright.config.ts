@@ -12,7 +12,15 @@ export default defineConfig({
   },
   webServer: [
     {
-      command: ".venv/bin/uvicorn apps.api.agriscope_api.main:app --host 127.0.0.1 --port 8000",
+      command: ".venv/bin/uvicorn tests.e2e.stac_mock_server:app --host 127.0.0.1 --port 8765",
+      url: "http://127.0.0.1:8765/health",
+      reuseExistingServer: true,
+      cwd: "../..",
+      timeout: 30_000
+    },
+    {
+      command:
+        "CDSE_STAC_URL=http://127.0.0.1:8765/search .venv/bin/uvicorn apps.api.agriscope_api.main:app --host 127.0.0.1 --port 8000",
       url: "http://127.0.0.1:8000/health/live",
       reuseExistingServer: true,
       cwd: "../..",

@@ -66,3 +66,26 @@ FIELD-001 adds executable Alembic migration `apps/api/migrations/versions/202608
 `fields` keeps `organization_id` for tenant-scoped queries and enforces `FOREIGN KEY (farm_id, organization_id) REFERENCES farms (id, organization_id) ON DELETE RESTRICT`, preventing a field from pointing to a farm in another organization.
 
 Field and farm deletes are soft deletes using `status = 'deleted'` for this slice. Foreign keys remain `RESTRICT`; destructive cascading is intentionally avoided.
+
+## SATELLITE-001 executable persistence
+
+SATELLITE-001 adds executable Alembic migration `apps/api/migrations/versions/20260801_0003_satellite_acquisitions.py` and ORM model:
+
+- `field_acquisitions`
+
+The table stores only selected Sentinel-2 Level-2A catalogue metadata needed by the UI:
+
+- `field_id`
+- `organization_id`
+- `provider`
+- `collection`
+- `provider_item_id`
+- `acquired_at`
+- `cloud_cover_percent`
+- `search_status`
+- `searched_at`
+- limited non-sensitive `provider_metadata`
+
+`field_acquisitions` enforces `UNIQUE (field_id, provider, provider_item_id)` so repeated latest-image searches are idempotent. It also enforces `FOREIGN KEY (field_id, organization_id) REFERENCES fields (id, organization_id) ON DELETE RESTRICT`, preventing an acquisition row from being attached to a field in another organization.
+
+Complete raw STAC provider responses, raster assets, NDVI values, overlays, and analysis outputs are intentionally not stored in SATELLITE-001.

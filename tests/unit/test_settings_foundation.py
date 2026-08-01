@@ -29,6 +29,10 @@ class SettingsFoundationTests(unittest.TestCase):
             cookie_secure=True,
             cookie_samesite="lax",
             log_level="INFO",
+            cdse_stac_url="https://stac.dataspace.copernicus.eu/v1/search",
+            satellite_search_lookback_days=90,
+            satellite_search_timeout_seconds=15,
+            satellite_max_cloud_cover_percent=80.0,
         )
         issues = validate_settings(settings)
         self.assertTrue(any(issue.field == "DATABASE_URL" for issue in issues))
@@ -57,6 +61,21 @@ class SettingsFoundationTests(unittest.TestCase):
         self.assertNotIn("s" * 40, rendered)
         self.assertNotIn("e" * 40, rendered)
         self.assertIn("********", rendered)
+
+    def test_satellite_search_settings_are_validated(self):
+        settings = settings_from_env(
+            {
+                "APP_ENV": "development",
+                "SATELLITE_SEARCH_LOOKBACK_DAYS": "0",
+                "SATELLITE_SEARCH_TIMEOUT_SECONDS": "-1",
+                "SATELLITE_MAX_CLOUD_COVER_PERCENT": "101",
+            }
+        )
+        fields = {issue.field for issue in validate_settings(settings)}
+
+        self.assertIn("SATELLITE_SEARCH_LOOKBACK_DAYS", fields)
+        self.assertIn("SATELLITE_SEARCH_TIMEOUT_SECONDS", fields)
+        self.assertIn("SATELLITE_MAX_CLOUD_COVER_PERCENT", fields)
 
 
 if __name__ == "__main__":
