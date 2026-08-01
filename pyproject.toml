@@ -1,0 +1,39 @@
+[project]
+name = "agriscope-thailand"
+version = "0.1.0"
+description = "Production-oriented SaaS foundation for agricultural field analysis with free satellite data."
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "fastapi==0.116.1",
+  "uvicorn[standard]==0.35.0",
+  "pydantic==2.11.7",
+  "pydantic-settings==2.10.1",
+  "SQLAlchemy==2.0.42",
+  "alembic==1.16.4",
+  "GeoAlchemy2==0.17.1",
+  "psycopg[binary]==3.2.9",
+  "redis==6.2.0",
+  "dramatiq==1.18.0",
+  "httpx==0.28.1",
+  "argon2-cffi==25.1.0",
+  "python-jose[cryptography]==3.5.0",
+  "shapely==2.1.1",
+  "numpy==2.3.2",
+  "rasterio==1.4.3",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest==8.4.1",
+  "pytest-asyncio==1.1.0",
+  "ruff==0.12.7",
+  "mypy==1.17.1",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.mypy]
+python_version = "3.12"
+strict = true

@@ -1,0 +1,25 @@
+version: 1
+
+agents:
+  agriscope-orchestrator:
+    definition: .agents/agents/agriscope-orchestrator.md
+    skills:
+      - vertical-slice-planning
+
+  frontend-product-agent:
+    definition: .agents/agents/frontend-product-agent.md
+    skills:
+      - nextjs-product-ui
+      - maplibre-field-drawing
+
+  backend-geospatial-agent:
+    definition: .agents/agents/backend-geospatial-agent.md
+    skills:
+      - fastapi-service
+      - postgis-field-geometry
+      - copernicus-sentinel-api
+
+  qa-security-agent:
+    definition: .agents/agents/qa-security-agent.md
+    skills:
+      - test-security-gate

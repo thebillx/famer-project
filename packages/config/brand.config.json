@@ -1,0 +1,24 @@
+{
+  "brandName": "AgriScope Thailand",
+  "logoUrl": "",
+  "palette": {
+    "deepForest": "#12372A",
+    "freshLeaf": "#3FA34D",
+    "warmSand": "#F4EFE3",
+    "skyMist": "#E8F3F5",
+    "amber": "#B7791F",
+    "deepOrange": "#C05621",
+    "burgundy": "#7B1E3A",
+    "slate": "#1F2937"
+  },
+  "copy": {
+    "headlineTh": "มองเห็นความเปลี่ยนแปลงของแปลง ก่อนปัญหาจะขยาย",
+    "primaryCtaTh": "เริ่มทดลองใช้งาน",
+    "secondaryCtaTh": "ดูตัวอย่างการวิเคราะห์"
+  },
+  "packages": [
+    { "code": "starter", "name": "Starter" },
+    { "code": "team", "name": "Team" },
+    { "code": "enterprise", "name": "Enterprise" }
+  ]
+}

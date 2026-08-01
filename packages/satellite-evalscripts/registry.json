@@ -1,0 +1,11 @@
+{
+  "algorithmVersion": "s2-l2a-core-v1",
+  "evalscripts": [
+    {
+      "code": "sentinel2-indices-v1",
+      "collection": "sentinel-2-l2a",
+      "outputs": ["NDVI", "EVI", "SAVI", "NDMI", "NDWI", "NDRE", "NBR", "BSI"],
+      "attributionTemplate": "Contains modified Copernicus Sentinel data {year}"
+    }
+  ]
+}

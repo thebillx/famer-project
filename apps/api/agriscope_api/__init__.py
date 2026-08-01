@@ -1,0 +1,1 @@
+"""AgriScope FastAPI application package."""
