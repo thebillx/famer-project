@@ -80,6 +80,32 @@ class AuthRepository:
             return None
         return session
 
+    async def lock_refresh_session_for_rotation(
+        self, *, session_id: UUID, raw_refresh_token: str, expected_user_id: UUID
+    ):
+        from sqlalchemy import select
+        from apps.api.agriscope_api.db.models import RefreshSession
+
+        result = await self.session.execute(
+            select(RefreshSession)
+            .where(RefreshSession.id == session_id)
+            .with_for_update()
+        )
+        session = result.scalar_one_or_none()
+        if session is None:
+            return None
+        if session.user_id != expected_user_id:
+            return None
+        if session.status != "active":
+            return None
+        if session.expires_at <= datetime.now(UTC):
+            return None
+        import hmac
+
+        if not hmac.compare_digest(session.token_hash, hash_token(raw_refresh_token)):
+            return None
+        return session
+
     async def revoke_refresh_session(self, session_id: UUID) -> None:
         session = await self.get_refresh_session(session_id)
         if session is not None:
@@ -98,7 +124,7 @@ class AuthRepository:
         from apps.api.agriscope_api.db.models import RefreshSession
 
         old_session = await self.get_refresh_session(old_session_id)
-        if old_session is None or old_session.status != "active":
+        if old_session is None or old_session.status != "active" or old_session.user_id != user_id:
             raise ValueError("invalid refresh session")
         old_session.status = "revoked"
         session = RefreshSession(

@@ -1,14 +1,15 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import psycopg
 import pytest
 from fastapi.testclient import TestClient
 
 from apps.api.agriscope_api.application import create_app
-from apps.api.agriscope_api.core.security import TokenClaims, TokenType, create_token
+from apps.api.agriscope_api.core.security import TokenClaims, TokenType, create_token, parse_token
 
 
 DATABASE_URL = "postgresql://agriscope:agriscope_dev_password@localhost:5432/agriscope"
@@ -146,6 +147,52 @@ def test_login_me_refresh_rotation_and_logout_revoke_database_session(client: Te
         with conn.cursor() as cur:
             cur.execute("SELECT status FROM refresh_sessions WHERE rotated_from IS NOT NULL")
             assert cur.fetchone()[0] == "revoked"
+
+
+def test_concurrent_refresh_rotates_session_exactly_once(client: TestClient):
+    _register(client)
+    client.cookies.clear()
+    login = client.post(
+        "/api/v1/auth/login",
+        json={"email": "farmer@example.com", "password": "StrongPass12345"},
+    )
+    assert login.status_code == 204
+    raw_refresh = client.cookies["agriscope_refresh"]
+    old_session_id = UUID(
+        parse_token(raw_refresh, client.app.state.settings.session_secret, TokenType.REFRESH).session_id
+    )
+
+    def refresh_once() -> int:
+        worker = TestClient(client.app)
+        worker.cookies.set("agriscope_refresh", raw_refresh, path="/api/v1/auth")
+        return worker.post("/api/v1/auth/refresh").status_code
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        statuses = sorted(executor.map(lambda _: refresh_once(), range(2)))
+
+    assert statuses == [204, 401]
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT status FROM refresh_sessions WHERE id = %s", (old_session_id,))
+            assert cur.fetchone()[0] == "revoked"
+            cur.execute(
+                """
+                SELECT count(*)
+                FROM refresh_sessions
+                WHERE rotated_from = %s AND status = 'active'
+                """,
+                (old_session_id,),
+            )
+            assert cur.fetchone()[0] == 1
+            cur.execute(
+                """
+                SELECT count(*)
+                FROM refresh_sessions
+                WHERE token_hash = %s
+                """,
+                (raw_refresh,),
+            )
+            assert cur.fetchone()[0] == 0
 
 
 def test_expired_and_wrong_type_refresh_rejected(client: TestClient):

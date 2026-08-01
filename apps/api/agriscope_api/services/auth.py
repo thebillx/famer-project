@@ -141,7 +141,15 @@ class AuthService:
             raise ApiException("invalid_refresh_token", "Refresh session is invalid", 401)
 
         repo = AuthRepository(session)
-        old_session = await repo.validate_refresh_session(UUID(claims.session_id), raw_refresh_token)
+        try:
+            subject_user_id = UUID(claims.subject)
+        except ValueError as exc:
+            raise ApiException("invalid_refresh_token", "Refresh session is invalid", 401) from exc
+        old_session = await repo.lock_refresh_session_for_rotation(
+            session_id=UUID(claims.session_id),
+            raw_refresh_token=raw_refresh_token,
+            expected_user_id=subject_user_id,
+        )
         if old_session is None:
             raise ApiException("invalid_refresh_token", "Refresh session is invalid", 401)
         user = await repo.get_user_by_id(old_session.user_id)
