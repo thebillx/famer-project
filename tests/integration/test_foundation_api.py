@@ -23,7 +23,9 @@ def _connect():
 def clean_database():
     with _connect() as conn:
         with conn.cursor() as cur:
-            cur.execute("TRUNCATE refresh_sessions, memberships, organizations, users RESTART IDENTITY")
+            cur.execute(
+                "TRUNCATE fields, farms, refresh_sessions, memberships, organizations, users RESTART IDENTITY"
+            )
     yield
 
 
@@ -268,3 +270,130 @@ def test_create_organization_requires_authentication_and_health_masks_dependenci
     dependencies = anonymous.get("/health/dependencies")
     assert dependencies.status_code == 200
     assert dependencies.json()["database"] == "ok"
+
+
+VALID_FIELD_GEOMETRY = {
+    "type": "Polygon",
+    "coordinates": [
+        [
+            [98.9801, 18.7901],
+            [98.9811, 18.7901],
+            [98.9811, 18.7911],
+            [98.9801, 18.7911],
+            [98.9801, 18.7901],
+        ]
+    ],
+}
+
+
+def _create_farm(client: TestClient, organization_id: str, name: str = "Farm 1") -> dict:
+    response = client.post(
+        "/api/v1/farms",
+        json={"organization_id": organization_id, "name": name, "province": "Chiang Mai"},
+    )
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+def test_farm_and_field_crud_persists_geometry_and_area(client: TestClient):
+    registered = _register(client)
+    organization_id = registered["organization"]["id"]
+
+    farm = _create_farm(client, organization_id)
+    listed_farms = client.get("/api/v1/farms")
+    assert listed_farms.status_code == 200
+    assert [item["id"] for item in listed_farms.json()] == [farm["id"]]
+
+    created_field = client.post(
+        f"/api/v1/farms/{farm['id']}/fields",
+        json={"name": "Field A", "geometry": VALID_FIELD_GEOMETRY},
+    )
+    assert created_field.status_code == 201, created_field.text
+    field = created_field.json()
+    assert field["geometry"]["type"] == "Polygon"
+    assert float(field["area_sqm"]) > 0
+    assert float(field["area_rai"]) == round(float(field["area_sqm"]) / 1600, 4)
+
+    reloaded_farm = client.get(f"/api/v1/farms/{farm['id']}")
+    assert reloaded_farm.status_code == 200
+    reloaded_fields = client.get(f"/api/v1/farms/{farm['id']}/fields")
+    assert reloaded_fields.status_code == 200
+    assert reloaded_fields.json()[0]["id"] == field["id"]
+    assert reloaded_fields.json()[0]["geometry"] == field["geometry"]
+
+    moved_geometry = {
+        "type": "Polygon",
+        "coordinates": [
+            [
+                [98.9802, 18.7901],
+                [98.9812, 18.7901],
+                [98.9812, 18.7911],
+                [98.9802, 18.7911],
+                [98.9802, 18.7901],
+            ]
+        ],
+    }
+    patched = client.patch(
+        f"/api/v1/fields/{field['id']}",
+        json={"name": "Field A North", "geometry": moved_geometry},
+    )
+    assert patched.status_code == 200
+    assert patched.json()["name"] == "Field A North"
+    assert patched.json()["geometry"] == moved_geometry
+
+    delete_field = client.delete(f"/api/v1/fields/{field['id']}")
+    assert delete_field.status_code == 204
+    assert client.get(f"/api/v1/fields/{field['id']}").status_code == 404
+
+    delete_farm = client.delete(f"/api/v1/farms/{farm['id']}")
+    assert delete_farm.status_code == 204
+    assert client.get(f"/api/v1/farms/{farm['id']}").status_code == 404
+
+
+def test_invalid_field_geometry_rejected(client: TestClient):
+    registered = _register(client)
+    farm = _create_farm(client, registered["organization"]["id"])
+    invalid = {
+        "type": "Polygon",
+        "coordinates": [
+            [[98.0, 18.0], [99.0, 19.0], [98.0, 19.0], [99.0, 18.0], [98.0, 18.0]]
+        ],
+    }
+    response = client.post(f"/api/v1/farms/{farm['id']}/fields", json={"name": "Bad", "geometry": invalid})
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "invalid_geometry"
+
+
+def test_farm_field_tenant_isolation_and_viewer_mutation_denial(client: TestClient):
+    owner = _register(client, "owner-field@example.com")
+    owner_org_id = owner["organization"]["id"]
+    farm = _create_farm(client, owner_org_id)
+    field = client.post(
+        f"/api/v1/farms/{farm['id']}/fields",
+        json={"name": "Field A", "geometry": VALID_FIELD_GEOMETRY},
+    ).json()
+
+    other_client = TestClient(client.app)
+    _register(other_client, "other-field@example.com")
+    assert other_client.get(f"/api/v1/farms/{farm['id']}").status_code == 404
+    assert other_client.get(f"/api/v1/fields/{field['id']}").status_code == 404
+
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT id FROM users WHERE email = %s", ("other-field@example.com",))
+            other_user_id = cur.fetchone()[0]
+            cur.execute(
+                """
+                INSERT INTO memberships (organization_id, user_id, role, status, joined_at)
+                VALUES (%s, %s, 'viewer', 'active', now())
+                """,
+                (owner_org_id, other_user_id),
+            )
+
+    viewer_create = other_client.post(
+        "/api/v1/farms",
+        json={"organization_id": owner_org_id, "name": "Viewer Farm"},
+    )
+    assert viewer_create.status_code == 403
+    viewer_read = other_client.get(f"/api/v1/farms/{farm['id']}")
+    assert viewer_read.status_code == 200
