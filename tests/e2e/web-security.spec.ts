@@ -235,6 +235,84 @@ test("shared refresh merges csrf consumption into every waiter and blocks an exh
   });
 });
 
+test("a later eligible waiter upgrades a refresh started by an exhausted caller", async () => {
+  const mixedPath = "/api/v1/fields/field-id/satellite/search-latest";
+  let csrfCalls = 0;
+  let refreshCalls = 0;
+  let mixedCalls = 0;
+  let meCalls = 0;
+  let markFirstRefreshStarted: (() => void) | undefined;
+  let markEligibleErrorParsed: (() => void) | undefined;
+  const firstRefreshStarted = new Promise<void>((resolve) => {
+    markFirstRefreshStarted = resolve;
+  });
+  const eligibleErrorParsed = new Promise<void>((resolve) => {
+    markEligibleErrorParsed = resolve;
+  });
+
+  installFetch(async (path) => {
+    if (path === "/api/v1/auth/csrf") {
+      csrfCalls += 1;
+      return json({ csrf_token: `csrf-${csrfCalls}` });
+    }
+    if (path === "/api/v1/auth/refresh") {
+      refreshCalls += 1;
+      if (refreshCalls === 1) {
+        markFirstRefreshStarted?.();
+        await eligibleErrorParsed;
+        // Let the eligible caller finish parsing its 401 and join the shared
+        // flight before this response reaches the csrf_failed decision.
+        await Promise.resolve();
+        await Promise.resolve();
+        return error(403, "csrf_failed", "refresh-csrf");
+      }
+      return new Response(null, { status: 204 });
+    }
+    if (path === mixedPath) {
+      mixedCalls += 1;
+      return mixedCalls === 1
+        ? error(403, "csrf_failed")
+        : error(401, "authentication_required");
+    }
+    if (path === "/api/v1/auth/me") {
+      meCalls += 1;
+      if (meCalls === 1) {
+        const response = error(401, "authentication_required");
+        const parse = response.json.bind(response);
+        response.json = async () => {
+          const body = await parse();
+          markEligibleErrorParsed?.();
+          return body;
+        };
+        return response;
+      }
+      return json({ id: "viewer" });
+    }
+    throw new Error(`unexpected path ${path}`);
+  });
+
+  const exhaustedCaller = apiFetch(mixedPath, { method: "POST" });
+  await firstRefreshStarted;
+  const eligibleCaller = apiFetch<{ id: string }>("/api/v1/auth/me");
+
+  const [exhausted, eligible] = await Promise.allSettled([exhaustedCaller, eligibleCaller]);
+  expect(exhausted.status).toBe("rejected");
+  if (exhausted.status === "rejected") {
+    expect(exhausted.reason).toMatchObject({
+      status: null,
+      code: "recovery_exhausted",
+      requestId: null
+    });
+  }
+  expect(eligible).toEqual({ status: "fulfilled", value: { id: "viewer" } });
+  expect({ csrfCalls, refreshCalls, mixedCalls, meCalls }).toEqual({
+    csrfCalls: 3,
+    refreshCalls: 2,
+    mixedCalls: 2,
+    meCalls: 2
+  });
+});
+
 test("invalid refresh terminates every waiter with the same typed 401 and no recursion", async () => {
   let refreshCalls = 0;
   let originalCalls = 0;
