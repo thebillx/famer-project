@@ -6,7 +6,7 @@ WEB-UI-CSRF-MOCK-001
 
 ## Status
 
-PLANNED
+IN_REVIEW
 
 ## Title
 
@@ -18,9 +18,15 @@ Keep the existing login pending, duplicate-submit, accessibility, and safe-error
 
 ## Dependency and activation gate
 
-- WEB-SEC-CONTRACT-001 must reach `VERIFIED` and release ownership of the shared browser client and focused security test before this task becomes `CONTRACT_READY`.
-- This task consumes the verified request sequence only; it does not change or reinterpret that sequence.
-- No implementation or Playwright execution begins while WEB-SEC source or validation is still active.
+- The WEB-SEC browser client bytes are stable on merged `main`: PR #2 delivered the
+  CSRF bootstrap flow and PR #3 fixed the shared-refresh race at merge commit
+  `7fcef1f9d487dac05758b7f03cb340615c271692`.
+- Current focused browser-security validation and REAL-STACK-001 validation pass
+  against those merged bytes. This task consumes that fixed request sequence only;
+  it does not change or reinterpret it.
+- `apps/web/lib/api.ts` and `tests/e2e/web-security.spec.ts` remain read-only, so
+  their legacy task ownership need not transfer for this exact one-file mock
+  correction. Any required edit to either path stops and returns to WEB-SEC.
 
 ## Expected behavior
 
@@ -29,6 +35,19 @@ Keep the existing login pending, duplicate-submit, accessibility, and safe-error
 - A forced duplicate submit while the first request is pending sends neither another CSRF request nor another login request.
 - An `invalid_credentials` response does not trigger refresh, replay, or any other request.
 - The existing loading, disabled, `aria-busy`, generic Thai error, sensitive-message non-rendering, and mode-change clearing assertions remain intact.
+
+## Validation outcome
+
+- The focused pending/duplicate-submit login test passes 1/1.
+- The complete `ui-system.spec.ts` suite passes 13/13.
+- The combined serialized `ui-system.spec.ts` and `web-security.spec.ts` suites pass
+  29/29, including all shared-refresh and recovery-budget cases.
+- TypeScript validation and `git diff --check` pass.
+- The first full UI run exposed a test-only scheduling race: the assertion could
+  read `loginCalls` after CSRF completed but before the pending login reached the
+  route handler. Waiting for the first POST to become pending before forcing the
+  duplicate submit made the intended invariant deterministic without changing
+  product behavior.
 
 ## Contracts
 
@@ -56,7 +75,9 @@ Keep the existing login pending, duplicate-submit, accessibility, and safe-error
 
 - Focused login pending/error test in `ui-system.spec.ts`.
 - Complete `ui-system.spec.ts`.
-- Combined serialized `ui-system.spec.ts` and `web-security.spec.ts` after both tasks release ownership.
+- Combined serialized `ui-system.spec.ts` and `web-security.spec.ts` against the
+  exact stable merged WEB-SEC bytes, with one worker and no concurrent server or
+  `.next` writer.
 - Web TypeScript check.
 - `git diff --check` and exact one-file contribution review.
 - Use only the orchestrator-approved private Node/Playwright environment and serialized server/`.next` boundary; no dependency installation.
@@ -72,7 +93,8 @@ Keep the existing login pending, duplicate-submit, accessibility, and safe-error
 
 ## Definition of done
 
-- WEB-SEC-CONTRACT-001 is `VERIFIED` and its relevant ownership is released before implementation begins.
+- The exact merged WEB-SEC request sequence above remains byte-stable throughout
+  implementation and validation.
 - The exact one-file test contribution passes the required focused, complete, and combined validations.
 - Ponytail local native review returns an approved or changes-required decision,
   then the automated lifecycle creates the owner handoff and stops.

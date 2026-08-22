@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { expect, test, type Locator, type Page, type Route } from "@playwright/test";
 
 const LOGIN_FAILURE = "เข้าสู่ระบบไม่สำเร็จ กรุณาตรวจสอบข้อมูลและลองอีกครั้ง";
+const CSRF_UI_FIXTURE = "csrf-ui-fixture";
 const user = {
   id: "00000000-0000-0000-0000-000000000001",
   email: "viewer@example.com",
@@ -159,7 +160,9 @@ test("schema errors are inline, associated, and cleared when auth mode changes",
 });
 
 test("login pending state prevents duplicate submit and failure copy stays generic", async ({ page }) => {
+  let csrfCalls = 0;
   let loginCalls = 0;
+  const requestPaths: string[] = [];
   let releaseRequest: (() => void) | undefined;
   const requestReleased = new Promise<void>((resolve) => {
     releaseRequest = resolve;
@@ -167,9 +170,17 @@ test("login pending state prevents duplicate submit and failure copy stays gener
 
   await page.route("http://localhost:8000/api/v1/**", async (route) => {
     const path = new URL(route.request().url()).pathname;
+    requestPaths.push(path);
+    if (path === "/api/v1/auth/csrf") {
+      expect(route.request().method()).toBe("GET");
+      csrfCalls += 1;
+      return json(route, { csrf_token: CSRF_UI_FIXTURE });
+    }
     if (path !== "/api/v1/auth/login") {
       return json(route, { error: { code: "unexpected", message: "Unexpected request" } }, 500);
     }
+    expect(route.request().method()).toBe("POST");
+    expect(route.request().headers()["x-csrf-token"]).toBe(CSRF_UI_FIXTURE);
     loginCalls += 1;
     await requestReleased;
     return json(
@@ -180,22 +191,28 @@ test("login pending state prevents duplicate submit and failure copy stays gener
   });
 
   await page.goto("/login");
-  await expect.poll(() => loginCalls).toBe(0);
   await page.getByRole("button", { name: "เข้าสู่ระบบ" }).first().click();
   await page.getByRole("textbox", { name: "อีเมล", exact: true }).fill("viewer@example.com");
   await page.getByRole("textbox", { name: "รหัสผ่าน", exact: true }).fill("StrongPassword123");
   const submit = page.locator("form button[type='submit']");
+  expect(requestPaths).toEqual([]);
+  expect(csrfCalls).toBe(0);
+  expect(loginCalls).toBe(0);
   await submit.click();
 
   await expect(submit).toBeDisabled();
   await expect(submit).toHaveAttribute("aria-busy", "true");
   await expect(page.getByText("กำลังเข้าสู่ระบบ…", { exact: true })).toBeVisible();
+  await expect.poll(() => csrfCalls).toBe(1);
+  await expect.poll(() => loginCalls).toBe(1);
   await submit.click({ force: true });
+  expect(csrfCalls).toBe(1);
   expect(loginCalls).toBe(1);
 
   releaseRequest?.();
   await expect(page.getByRole("alert").filter({ hasText: LOGIN_FAILURE })).toHaveText(LOGIN_FAILURE);
   await expect(page.getByText("viewer@example.com does not exist")).toHaveCount(0);
+  expect(requestPaths).toEqual(["/api/v1/auth/csrf", "/api/v1/auth/login"]);
 
   await page.getByRole("button", { name: "สร้างบัญชี" }).first().click();
   await expect(page.getByText(LOGIN_FAILURE)).toHaveCount(0);
@@ -329,16 +346,16 @@ test("farms announces loading before the delayed collection resolves", async ({ 
   });
 
   await page.goto("/farms");
-  const loadingStatus = page.getByRole("status").filter({ hasText: "Loading farms..." });
+  const loadingStatus = page.getByRole("status").filter({ hasText: "กำลังโหลดรายการฟาร์ม…" });
   try {
     await expect(loadingStatus).toBeVisible();
-    await expect(page.getByRole("heading", { name: farm.name })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: farm.name })).toHaveCount(0);
   } finally {
     releaseFarms?.();
   }
 
   await expect(loadingStatus).toHaveCount(0);
-  await expect(page.getByRole("heading", { name: farm.name })).toBeVisible();
+  await expect(page.getByRole("link", { name: farm.name })).toBeVisible();
 });
 
 test("authenticated shell is Thai-first with one primary nav and a working skip target", async ({ page }) => {
@@ -398,8 +415,8 @@ test("farm smoke routes retain active navigation and loading, permission, and er
   await mockWorkspace(page, "viewer");
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/farms");
-  await expect(page.getByText("View-only access")).toBeVisible();
-  await expect(page.getByRole("link", { name: "Create farm" })).toHaveCount(0);
+  await expect(page.getByText("ยังไม่มีฟาร์มที่เข้าถึงได้")).toBeVisible();
+  await expect(page.getByRole("link", { name: "สร้างฟาร์ม" })).toHaveCount(0);
   await page.getByRole("button", { name: "เปิดเมนูนำทาง" }).click();
   await expect(page.getByRole("link", { name: "ฟาร์ม", exact: true })).toHaveAttribute("aria-current", "page");
 
@@ -422,8 +439,9 @@ test("farm smoke routes retain active navigation and loading, permission, and er
     return json(route, []);
   });
   await page.goto("/farms");
-  await expect(page.getByText("Farm service unavailable")).toBeVisible({ timeout: 20_000 });
-  await expect(page.getByText("Unavailable", { exact: true })).toBeVisible();
+  await expect(page.getByRole("alert").filter({ hasText: "โหลดรายการฟาร์มไม่สำเร็จ" })).toBeVisible();
+  await expect(page.getByText("บริการรายการฟาร์มยังไม่พร้อมใช้งาน กรุณาลองใหม่อีกครั้ง")).toBeVisible();
+  await expect(page.getByText("Farm service unavailable")).toHaveCount(0);
   await expect(page.getByText("Ready", { exact: true })).toHaveCount(0);
   await expect(page.getByText("Live", { exact: true })).toHaveCount(0);
 });

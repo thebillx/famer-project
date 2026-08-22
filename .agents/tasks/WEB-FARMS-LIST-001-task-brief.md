@@ -6,7 +6,7 @@ WEB-FARMS-LIST-001
 
 ## Status
 
-PLANNED
+IN_REVIEW
 
 ## Title
 
@@ -18,8 +18,23 @@ An authenticated user can open `/farms`, see every active farm returned by their
 
 ## Activation dependency
 
-- WEB-SEC-CONTRACT-001 must be `VERIFIED`, its single owner released, and its final `apps/web/lib/api.ts` / `apps/web/lib/types.ts` explicitly recorded as read-only dependencies before this task may move to `CONTRACT_READY`.
-- The orchestrator adopts the existing dirty baseline in `apps/web/app/farms/page.tsx`, the existing untracked `apps/web/lib/permissions.ts`, and the verified APP-UI assertions in `tests/e2e/ui-system.spec.ts` only when ownership is activated. No concurrent task may edit them.
+- The browser client contract is stable on merged `main` at
+  `7fcef1f9d487dac05758b7f03cb340615c271692`. This task pins
+  `apps/web/lib/api.ts` at SHA-256
+  `1c6a2882b09fb82ff9ebd304c75f147aa7fef323d3d1c373d93e7b7e6ce80396`
+  and `apps/web/lib/types.ts` at SHA-256
+  `3196e01a1bf245edb28c38b7d8161f00621b6afbf62197a1e8cf413d6e663da2`
+  as read-only dependencies. Drift in either path stops implementation and returns
+  this task to contract review.
+- The owner authorized the next aggregate contribution after the approved
+  REAL-STACK-001 and WEB-UI-CSRF-MOCK-001 LOCAL_NATIVE gate. Their four-file
+  working-tree delta is preserved. After validation proved two stale English farm
+  assertions, the owner authorized a narrow `tests/e2e/ui-system.spec.ts`
+  correction limited to the farm-list cases; the approved login/CSRF mock remains
+  unchanged.
+- The tracked baselines in `apps/web/app/farms/page.tsx` and
+  `apps/web/lib/permissions.ts` are adopted exclusively by this task for the
+  implementation window. No concurrent task may edit them.
 
 ## API and data contract
 
@@ -88,9 +103,12 @@ An authenticated user can open `/farms`, see every active farm returned by their
   - `apps/web/components/farms/FarmCollection.module.css` (new)
   - `apps/web/lib/permissions.ts`
   - `tests/e2e/farms-list-001.spec.ts` (new)
-  - `tests/e2e/ui-system.spec.ts` (narrow affected farm-list assertions only)
-  - `tests/integration/test_farms_list.py` (new isolated server tenant-list evidence only)
-- Read-only: `apps/web/lib/api.ts`, `apps/web/lib/types.ts`, verified globals/shell/primitives, all API/OpenAPI/runtime files, package/lock/config, landing, farm-detail/field routes, other tests, and unrelated dirty/untracked files.
+  - `tests/e2e/field-001.spec.ts` (one farm-list create-link selector only)
+  - `tests/e2e/ui-system.spec.ts` (farm-list assertions only)
+- Read-only: `apps/web/lib/api.ts`, `apps/web/lib/types.ts`,
+  verified globals/shell/primitives, all API/OpenAPI/runtime files,
+  package/lock/config, landing, farm-detail/field routes, other tests, and
+  unrelated dirty/untracked files.
 
 ## Security and accessibility requirements
 
@@ -107,10 +125,15 @@ An authenticated user can open `/farms`, see every active farm returned by their
 - Test unknown/disabled roles fail closed, mixed organizations, null province, missing organization-name fallback, long Thai values, and an HTML-like farm name rendered as text with no injected element/request.
 - Assert count equals response length, every farm appears once, links point to `/farms/{id}`, and creation never appears before verified permission.
 - Assert exact allowed GET counts, bounded terminal failure requests, zero mutations, and zero provider/map/off-origin calls.
-- Integration test proves two-tenant unfiltered list isolation, own organization filter, foreign/random/disabled/deleted filter safe 404, viewer list readability, and unchanged create denial.
+- Re-run the owner-approved isolated REAL-STACK field journey so the new farm list
+  is exercised through the real browser, FastAPI, and PostgreSQL boundary; preserve
+  the previously established tenant/isolation API evidence rather than adding a
+  duplicate integration test or destructive fixture.
 - Accessibility/visual checks: keyboard order, focus contrast, target sizes, semantic headers/caption, status/alerts, forced colors, reduced motion, and no horizontal overflow at 320x800, 375x812, 390x844, 414x896, 768x1024, 1024x768, 1280x800, and 1920x1080.
 - Visual QA captures 1280x800 desktop table with long Thai fixtures, 390x844 mobile cards, and 768x1024 portrait-tablet cards.
-- Run supported-toolchain typecheck, uncontended clean production build, focused farm/UI/security/landing suites, secret/off-origin scan, and `git diff --check`.
+- Run supported-toolchain typecheck, uncontended clean production build, the new
+  focused farm-list suite, the read-only WEB-SEC suite, the isolated REAL-STACK
+  field journey, secret/off-origin scan, and `git diff --check`.
 
 ## Acceptance criteria
 
@@ -120,6 +143,31 @@ An authenticated user can open `/farms`, see every active farm returned by their
 - Desktop uses an accessible table; mobile/tablet use cards without duplicate accessible content or overflow.
 - Primary UI is Thai-first and recognizably inherits the verified landing/APP-UI baseline.
 - No backend/API/shared-security/dependency change occurs.
+
+## Validation outcome
+
+- Web TypeScript check and clean production build: PASS.
+- Serialized browser regression: 47/47 PASS across the focused farm-list,
+  UI-system, and read-only WEB-SEC suites.
+- Isolated REAL-STACK field journey: 1/1 PASS through browser, FastAPI, and a
+  temporary PostgreSQL/PostGIS database; the temporary database and local test
+  session were removed afterward and the persistent Compose database remained on
+  its separate unchanged port.
+- Visual QA: PASS at 1280×800 desktop table, 390×844 mobile cards, and 768×1024
+  tablet cards; long Thai content wraps and measured document width does not
+  exceed the viewport.
+- The first aggregate regression run proved two stale English farm assertions in
+  `ui-system.spec.ts`; the owner authorized only those farm assertions. The first
+  real-stack rerun then proved one ambiguous create-link selector; exact matching
+  resolved it without product behavior change.
+- The LOCAL_NATIVE correction added exact coverage for tenant-cache purge,
+  principal A → terminal auth → principal B, mixed permission/auth failures,
+  cached-empty refresh failure, unknown/disabled roles, typed 403/404/422/429/5xx
+  and network failures, initial loading, and the 1024px breakpoint. During
+  validation it also proved one unsafe raw 5xx message and one stale empty-state
+  create-link selector; both were corrected and the complete suites reran cleanly.
+- `git diff --check`, dependency-pin reauthentication, and sensitive/off-origin
+  source scans: PASS.
 
 ## Risks
 
