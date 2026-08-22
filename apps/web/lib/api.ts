@@ -12,6 +12,8 @@ type CsrfResponse = { csrf_token: string };
 type RecoveryBudget = { csrfRenewals: number; accessRefreshes: number };
 type CsrfFlight = Readonly<{ epoch: number; forced: boolean; promise: Promise<string> }>;
 type RefreshOutcome = Readonly<{ csrfRenewalConsumed: boolean }>;
+type RefreshPermission = { csrfRenewalAllowed: boolean };
+type RefreshFlight = Readonly<{ permission: RefreshPermission; promise: Promise<RefreshOutcome> }>;
 
 const NETWORK_MESSAGE = "ไม่สามารถเชื่อมต่อบริการได้ กรุณาลองใหม่อีกครั้ง";
 const REQUEST_MESSAGE = "คำขอไม่สำเร็จ กรุณาลองใหม่อีกครั้ง";
@@ -20,7 +22,7 @@ const UNSAFE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 let csrfToken: string | null = null;
 let csrfEpoch = 0;
 let csrfFlight: CsrfFlight | null = null;
-let refreshPromise: Promise<RefreshOutcome> | null = null;
+let refreshFlight: RefreshFlight | null = null;
 
 const REFRESH_WITHOUT_CSRF = Object.freeze({ csrfRenewalConsumed: false });
 const REFRESH_WITH_CSRF = Object.freeze({ csrfRenewalConsumed: true });
@@ -146,7 +148,7 @@ function requestHeaders(init: RequestInit, token: string | null): Headers {
   return headers;
 }
 
-async function internalRefresh(allowCsrfRenewal: boolean): Promise<RefreshOutcome> {
+async function internalRefresh(permission: RefreshPermission): Promise<RefreshOutcome> {
   const attempt = async (): Promise<Response> => {
     const token = await bootstrapCsrf(false);
     return rawFetch("/api/v1/auth/refresh", {
@@ -159,7 +161,7 @@ async function internalRefresh(allowCsrfRenewal: boolean): Promise<RefreshOutcom
   if (response.ok) return REFRESH_WITHOUT_CSRF;
 
   let error = await responseError(response);
-  if (error.status === 403 && error.code === "csrf_failed" && allowCsrfRenewal) {
+  if (error.status === 403 && error.code === "csrf_failed" && permission.csrfRenewalAllowed) {
     await bootstrapCsrf(true);
     response = await attempt();
     if (response.ok) return REFRESH_WITH_CSRF;
@@ -169,14 +171,17 @@ async function internalRefresh(allowCsrfRenewal: boolean): Promise<RefreshOutcom
 }
 
 async function refreshAccess(allowCsrfRenewal: boolean): Promise<RefreshOutcome> {
-  if (refreshPromise === null) {
-    const request = internalRefresh(allowCsrfRenewal);
+  if (refreshFlight === null) {
+    const permission: RefreshPermission = { csrfRenewalAllowed: allowCsrfRenewal };
+    const request = internalRefresh(permission);
     const promise = request.finally(() => {
-      if (refreshPromise === promise) refreshPromise = null;
+      if (refreshFlight?.permission === permission) refreshFlight = null;
     });
-    refreshPromise = promise;
+    refreshFlight = Object.freeze({ permission, promise });
+  } else if (allowCsrfRenewal) {
+    refreshFlight.permission.csrfRenewalAllowed = true;
   }
-  return refreshPromise;
+  return refreshFlight.promise;
 }
 
 export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -235,5 +240,5 @@ export function resetApiClientStateForTests(): void {
   csrfToken = null;
   csrfEpoch += 1;
   csrfFlight = null;
-  refreshPromise = null;
+  refreshFlight = null;
 }
