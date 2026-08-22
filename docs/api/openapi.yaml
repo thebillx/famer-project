@@ -1,820 +1,2131 @@
-openapi: 3.1.0
-info:
-  title: AgriScope Thailand API
-  version: 0.1.0
-  description: Contract-first API for multi-tenant agricultural satellite analysis.
-servers:
-  - url: /
-components:
-  securitySchemes:
-    cookieSession:
-      type: apiKey
-      in: cookie
-      name: agriscope_refresh
-  schemas:
-    ErrorResponse:
-      type: object
-      required: [error]
-      properties:
-        error:
-          type: object
-          required: [code, message, request_id, details]
-          properties:
-            code: { type: string }
-            message: { type: string }
-            request_id: { type: string }
-            details: { type: object, additionalProperties: true }
-      example:
-        error:
-          code: validation_error
-          message: Request validation failed
-          request_id: 018f1b46-0637-7000-9000-000000000001
-          details: {}
-    RegisterRequest:
-      type: object
-      required: [email, password, display_name, organization_name]
-      properties:
-        email: { type: string, format: email }
-        password: { type: string, minLength: 12 }
-        display_name: { type: string, minLength: 1, maxLength: 160 }
-        organization_name: { type: string, minLength: 1, maxLength: 200 }
-      example:
-        email: owner@example.com
-        password: StrongPassword123
-        display_name: Owner
-        organization_name: Example Farm Co
-    LoginRequest:
-      type: object
-      required: [email, password]
-      properties:
-        email: { type: string, format: email }
-        password: { type: string }
-      example:
-        email: owner@example.com
-        password: StrongPassword123
-    User:
-      type: object
-      required: [id, email, display_name]
-      properties:
-        id: { type: string, format: uuid }
-        email: { type: string, format: email }
-        display_name: { type: string }
-    Organization:
-      type: object
-      required: [id, name, slug, status]
-      properties:
-        id: { type: string, format: uuid }
-        name: { type: string }
-        slug: { type: string }
-        logo_url: { type: string, nullable: true }
-        plan_code: { type: string }
-        status: { type: string, enum: [active, suspended, deleted] }
-      example:
-        id: 018f1b46-0637-7000-9000-000000000010
-        name: Example Farm Co
-        slug: example-farm-co-a1b2c3d4
-        plan_code: starter
-        status: active
-    RegisterResponse:
-      type: object
-      required: [user, organization]
-      properties:
-        user: { $ref: "#/components/schemas/User" }
-        organization: { $ref: "#/components/schemas/Organization" }
-    Member:
-      type: object
-      required: [id, user_id, role, status]
-      properties:
-        id: { type: string, format: uuid }
-        user_id: { type: string, format: uuid }
-        role:
-          type: string
-          enum: [organization_owner, organization_admin, agronomist, field_manager, viewer]
-        status: { type: string, enum: [active, disabled, invited] }
-    OrganizationCreateRequest:
-      type: object
-      required: [name]
-      properties:
-        name: { type: string, minLength: 1, maxLength: 200 }
-      example:
-        name: North Field Cooperative
-    FarmCreateRequest:
-      type: object
-      required: [organization_id, name]
-      properties:
-        organization_id: { type: string, format: uuid }
-        name: { type: string, minLength: 1, maxLength: 200 }
-        province: { type: string, maxLength: 120, nullable: true }
-      example:
-        organization_id: 018f1b46-0637-7000-9000-000000000010
-        name: Farm 1
-        province: Chiang Mai
-    FarmUpdateRequest:
-      type: object
-      properties:
-        name: { type: string, minLength: 1, maxLength: 200 }
-        province: { type: string, maxLength: 120, nullable: true }
-      example:
-        name: Farm 1 North
-        province: Chiang Mai
-    Farm:
-      type: object
-      required: [id, organization_id, name, status, created_at, updated_at]
-      properties:
-        id: { type: string, format: uuid }
-        organization_id: { type: string, format: uuid }
-        name: { type: string }
-        province: { type: string, nullable: true }
-        status: { type: string, enum: [active, deleted] }
-        created_at: { type: string, format: date-time }
-        updated_at: { type: string, format: date-time }
-      example:
-        id: 018f1b46-0637-7000-9000-000000000020
-        organization_id: 018f1b46-0637-7000-9000-000000000010
-        name: Farm 1
-        province: Chiang Mai
-        status: active
-        created_at: "2026-08-01T09:00:00Z"
-        updated_at: "2026-08-01T09:00:00Z"
-    GeoJsonPolygon:
-      type: object
-      required: [type, coordinates]
-      properties:
-        type: { type: string, enum: [Polygon] }
-        coordinates:
-          type: array
-          minItems: 1
-          items:
-            type: array
-            minItems: 4
-            items:
-              type: array
-              minItems: 2
-              maxItems: 2
-              items: { type: number }
-      example:
-        type: Polygon
-        coordinates:
-          - - [98.9801, 18.7901]
-            - [98.9811, 18.7901]
-            - [98.9811, 18.7911]
-            - [98.9801, 18.7911]
-            - [98.9801, 18.7901]
-    FieldCreateRequest:
-      type: object
-      required: [name, geometry]
-      properties:
-        name: { type: string, minLength: 1, maxLength: 200 }
-        geometry: { $ref: "#/components/schemas/GeoJsonPolygon" }
-      example:
-        name: Field A
-        geometry:
-          type: Polygon
-          coordinates:
-            - - [98.9801, 18.7901]
-              - [98.9811, 18.7901]
-              - [98.9811, 18.7911]
-              - [98.9801, 18.7911]
-              - [98.9801, 18.7901]
-    FieldUpdateRequest:
-      type: object
-      properties:
-        name: { type: string, minLength: 1, maxLength: 200 }
-        geometry: { $ref: "#/components/schemas/GeoJsonPolygon" }
-      example:
-        name: Field A North
-    Field:
-      type: object
-      required: [id, farm_id, organization_id, name, geometry, area_sqm, area_rai, status, created_at, updated_at]
-      properties:
-        id: { type: string, format: uuid }
-        farm_id: { type: string, format: uuid }
-        organization_id: { type: string, format: uuid }
-        name: { type: string }
-        geometry: { $ref: "#/components/schemas/GeoJsonPolygon" }
-        area_sqm: { type: number }
-        area_rai: { type: number }
-        status: { type: string, enum: [active, deleted] }
-        created_at: { type: string, format: date-time }
-        updated_at: { type: string, format: date-time }
-      example:
-        id: 018f1b46-0637-7000-9000-000000000030
-        farm_id: 018f1b46-0637-7000-9000-000000000020
-        organization_id: 018f1b46-0637-7000-9000-000000000010
-        name: Field A
-        geometry:
-          type: Polygon
-          coordinates:
-            - - [98.9801, 18.7901]
-              - [98.9811, 18.7901]
-              - [98.9811, 18.7911]
-              - [98.9801, 18.7911]
-              - [98.9801, 18.7901]
-        area_sqm: 11726.42
-        area_rai: 7.329
-        status: active
-        created_at: "2026-08-01T09:00:00Z"
-        updated_at: "2026-08-01T09:00:00Z"
-    SatelliteAcquisition:
-      type: object
-      required: [provider, collection, item_id, acquired_at]
-      properties:
-        provider: { type: string, enum: [cdse_stac] }
-        collection: { type: string, enum: [sentinel-2-l2a] }
-        item_id: { type: string }
-        acquired_at: { type: string, format: date-time }
-        cloud_cover_percent: { type: number, nullable: true }
-      example:
-        provider: cdse_stac
-        collection: sentinel-2-l2a
-        item_id: S2B_MSIL2A_20260731T035529_N0511_R004_T47PPR_20260731T072142
-        acquired_at: "2026-07-31T03:55:29Z"
-        cloud_cover_percent: 12.4
-    SatelliteLatestResponse:
-      type: object
-      required: [field_id, status, searched_at]
-      properties:
-        field_id: { type: string, format: uuid }
-        status: { type: string, enum: [available, no_data, temporarily_unavailable] }
-        acquisition:
-          anyOf:
-            - { $ref: "#/components/schemas/SatelliteAcquisition" }
-            - { type: "null" }
-        searched_at: { type: string, format: date-time }
-        message_th: { type: string }
-      example:
-        field_id: 018f1b46-0637-7000-9000-000000000030
-        status: available
-        acquisition:
-          provider: cdse_stac
-          collection: sentinel-2-l2a
-          item_id: S2B_MSIL2A_20260731T035529_N0511_R004_T47PPR_20260731T072142
-          acquired_at: "2026-07-31T03:55:29Z"
-          cloud_cover_percent: 12.4
-        searched_at: "2026-08-01T03:00:00Z"
-        message_th: พบภาพดาวเทียมล่าสุด
-paths:
-  /health/live:
-    get:
-      summary: Liveness check.
-      security: []
-      x-rate-limit: low-cost unauthenticated health endpoint.
-      x-idempotency: safe read-only operation.
-      responses:
-        "200":
-          description: Process is alive.
-  /health/ready:
-    get:
-      summary: Readiness check.
-      security: []
-      x-rate-limit: low-cost unauthenticated health endpoint.
-      x-idempotency: safe read-only operation.
-      responses:
-        "200":
-          description: Configuration is valid and the app can serve traffic.
-        "503":
-          description: Required readiness check failed.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/ErrorResponse" }
-  /health/dependencies:
-    get:
-      summary: Safe dependency status.
-      security: []
-      x-rate-limit: low-cost unauthenticated health endpoint.
-      x-idempotency: safe read-only operation.
-      responses:
-        "200":
-          description: Masked dependency status for database, Redis, and object storage.
-  /api/v1/auth/register:
-    post:
-      summary: Register user, organization, and owner membership atomically.
-      security: []
-      x-required-role: none
-      x-organization-scope: creates first organization for the new user.
-      x-validation: email normalized, password strength enforced, duplicate email rejected.
-      x-rate-limit: strict unauthenticated auth limit.
-      x-idempotency: not idempotent; duplicate email returns 409.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: "#/components/schemas/RegisterRequest" }
-      responses:
-        "201":
-          description: Registered.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/RegisterResponse" }
-        "400":
-          description: Invalid input.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/ErrorResponse" }
-        "409":
-          description: Email already registered.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/ErrorResponse" }
-  /api/v1/auth/login:
-    post:
-      summary: Login with generic failure messages and set HttpOnly refresh cookie.
-      security: []
-      x-required-role: none
-      x-organization-scope: membership checked by later organization-scoped endpoints.
-      x-validation: email normalized, generic auth failure.
-      x-rate-limit: strict unauthenticated auth limit.
-      x-idempotency: not idempotent; creates a refresh session.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: "#/components/schemas/LoginRequest" }
-      responses:
-        "204": { description: Logged in. }
-        "401":
-          description: Invalid credentials.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/ErrorResponse" }
-  /api/v1/auth/logout:
-    post:
-      summary: Revoke current refresh session and delete auth cookie.
-      security:
-        - cookieSession: []
-      x-required-role: authenticated user.
-      x-organization-scope: none.
-      x-validation: refresh session must be active.
-      x-rate-limit: authenticated user limit.
-      x-idempotency: effectively idempotent after revocation.
-      responses:
-        "204": { description: Logged out. }
-        "401":
-          description: Missing or invalid session.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/ErrorResponse" }
-  /api/v1/auth/refresh:
-    post:
-      summary: Rotate refresh session and issue a new access token.
-      security:
-        - cookieSession: []
-      x-required-role: authenticated user.
-      x-organization-scope: none.
-      x-validation: refresh token type, expiration, and active session checked.
-      x-rate-limit: authenticated user limit.
-      x-idempotency: not idempotent; rotates session.
-      responses:
-        "204": { description: Refreshed. }
-        "401":
-          description: Missing, invalid, expired, or revoked refresh session.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/ErrorResponse" }
-  /api/v1/auth/me:
-    get:
-      summary: Current authenticated user.
-      security:
-        - cookieSession: []
-      x-required-role: authenticated user.
-      x-organization-scope: none.
-      x-validation: access token type and expiration checked.
-      x-rate-limit: authenticated user limit.
-      x-idempotency: safe read-only operation.
-      responses:
-        "200":
-          description: Current user.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/User" }
-        "401":
-          description: Missing or invalid authentication.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/ErrorResponse" }
-  /api/v1/organizations:
-    post:
-      summary: Create an organization for the current user.
-      security:
-        - cookieSession: []
-      x-required-role: authenticated user.
-      x-organization-scope: creates organization and owner membership.
-      x-validation: name required, slug generated collision-safe.
-      x-rate-limit: authenticated mutation limit.
-      x-idempotency: not idempotent.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: "#/components/schemas/OrganizationCreateRequest" }
-      responses:
-        "201":
-          description: Created organization.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Organization" }
-    get:
-      summary: List organizations visible to current user.
-      security:
-        - cookieSession: []
-      x-required-role: active membership.
-      x-organization-scope: scoped by active memberships for current user.
-      x-validation: disabled memberships excluded.
-      x-rate-limit: authenticated read limit.
-      x-idempotency: safe read-only operation.
-      responses:
-        "200":
-          description: Organizations.
-          content:
-            application/json:
-              schema:
-                type: array
-                items: { $ref: "#/components/schemas/Organization" }
-  /api/v1/organizations/{organization_id}:
-    get:
-      summary: Get organization if current user has active membership.
-      security:
-        - cookieSession: []
-      x-required-role: viewer
-      x-organization-scope: query scopes by organization id and active membership.
-      x-validation: invalid UUID rejected; foreign organization returns 404.
-      x-rate-limit: authenticated read limit.
-      x-idempotency: safe read-only operation.
-      parameters:
-        - name: organization_id
-          in: path
-          required: true
-          schema: { type: string, format: uuid }
-      responses:
-        "200":
-          description: Organization.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Organization" }
-        "404":
-          description: Not found or not visible.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/ErrorResponse" }
-  /api/v1/organizations/{organization_id}/members:
-    get:
-      summary: List organization members for active members.
-      security:
-        - cookieSession: []
-      x-required-role: viewer
-      x-organization-scope: organization id and current active membership required.
-      x-validation: disabled membership denied; foreign organization returns 404.
-      x-rate-limit: authenticated read limit.
-      x-idempotency: safe read-only operation.
-      parameters:
-        - name: organization_id
-          in: path
-          required: true
-          schema: { type: string, format: uuid }
-      responses:
-        "200":
-          description: Members.
-          content:
-            application/json:
-              schema:
-                type: array
-                items: { $ref: "#/components/schemas/Member" }
-  /api/v1/farms:
-    post:
-      summary: Create a farm in an organization visible to the current user.
-      security:
-        - cookieSession: []
-      x-required-role: field_manager
-      x-organization-scope: request organization_id must match an active current-user membership.
-      x-validation: name required; province optional; viewer role cannot create.
-      x-rate-limit: authenticated mutation limit.
-      x-idempotency: not idempotent.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: "#/components/schemas/FarmCreateRequest" }
-      responses:
-        "201":
-          description: Created farm.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Farm" }
-        "401":
-          description: Authentication required.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/ErrorResponse" }
-        "403":
-          description: Role cannot create farms.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/ErrorResponse" }
-        "404":
-          description: Organization is not visible.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/ErrorResponse" }
-    get:
-      summary: List active farms visible through current user's active organization memberships.
-      security:
-        - cookieSession: []
-      x-required-role: viewer
-      x-organization-scope: optional organization_id query is checked against active membership; otherwise all current-user organizations.
-      x-validation: foreign organization returns 404.
-      x-rate-limit: authenticated read limit.
-      x-idempotency: safe read-only operation.
-      parameters:
-        - name: organization_id
-          in: query
-          required: false
-          schema: { type: string, format: uuid }
-      responses:
-        "200":
-          description: Farms.
-          content:
-            application/json:
-              schema:
-                type: array
-                items: { $ref: "#/components/schemas/Farm" }
-  /api/v1/farms/{farm_id}:
-    get:
-      summary: Get an active farm scoped by current-user membership.
-      security:
-        - cookieSession: []
-      x-required-role: viewer
-      x-organization-scope: farm lookup joins active membership before returning a row.
-      x-validation: invalid UUID rejected; foreign or deleted farm returns 404.
-      x-rate-limit: authenticated read limit.
-      x-idempotency: safe read-only operation.
-      parameters:
-        - name: farm_id
-          in: path
-          required: true
-          schema: { type: string, format: uuid }
-      responses:
-        "200":
-          description: Farm.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Farm" }
-        "404":
-          description: Not found or not visible.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/ErrorResponse" }
-    patch:
-      summary: Update an active farm scoped by current-user membership.
-      security:
-        - cookieSession: []
-      x-required-role: field_manager
-      x-organization-scope: farm lookup joins active membership before mutation.
-      x-validation: at least one supported field required; viewer role cannot update.
-      x-rate-limit: authenticated mutation limit.
-      x-idempotency: not idempotent, but repeated identical requests produce the same farm representation.
-      parameters:
-        - name: farm_id
-          in: path
-          required: true
-          schema: { type: string, format: uuid }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: "#/components/schemas/FarmUpdateRequest" }
-      responses:
-        "200":
-          description: Updated farm.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Farm" }
-        "403":
-          description: Role cannot update farms.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/ErrorResponse" }
-        "404":
-          description: Not found or not visible.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/ErrorResponse" }
-    delete:
-      summary: Soft delete an active farm scoped by current-user membership.
-      security:
-        - cookieSession: []
-      x-required-role: field_manager
-      x-organization-scope: farm lookup joins active membership before mutation.
-      x-validation: viewer role cannot delete; deleted farm is omitted from reads.
-      x-rate-limit: authenticated mutation limit.
-      x-idempotency: effectively idempotent once deleted.
-      parameters:
-        - name: farm_id
-          in: path
-          required: true
-          schema: { type: string, format: uuid }
-      responses:
-        "204": { description: Deleted farm. }
-        "403":
-          description: Role cannot delete farms.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/ErrorResponse" }
-        "404":
-          description: Not found or not visible.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/ErrorResponse" }
-  /api/v1/farms/{farm_id}/fields:
-    post:
-      summary: Create a field polygon in an active farm.
-      security:
-        - cookieSession: []
-      x-required-role: field_manager
-      x-organization-scope: farm and field are scoped by active current-user membership.
-      x-validation: GeoJSON Polygon only; closed ring; no self-intersection; backend calculates area.
-      x-rate-limit: authenticated mutation limit.
-      x-idempotency: not idempotent.
-      parameters:
-        - name: farm_id
-          in: path
-          required: true
-          schema: { type: string, format: uuid }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: "#/components/schemas/FieldCreateRequest" }
-      responses:
-        "201":
-          description: Created field with authoritative area.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Field" }
-        "422":
-          description: Invalid polygon geometry.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/ErrorResponse" }
-    get:
-      summary: List active fields in an active farm.
-      security:
-        - cookieSession: []
-      x-required-role: viewer
-      x-organization-scope: farm lookup joins active membership before listing fields.
-      x-validation: foreign or deleted farm returns 404.
-      x-rate-limit: authenticated read limit.
-      x-idempotency: safe read-only operation.
-      parameters:
-        - name: farm_id
-          in: path
-          required: true
-          schema: { type: string, format: uuid }
-      responses:
-        "200":
-          description: Fields.
-          content:
-            application/json:
-              schema:
-                type: array
-                items: { $ref: "#/components/schemas/Field" }
-  /api/v1/fields/{field_id}:
-    get:
-      summary: Get an active field scoped by current-user membership.
-      security:
-        - cookieSession: []
-      x-required-role: viewer
-      x-organization-scope: field lookup joins active membership before returning a row.
-      x-validation: foreign or deleted field returns 404.
-      x-rate-limit: authenticated read limit.
-      x-idempotency: safe read-only operation.
-      parameters:
-        - name: field_id
-          in: path
-          required: true
-          schema: { type: string, format: uuid }
-      responses:
-        "200":
-          description: Field.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Field" }
-        "404":
-          description: Not found or not visible.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/ErrorResponse" }
-    patch:
-      summary: Update an active field polygon or name.
-      security:
-        - cookieSession: []
-      x-required-role: field_manager
-      x-organization-scope: field lookup joins active membership before mutation.
-      x-validation: at least one supported field required; geometry is validated and area recalculated.
-      x-rate-limit: authenticated mutation limit.
-      x-idempotency: not idempotent, but repeated identical requests produce the same field representation.
-      parameters:
-        - name: field_id
-          in: path
-          required: true
-          schema: { type: string, format: uuid }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: "#/components/schemas/FieldUpdateRequest" }
-      responses:
-        "200":
-          description: Updated field.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Field" }
-        "422":
-          description: Invalid polygon geometry.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/ErrorResponse" }
-    delete:
-      summary: Soft delete an active field scoped by current-user membership.
-      security:
-        - cookieSession: []
-      x-required-role: field_manager
-      x-organization-scope: field lookup joins active membership before mutation.
-      x-validation: viewer role cannot delete; deleted field is omitted from reads.
-      x-rate-limit: authenticated mutation limit.
-      x-idempotency: effectively idempotent once deleted.
-      parameters:
-        - name: field_id
-          in: path
-          required: true
-          schema: { type: string, format: uuid }
-      responses:
-        "204": { description: Deleted field. }
-        "404":
-          description: Not found or not visible.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/ErrorResponse" }
-  /api/v1/fields/{field_id}/satellite/search-latest:
-    post:
-      summary: Search CDSE STAC for latest Sentinel-2 L2A acquisition intersecting a saved field.
-      security:
-        - cookieSession: []
-      x-required-role: viewer
-      x-organization-scope: field lookup joins active membership before provider request.
-      x-validation: persisted field geometry only; browser geometry is ignored; deleted or foreign fields return 404.
-      x-timeout: provider timeout returns status temporarily_unavailable without stack traces.
-      x-rate-limit: authenticated mutation/search limit; provider 429 returns temporarily_unavailable.
-      x-idempotency: repeated searches reuse field/provider/item acquisition records.
-      parameters:
-        - name: field_id
-          in: path
-          required: true
-          schema: { type: string, format: uuid }
-      responses:
-        "200":
-          description: Latest acquisition search result, no-data result, or temporary provider-unavailable result.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/SatelliteLatestResponse" }
-        "401":
-          description: Authentication required.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/ErrorResponse" }
-        "404":
-          description: Field not found or not visible.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/ErrorResponse" }
-  /api/v1/fields/{field_id}/satellite/latest:
-    get:
-      summary: Return persisted latest Sentinel-2 L2A acquisition for a saved field.
-      security:
-        - cookieSession: []
-      x-required-role: viewer
-      x-organization-scope: field lookup joins active membership before acquisition read.
-      x-validation: deleted or foreign fields return 404.
-      x-timeout: no provider request is made.
-      x-rate-limit: authenticated read limit.
-      x-idempotency: safe read-only operation.
-      parameters:
-        - name: field_id
-          in: path
-          required: true
-          schema: { type: string, format: uuid }
-      responses:
-        "200":
-          description: Persisted acquisition or no_data when none has been selected.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/SatelliteLatestResponse" }
-        "401":
-          description: Authentication required.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/ErrorResponse" }
-        "404":
-          description: Field not found or not visible.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/ErrorResponse" }
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "AgriScope Thailand API",
+    "version": "0.1.0",
+    "description": "Contract-first API for multi-tenant agricultural satellite analysis."
+  },
+  "servers": [
+    {
+      "url": "/"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "accessCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "agriscope_access"
+      },
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "access token"
+      },
+      "refreshCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "agriscope_refresh"
+      },
+      "csrfCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "agriscope_csrf"
+      },
+      "csrfHeader": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-CSRF-Token"
+      }
+    },
+    "responses": {
+      "UnauthorizedError": {
+        "description": "Authentication required.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "ForbiddenError": {
+        "description": "CSRF validation or role authorization failed.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "NotFoundError": {
+        "description": "Scoped resource not found.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "ValidationError": {
+        "description": "Request validation failed.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "RateLimitedError": {
+        "description": "Rate limit exceeded.",
+        "headers": {
+          "Retry-After": {
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "CsrfResponse": {
+        "type": "object",
+        "required": [
+          "csrf_token"
+        ],
+        "properties": {
+          "csrf_token": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "object",
+            "required": [
+              "code",
+              "message",
+              "request_id",
+              "details"
+            ],
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "request_id": {
+                "type": "string"
+              },
+              "details": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        },
+        "example": {
+          "error": {
+            "code": "validation_error",
+            "message": "Request validation failed",
+            "request_id": "018f1b46-0637-7000-9000-000000000001",
+            "details": {}
+          }
+        }
+      },
+      "RegisterRequest": {
+        "type": "object",
+        "required": [
+          "email",
+          "password",
+          "display_name",
+          "organization_name"
+        ],
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "password": {
+            "type": "string",
+            "minLength": 12
+          },
+          "display_name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "organization_name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "example": {
+          "email": "owner@example.com",
+          "password": "StrongPassword123",
+          "display_name": "Owner",
+          "organization_name": "Example Farm Co"
+        }
+      },
+      "LoginRequest": {
+        "type": "object",
+        "required": [
+          "email",
+          "password"
+        ],
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "password": {
+            "type": "string"
+          }
+        },
+        "example": {
+          "email": "owner@example.com",
+          "password": "StrongPassword123"
+        }
+      },
+      "User": {
+        "type": "object",
+        "required": [
+          "id",
+          "email",
+          "display_name"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "display_name": {
+            "type": "string"
+          }
+        }
+      },
+      "Organization": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "slug",
+          "status"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "logo_url": {
+            "type": "string",
+            "nullable": true
+          },
+          "plan_code": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "suspended",
+              "deleted"
+            ]
+          }
+        },
+        "example": {
+          "id": "018f1b46-0637-7000-9000-000000000010",
+          "name": "Example Farm Co",
+          "slug": "example-farm-co-a1b2c3d4",
+          "plan_code": "starter",
+          "status": "active"
+        }
+      },
+      "RegisterResponse": {
+        "type": "object",
+        "required": [
+          "user",
+          "organization"
+        ],
+        "properties": {
+          "user": {
+            "$ref": "#/components/schemas/User"
+          },
+          "organization": {
+            "$ref": "#/components/schemas/Organization"
+          }
+        }
+      },
+      "Member": {
+        "type": "object",
+        "required": [
+          "id",
+          "user_id",
+          "role",
+          "status"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "user_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "organization_owner",
+              "organization_admin",
+              "agronomist",
+              "field_manager",
+              "viewer"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "disabled",
+              "invited"
+            ]
+          }
+        }
+      },
+      "OrganizationCreateRequest": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "example": {
+          "name": "North Field Cooperative"
+        }
+      },
+      "FarmCreateRequest": {
+        "type": "object",
+        "required": [
+          "organization_id",
+          "name"
+        ],
+        "properties": {
+          "organization_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "province": {
+            "type": "string",
+            "maxLength": 120,
+            "nullable": true
+          }
+        },
+        "example": {
+          "organization_id": "018f1b46-0637-7000-9000-000000000010",
+          "name": "Farm 1",
+          "province": "Chiang Mai"
+        }
+      },
+      "FarmUpdateRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "province": {
+            "type": "string",
+            "maxLength": 120,
+            "nullable": true
+          }
+        },
+        "example": {
+          "name": "Farm 1 North",
+          "province": "Chiang Mai"
+        }
+      },
+      "Farm": {
+        "type": "object",
+        "required": [
+          "id",
+          "organization_id",
+          "name",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "organization_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "province": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "deleted"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "example": {
+          "id": "018f1b46-0637-7000-9000-000000000020",
+          "organization_id": "018f1b46-0637-7000-9000-000000000010",
+          "name": "Farm 1",
+          "province": "Chiang Mai",
+          "status": "active",
+          "created_at": "2026-08-01T09:00:00Z",
+          "updated_at": "2026-08-01T09:00:00Z"
+        }
+      },
+      "GeoJsonPolygon": {
+        "type": "object",
+        "required": [
+          "type",
+          "coordinates"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "Polygon"
+            ]
+          },
+          "coordinates": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "array",
+              "minItems": 4,
+              "items": {
+                "type": "array",
+                "minItems": 2,
+                "maxItems": 2,
+                "items": {
+                  "type": "number"
+                }
+              }
+            }
+          }
+        },
+        "example": {
+          "type": "Polygon",
+          "coordinates": [
+            [
+              [
+                98.9801,
+                18.7901
+              ],
+              [
+                98.9811,
+                18.7901
+              ],
+              [
+                98.9811,
+                18.7911
+              ],
+              [
+                98.9801,
+                18.7911
+              ],
+              [
+                98.9801,
+                18.7901
+              ]
+            ]
+          ]
+        }
+      },
+      "FieldCreateRequest": {
+        "type": "object",
+        "required": [
+          "name",
+          "geometry"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "geometry": {
+            "$ref": "#/components/schemas/GeoJsonPolygon"
+          }
+        },
+        "example": {
+          "name": "Field A",
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  98.9801,
+                  18.7901
+                ],
+                [
+                  98.9811,
+                  18.7901
+                ],
+                [
+                  98.9811,
+                  18.7911
+                ],
+                [
+                  98.9801,
+                  18.7911
+                ],
+                [
+                  98.9801,
+                  18.7901
+                ]
+              ]
+            ]
+          }
+        }
+      },
+      "FieldUpdateRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "geometry": {
+            "$ref": "#/components/schemas/GeoJsonPolygon"
+          }
+        },
+        "example": {
+          "name": "Field A North"
+        }
+      },
+      "Field": {
+        "type": "object",
+        "required": [
+          "id",
+          "farm_id",
+          "organization_id",
+          "name",
+          "geometry",
+          "area_sqm",
+          "area_rai",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "farm_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "organization_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "geometry": {
+            "$ref": "#/components/schemas/GeoJsonPolygon"
+          },
+          "area_sqm": {
+            "type": "number"
+          },
+          "area_rai": {
+            "type": "number"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "deleted"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "example": {
+          "id": "018f1b46-0637-7000-9000-000000000030",
+          "farm_id": "018f1b46-0637-7000-9000-000000000020",
+          "organization_id": "018f1b46-0637-7000-9000-000000000010",
+          "name": "Field A",
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  98.9801,
+                  18.7901
+                ],
+                [
+                  98.9811,
+                  18.7901
+                ],
+                [
+                  98.9811,
+                  18.7911
+                ],
+                [
+                  98.9801,
+                  18.7911
+                ],
+                [
+                  98.9801,
+                  18.7901
+                ]
+              ]
+            ]
+          },
+          "area_sqm": 11726.42,
+          "area_rai": 7.329,
+          "status": "active",
+          "created_at": "2026-08-01T09:00:00Z",
+          "updated_at": "2026-08-01T09:00:00Z"
+        }
+      },
+      "SatelliteAcquisition": {
+        "type": "object",
+        "required": [
+          "provider",
+          "collection",
+          "item_id",
+          "acquired_at"
+        ],
+        "properties": {
+          "provider": {
+            "type": "string",
+            "enum": [
+              "cdse_stac"
+            ]
+          },
+          "collection": {
+            "type": "string",
+            "enum": [
+              "sentinel-2-l2a"
+            ]
+          },
+          "item_id": {
+            "type": "string"
+          },
+          "acquired_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "cloud_cover_percent": {
+            "type": "number",
+            "nullable": true
+          }
+        },
+        "example": {
+          "provider": "cdse_stac",
+          "collection": "sentinel-2-l2a",
+          "item_id": "S2B_MSIL2A_20260731T035529_N0511_R004_T47PPR_20260731T072142",
+          "acquired_at": "2026-07-31T03:55:29Z",
+          "cloud_cover_percent": 12.4
+        }
+      },
+      "SatelliteAvailableResponse": {
+        "type": "object",
+        "required": [
+          "field_id",
+          "status",
+          "acquisition",
+          "searched_at",
+          "message_th"
+        ],
+        "properties": {
+          "field_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "const": "available"
+          },
+          "acquisition": {
+            "$ref": "#/components/schemas/SatelliteAcquisition"
+          },
+          "searched_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "message_th": {
+            "type": "string"
+          }
+        }
+      },
+      "SatelliteNotSearchedResponse": {
+        "type": "object",
+        "required": [
+          "field_id",
+          "status",
+          "acquisition",
+          "searched_at",
+          "message_th"
+        ],
+        "properties": {
+          "field_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "const": "not_searched"
+          },
+          "acquisition": {
+            "type": "null"
+          },
+          "searched_at": {
+            "type": "null"
+          },
+          "message_th": {
+            "type": "string"
+          }
+        }
+      },
+      "SatelliteEmptySearchResponse": {
+        "type": "object",
+        "required": [
+          "field_id",
+          "status",
+          "acquisition",
+          "searched_at",
+          "message_th"
+        ],
+        "properties": {
+          "field_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "no_data",
+              "temporarily_unavailable"
+            ]
+          },
+          "acquisition": {
+            "type": "null"
+          },
+          "searched_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "message_th": {
+            "type": "string"
+          }
+        }
+      },
+      "SatelliteLatestResponse": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/SatelliteAvailableResponse"
+          },
+          {
+            "$ref": "#/components/schemas/SatelliteNotSearchedResponse"
+          },
+          {
+            "$ref": "#/components/schemas/SatelliteEmptySearchResponse"
+          }
+        ],
+        "discriminator": {
+          "propertyName": "status",
+          "mapping": {
+            "available": "#/components/schemas/SatelliteAvailableResponse",
+            "not_searched": "#/components/schemas/SatelliteNotSearchedResponse",
+            "no_data": "#/components/schemas/SatelliteEmptySearchResponse",
+            "temporarily_unavailable": "#/components/schemas/SatelliteEmptySearchResponse"
+          }
+        }
+      },
+      "SatelliteSearchResponse": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/SatelliteAvailableResponse"
+          },
+          {
+            "$ref": "#/components/schemas/SatelliteEmptySearchResponse"
+          }
+        ],
+        "discriminator": {
+          "propertyName": "status",
+          "mapping": {
+            "available": "#/components/schemas/SatelliteAvailableResponse",
+            "no_data": "#/components/schemas/SatelliteEmptySearchResponse",
+            "temporarily_unavailable": "#/components/schemas/SatelliteEmptySearchResponse"
+          }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/health/live": {
+      "get": {
+        "summary": "Liveness check.",
+        "security": [],
+        "x-idempotency": "safe read-only operation.",
+        "responses": {
+          "200": {
+            "description": "Process is alive."
+          }
+        }
+      }
+    },
+    "/health/ready": {
+      "get": {
+        "summary": "Readiness check.",
+        "security": [],
+        "x-idempotency": "safe read-only operation.",
+        "responses": {
+          "200": {
+            "description": "Configuration is valid and the app can serve traffic."
+          },
+          "503": {
+            "description": "Required readiness check failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health/dependencies": {
+      "get": {
+        "summary": "Safe dependency status.",
+        "security": [],
+        "x-idempotency": "safe read-only operation.",
+        "responses": {
+          "200": {
+            "description": "Masked dependency status for database, Redis, and object storage."
+          }
+        }
+      }
+    },
+    "/api/v1/auth/csrf": {
+      "get": {
+        "summary": "Issue a bounded opaque double-submit CSRF token.",
+        "security": [],
+        "x-required-role": "none",
+        "x-organization-scope": "none.",
+        "x-validation": "cryptographically random token; host-only cookie; no-store response.",
+        "x-rate-limit": "trusted-client-IP aggregate 60 per configured fixed window.",
+        "x-idempotency": "safe bootstrap; each success rotates the CSRF value.",
+        "responses": {
+          "200": {
+            "description": "CSRF token issued with agriscope_csrf cookie and no-store headers.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CsrfResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitedError"
+          }
+        }
+      }
+    },
+    "/api/v1/auth/register": {
+      "post": {
+        "summary": "Register user, organization, and owner membership atomically.",
+        "security": [
+          {
+            "csrfCookie": [],
+            "csrfHeader": []
+          }
+        ],
+        "x-required-role": "none",
+        "x-organization-scope": "creates first organization for the new user.",
+        "x-validation": "email normalized, password strength enforced, duplicate email rejected.",
+        "x-rate-limit": "trusted-client-IP 25 and HMAC(normalized email) 5 per configured window.",
+        "x-idempotency": "not idempotent; duplicate email returns 409.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Registered.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegisterResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "CSRF token or Origin validation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Email already registered.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request validation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitedError"
+          }
+        }
+      }
+    },
+    "/api/v1/auth/login": {
+      "post": {
+        "summary": "Login with generic failure messages and set host-only HttpOnly access and refresh cookies.",
+        "security": [
+          {
+            "csrfCookie": [],
+            "csrfHeader": []
+          }
+        ],
+        "x-required-role": "none",
+        "x-organization-scope": "membership checked by later organization-scoped endpoints.",
+        "x-validation": "email normalized, generic auth failure.",
+        "x-rate-limit": "trusted-client-IP 50 and HMAC(normalized email) 10 per configured window.",
+        "x-idempotency": "not idempotent; creates a refresh session.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Logged in."
+          },
+          "401": {
+            "description": "Invalid credentials.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "CSRF token or Origin validation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request validation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitedError"
+          }
+        }
+      }
+    },
+    "/api/v1/auth/logout": {
+      "post": {
+        "summary": "Idempotently revoke a valid refresh session when present and clear all browser cookies.",
+        "security": [
+          {
+            "csrfCookie": [],
+            "csrfHeader": []
+          }
+        ],
+        "x-required-role": "none; valid refresh input is optional revocation context.",
+        "x-organization-scope": "none.",
+        "x-validation": "exact Origin and double-submit CSRF; malformed or absent refresh state is non-observable.",
+        "x-idempotency": "always clears access, refresh, and CSRF cookies and returns 204 after valid CSRF.",
+        "responses": {
+          "204": {
+            "description": "Logged out."
+          },
+          "403": {
+            "description": "CSRF token or Origin validation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/refresh": {
+      "post": {
+        "summary": "Rotate refresh session and issue a new access token.",
+        "security": [
+          {
+            "refreshCookie": [],
+            "csrfCookie": [],
+            "csrfHeader": []
+          }
+        ],
+        "x-required-role": "authenticated user.",
+        "x-organization-scope": "none.",
+        "x-validation": "refresh token type, expiration, and active session checked.",
+        "x-rate-limit": "trusted-client-IP 60 plus valid subject 30 or invalid-token digest 10 per configured window.",
+        "x-idempotency": "not idempotent; rotates session.",
+        "responses": {
+          "204": {
+            "description": "Refreshed."
+          },
+          "401": {
+            "description": "Missing, invalid, expired, or revoked refresh session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "CSRF token or Origin validation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitedError"
+          }
+        }
+      }
+    },
+    "/api/v1/auth/me": {
+      "get": {
+        "summary": "Current authenticated user.",
+        "security": [
+          {
+            "accessCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-required-role": "authenticated user.",
+        "x-organization-scope": "none.",
+        "x-validation": "access token type and expiration checked.",
+        "x-idempotency": "safe read-only operation.",
+        "responses": {
+          "200": {
+            "description": "Current user.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/organizations": {
+      "post": {
+        "summary": "Create an organization for the current user.",
+        "security": [
+          {
+            "accessCookie": [],
+            "csrfCookie": [],
+            "csrfHeader": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-required-role": "authenticated user.",
+        "x-organization-scope": "creates organization and owner membership.",
+        "x-validation": "name required, slug generated collision-safe.",
+        "x-rate-limit": "trusted-client-IP 300 and authenticated subject 60 per configured window.",
+        "x-idempotency": "not idempotent.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrganizationCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitedError"
+          },
+          "201": {
+            "description": "Created organization.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Organization"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "summary": "List organizations visible to current user.",
+        "security": [
+          {
+            "accessCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-required-role": "active membership.",
+        "x-organization-scope": "scoped by active memberships for current user.",
+        "x-validation": "disabled memberships excluded.",
+        "x-idempotency": "safe read-only operation.",
+        "responses": {
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "200": {
+            "description": "Organizations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Organization"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/organizations/{organization_id}": {
+      "get": {
+        "summary": "Get organization if current user has active membership.",
+        "security": [
+          {
+            "accessCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-required-role": "viewer",
+        "x-organization-scope": "query scopes by organization id and active membership.",
+        "x-validation": "invalid UUID rejected; foreign organization returns 404.",
+        "x-idempotency": "safe read-only operation.",
+        "parameters": [
+          {
+            "name": "organization_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "200": {
+            "description": "Organization.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Organization"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found or not visible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/organizations/{organization_id}/members": {
+      "get": {
+        "summary": "List organization members for active members.",
+        "security": [
+          {
+            "accessCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-required-role": "viewer",
+        "x-organization-scope": "organization id and current active membership required.",
+        "x-validation": "disabled membership denied; foreign organization returns 404.",
+        "x-idempotency": "safe read-only operation.",
+        "parameters": [
+          {
+            "name": "organization_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundError"
+          },
+          "200": {
+            "description": "Members.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Member"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/farms": {
+      "post": {
+        "summary": "Create a farm in an organization visible to the current user.",
+        "security": [
+          {
+            "accessCookie": [],
+            "csrfCookie": [],
+            "csrfHeader": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-required-role": "field_manager",
+        "x-organization-scope": "request organization_id must match an active current-user membership.",
+        "x-validation": "name required; province optional; viewer role cannot create.",
+        "x-rate-limit": "trusted-client-IP 300 and authenticated subject 60 per configured window.",
+        "x-idempotency": "not idempotent.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FarmCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitedError"
+          },
+          "201": {
+            "description": "Created farm.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Farm"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role cannot create farms.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Organization is not visible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "summary": "List active farms visible through current user's active organization memberships.",
+        "security": [
+          {
+            "accessCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-required-role": "viewer",
+        "x-organization-scope": "optional organization_id query is checked against active membership; otherwise all current-user organizations.",
+        "x-validation": "foreign organization returns 404.",
+        "x-idempotency": "safe read-only operation.",
+        "parameters": [
+          {
+            "name": "organization_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundError"
+          },
+          "200": {
+            "description": "Farms.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Farm"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/farms/{farm_id}": {
+      "get": {
+        "summary": "Get an active farm scoped by current-user membership.",
+        "security": [
+          {
+            "accessCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-required-role": "viewer",
+        "x-organization-scope": "farm lookup joins active membership before returning a row.",
+        "x-validation": "invalid UUID rejected; foreign or deleted farm returns 404.",
+        "x-idempotency": "safe read-only operation.",
+        "parameters": [
+          {
+            "name": "farm_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "200": {
+            "description": "Farm.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Farm"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found or not visible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update an active farm scoped by current-user membership.",
+        "security": [
+          {
+            "accessCookie": [],
+            "csrfCookie": [],
+            "csrfHeader": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-required-role": "field_manager",
+        "x-organization-scope": "farm lookup joins active membership before mutation.",
+        "x-validation": "at least one supported field required; viewer role cannot update.",
+        "x-rate-limit": "trusted-client-IP 300 and authenticated subject 60 per configured window.",
+        "x-idempotency": "not idempotent, but repeated identical requests produce the same farm representation.",
+        "parameters": [
+          {
+            "name": "farm_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FarmUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitedError"
+          },
+          "200": {
+            "description": "Updated farm.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Farm"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role cannot update farms.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found or not visible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Soft delete an active farm scoped by current-user membership.",
+        "security": [
+          {
+            "accessCookie": [],
+            "csrfCookie": [],
+            "csrfHeader": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-required-role": "field_manager",
+        "x-organization-scope": "farm lookup joins active membership before mutation.",
+        "x-validation": "viewer role cannot delete; deleted farm is omitted from reads.",
+        "x-rate-limit": "trusted-client-IP 300 and authenticated subject 60 per configured window.",
+        "x-idempotency": "effectively idempotent once deleted.",
+        "parameters": [
+          {
+            "name": "farm_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitedError"
+          },
+          "204": {
+            "description": "Deleted farm."
+          },
+          "403": {
+            "description": "Role cannot delete farms.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found or not visible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/farms/{farm_id}/fields": {
+      "post": {
+        "summary": "Create a field polygon in an active farm.",
+        "security": [
+          {
+            "accessCookie": [],
+            "csrfCookie": [],
+            "csrfHeader": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-required-role": "field_manager",
+        "x-organization-scope": "farm and field are scoped by active current-user membership.",
+        "x-validation": "GeoJSON Polygon only; closed ring; no self-intersection; backend calculates area.",
+        "x-rate-limit": "trusted-client-IP 300 and authenticated subject 60 per configured window.",
+        "x-idempotency": "not idempotent.",
+        "parameters": [
+          {
+            "name": "farm_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FieldCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitedError"
+          },
+          "201": {
+            "description": "Created field with authoritative area.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Field"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid polygon geometry.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "summary": "List active fields in an active farm.",
+        "security": [
+          {
+            "accessCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-required-role": "viewer",
+        "x-organization-scope": "farm lookup joins active membership before listing fields.",
+        "x-validation": "foreign or deleted farm returns 404.",
+        "x-idempotency": "safe read-only operation.",
+        "parameters": [
+          {
+            "name": "farm_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundError"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "200": {
+            "description": "Fields.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Field"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/fields/{field_id}": {
+      "get": {
+        "summary": "Get an active field scoped by current-user membership.",
+        "security": [
+          {
+            "accessCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-required-role": "viewer",
+        "x-organization-scope": "field lookup joins active membership before returning a row.",
+        "x-validation": "foreign or deleted field returns 404.",
+        "x-idempotency": "safe read-only operation.",
+        "parameters": [
+          {
+            "name": "field_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "200": {
+            "description": "Field.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Field"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found or not visible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update an active field polygon or name.",
+        "security": [
+          {
+            "accessCookie": [],
+            "csrfCookie": [],
+            "csrfHeader": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-required-role": "field_manager",
+        "x-organization-scope": "field lookup joins active membership before mutation.",
+        "x-validation": "at least one supported field required; geometry is validated and area recalculated.",
+        "x-rate-limit": "trusted-client-IP 300 and authenticated subject 60 per configured window.",
+        "x-idempotency": "not idempotent, but repeated identical requests produce the same field representation.",
+        "parameters": [
+          {
+            "name": "field_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FieldUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitedError"
+          },
+          "200": {
+            "description": "Updated field.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Field"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid polygon geometry.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Soft delete an active field scoped by current-user membership.",
+        "security": [
+          {
+            "accessCookie": [],
+            "csrfCookie": [],
+            "csrfHeader": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-required-role": "field_manager",
+        "x-organization-scope": "field lookup joins active membership before mutation.",
+        "x-validation": "viewer role cannot delete; deleted field is omitted from reads.",
+        "x-rate-limit": "trusted-client-IP 300 and authenticated subject 60 per configured window.",
+        "x-idempotency": "effectively idempotent once deleted.",
+        "parameters": [
+          {
+            "name": "field_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitedError"
+          },
+          "204": {
+            "description": "Deleted field."
+          },
+          "404": {
+            "description": "Not found or not visible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/fields/{field_id}/satellite/search-latest": {
+      "post": {
+        "summary": "Search CDSE STAC for latest Sentinel-2 L2A acquisition intersecting a saved field.",
+        "security": [
+          {
+            "accessCookie": [],
+            "csrfCookie": [],
+            "csrfHeader": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-required-role": "viewer",
+        "x-organization-scope": "field lookup joins active membership before provider request.",
+        "x-validation": "persisted field geometry only; browser geometry is ignored; deleted or foreign fields return 404.",
+        "x-timeout": "provider timeout returns status temporarily_unavailable without stack traces.",
+        "x-rate-limit": "authenticated subject 20 and subject plus HMAC(field ID) 10 per configured window.",
+        "x-idempotency": "repeated searches reuse field/provider/item acquisition records.",
+        "parameters": [
+          {
+            "name": "field_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitedError"
+          },
+          "200": {
+            "description": "Latest acquisition search result, no-data result, or temporary provider-unavailable result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SatelliteSearchResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Field not found or not visible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/fields/{field_id}/satellite/latest": {
+      "get": {
+        "summary": "Return persisted latest Sentinel-2 L2A acquisition for a saved field.",
+        "security": [
+          {
+            "accessCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-required-role": "viewer",
+        "x-organization-scope": "field lookup joins active membership before acquisition read.",
+        "x-validation": "deleted or foreign fields return 404.",
+        "x-timeout": "no provider request is made.",
+        "x-idempotency": "safe read-only operation.",
+        "parameters": [
+          {
+            "name": "field_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "200": {
+            "description": "Persisted available acquisition or not_searched with null acquisition and searched_at when no result is stored.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SatelliteLatestResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Field not found or not visible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from decimal import Decimal
 from typing import Any
+from uuid import UUID
 
 try:
     from fastapi import APIRouter, Depends, Request, Response, status
@@ -24,7 +25,7 @@ except Exception:  # pragma: no cover
 
 
 class FarmCreateRequest(BaseModel):
-    organization_id: str
+    organization_id: UUID
     name: str = Field(min_length=1, max_length=200)
     province: str | None = Field(default=None, max_length=120)
 
@@ -71,8 +72,12 @@ router = APIRouter(tags=["farms"]) if APIRouter else None
 
 
 if router:
-    from uuid import UUID
-
+    from apps.api.agriscope_api.core.csrf import validate_csrf
+    from apps.api.agriscope_api.core.rate_limit import (
+        RateLimitBucket,
+        client_ip_bucket,
+        enforce_rate_limit,
+    )
     from apps.api.agriscope_api.core.security import Role
     from apps.api.agriscope_api.dependencies.auth import (
         get_active_membership,
@@ -107,6 +112,20 @@ if router:
             updated_at=field.updated_at,
         )
 
+    def _enforce_mutation_limit(request: Request, user) -> None:
+        settings = request.app.state.settings
+        enforce_rate_limit(
+            request,
+            [
+                client_ip_bucket(request, "mutation-ip", settings.rate_limit_mutation_ip),
+                RateLimitBucket(
+                    "mutation-subject",
+                    str(user.id),
+                    settings.rate_limit_mutation_subject,
+                ),
+            ],
+        )
+
     @router.post("/farms", status_code=status.HTTP_201_CREATED, response_model=FarmResponse)
     async def create_farm(
         payload: FarmCreateRequest,
@@ -114,9 +133,11 @@ if router:
         session=Depends(get_db_session),
     ) -> FarmResponse:
         user = await get_current_user(request, session)
-        organization_id = UUID(payload.organization_id)
+        validate_csrf(request)
+        organization_id = payload.organization_id
         membership = await get_active_membership(session, user, organization_id)
         require_minimum_role(membership, Role.FIELD_MANAGER)
+        _enforce_mutation_limit(request, user)
         farm = await FarmService(session).create_farm(
             user_id=user.id,
             organization_id=organization_id,
@@ -155,9 +176,11 @@ if router:
         session=Depends(get_db_session),
     ) -> FarmResponse:
         user = await get_current_user(request, session)
+        validate_csrf(request)
         existing = await FarmService(session).get_farm(user_id=user.id, farm_id=farm_id)
         membership = await get_active_membership(session, user, existing.organization_id)
         require_minimum_role(membership, Role.FIELD_MANAGER)
+        _enforce_mutation_limit(request, user)
         farm = await FarmService(session).update_farm(
             user_id=user.id,
             farm_id=farm_id,
@@ -175,9 +198,11 @@ if router:
         session=Depends(get_db_session),
     ) -> Response:
         user = await get_current_user(request, session)
+        validate_csrf(request)
         existing = await FarmService(session).get_farm(user_id=user.id, farm_id=farm_id)
         membership = await get_active_membership(session, user, existing.organization_id)
         require_minimum_role(membership, Role.FIELD_MANAGER)
+        _enforce_mutation_limit(request, user)
         await FarmService(session).delete_farm(user_id=user.id, farm_id=farm_id)
         response.status_code = status.HTTP_204_NO_CONTENT
         return response
@@ -194,9 +219,11 @@ if router:
         session=Depends(get_db_session),
     ) -> FieldResponse:
         user = await get_current_user(request, session)
+        validate_csrf(request)
         farm = await FarmService(session).get_farm(user_id=user.id, farm_id=farm_id)
         membership = await get_active_membership(session, user, farm.organization_id)
         require_minimum_role(membership, Role.FIELD_MANAGER)
+        _enforce_mutation_limit(request, user)
         field = await FarmService(session).create_field(
             user_id=user.id,
             farm_id=farm_id,
@@ -233,9 +260,11 @@ if router:
         session=Depends(get_db_session),
     ) -> FieldResponse:
         user = await get_current_user(request, session)
+        validate_csrf(request)
         existing = await FarmService(session).get_field(user_id=user.id, field_id=field_id)
         membership = await get_active_membership(session, user, existing.organization_id)
         require_minimum_role(membership, Role.FIELD_MANAGER)
+        _enforce_mutation_limit(request, user)
         field = await FarmService(session).update_field(
             user_id=user.id,
             field_id=field_id,
@@ -252,9 +281,11 @@ if router:
         session=Depends(get_db_session),
     ) -> Response:
         user = await get_current_user(request, session)
+        validate_csrf(request)
         existing = await FarmService(session).get_field(user_id=user.id, field_id=field_id)
         membership = await get_active_membership(session, user, existing.organization_id)
         require_minimum_role(membership, Role.FIELD_MANAGER)
+        _enforce_mutation_limit(request, user)
         await FarmService(session).delete_field(user_id=user.id, field_id=field_id)
         response.status_code = status.HTTP_204_NO_CONTENT
         return response

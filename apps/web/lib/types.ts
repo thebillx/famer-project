@@ -5,6 +5,19 @@ export type Organization = {
   status: string;
 };
 
+export type User = {
+  id: string;
+  email: string;
+  display_name: string;
+};
+
+export type Member = {
+  id: string;
+  user_id: string;
+  role: "organization_owner" | "organization_admin" | "agronomist" | "field_manager" | "viewer";
+  status: string;
+};
+
 export type Farm = {
   id: string;
   organization_id: string;
@@ -41,10 +54,29 @@ export type SatelliteAcquisition = {
   cloud_cover_percent: number | null;
 };
 
-export type SatelliteLatest = {
+export type SatelliteAvailable = {
   field_id: string;
-  status: "available" | "no_data" | "temporarily_unavailable";
-  acquisition: SatelliteAcquisition | null;
+  status: "available";
+  acquisition: SatelliteAcquisition;
   searched_at: string;
   message_th: string;
 };
+
+export type SatelliteNotSearched = {
+  field_id: string;
+  status: "not_searched";
+  acquisition: null;
+  searched_at: null;
+  message_th: string;
+};
+
+export type SatelliteEmptySearch = {
+  field_id: string;
+  status: "no_data" | "temporarily_unavailable";
+  acquisition: null;
+  searched_at: string;
+  message_th: string;
+};
+
+export type SatelliteLatest = SatelliteAvailable | SatelliteNotSearched | SatelliteEmptySearch;
+export type SatelliteSearch = SatelliteAvailable | SatelliteEmptySearch;

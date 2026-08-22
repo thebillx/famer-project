@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
+from typing import Literal
 from uuid import UUID
 
 from apps.api.agriscope_api.core.config import SettingsSnapshot
@@ -20,9 +21,9 @@ from apps.api.agriscope_api.repositories.satellite import AcquisitionRecord, Sat
 @dataclass(frozen=True)
 class SatelliteResponse:
     field_id: UUID
-    status: str
+    status: Literal["available", "not_searched", "no_data", "temporarily_unavailable"]
     acquisition: AcquisitionRecord | None
-    searched_at: datetime
+    searched_at: datetime | None
     message_th: str
 
 
@@ -37,8 +38,19 @@ class SatelliteService:
             max_cloud_cover_percent=settings.satellite_max_cloud_cover_percent,
         )
 
-    async def search_latest(self, *, user_id: UUID, field_id: UUID) -> SatelliteResponse:
-        field = await self._get_field(user_id=user_id, field_id=field_id)
+    async def search_latest(
+        self,
+        *,
+        user_id: UUID,
+        field_id: UUID,
+        authorized_field: FieldRecord | None = None,
+    ) -> SatelliteResponse:
+        field = authorized_field or await self.get_authorized_field(
+            user_id=user_id,
+            field_id=field_id,
+        )
+        if field.id != field_id:
+            raise ValueError("authorized field does not match requested field")
         searched_at = datetime.now(UTC)
         try:
             provider_result = await self.provider.search_latest(field.geometry, now=searched_at)
@@ -83,23 +95,22 @@ class SatelliteService:
         )
 
     async def get_latest(self, *, user_id: UUID, field_id: UUID) -> SatelliteResponse:
-        field = await self._get_field(user_id=user_id, field_id=field_id)
+        field = await self.get_authorized_field(user_id=user_id, field_id=field_id)
         acquisition = await SatelliteRepository(
             self.session,
             TenantScope(organization_id=field.organization_id, user_id=user_id, role="viewer"),
         ).get_latest_acquisition(field.id)
-        searched_at = acquisition.searched_at if acquisition else datetime.now(UTC)
         return SatelliteResponse(
             field_id=field.id,
-            status="available" if acquisition else "no_data",
+            status="available" if acquisition else "not_searched",
             acquisition=acquisition,
-            searched_at=searched_at,
+            searched_at=acquisition.searched_at if acquisition else None,
             message_th="พบภาพดาวเทียมล่าสุด"
             if acquisition
-            else "ยังไม่พบข้อมูลในช่วงเวลาที่ค้นหา",
+            else "ยังไม่มีผลการค้นหาดาวเทียมที่บันทึกไว้",
         )
 
-    async def _get_field(self, *, user_id: UUID, field_id: UUID) -> FieldRecord:
+    async def get_authorized_field(self, *, user_id: UUID, field_id: UUID) -> FieldRecord:
         field = await FarmRepository(
             self.session,
             TenantScope(organization_id=UUID(int=0), user_id=user_id, role="viewer"),

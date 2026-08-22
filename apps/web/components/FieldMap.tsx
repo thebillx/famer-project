@@ -83,6 +83,7 @@ export function FieldMap({
   }, []);
 
   useEffect(() => {
+    onGeometryChange?.(points.length >= 3 ? closedPolygon(points) : null);
     const map = mapRef.current;
     if (!map || !map.loaded()) return;
     renderGeometry(map, points);
@@ -110,7 +111,6 @@ export function FieldMap({
         markersRef.current.push(marker);
       });
     }
-    onGeometryChange?.(points.length >= 3 ? closedPolygon(points) : null);
   }, [editable, onGeometryChange, points]);
 
   function renderGeometry(map: Map, currentPoints: LngLat[]) {

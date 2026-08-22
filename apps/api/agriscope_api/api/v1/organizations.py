@@ -41,6 +41,12 @@ router = APIRouter(prefix="/organizations", tags=["organizations"]) if APIRouter
 
 if router:
     from uuid import UUID
+    from apps.api.agriscope_api.core.csrf import validate_csrf
+    from apps.api.agriscope_api.core.rate_limit import (
+        RateLimitBucket,
+        client_ip_bucket,
+        enforce_rate_limit,
+    )
     from apps.api.agriscope_api.core.security import Role
     from apps.api.agriscope_api.dependencies.auth import (
         get_active_membership,
@@ -65,6 +71,19 @@ if router:
         session=Depends(get_db_session),
     ) -> OrganizationResponse:
         user = await get_current_user(request, session)
+        validate_csrf(request)
+        settings = request.app.state.settings
+        enforce_rate_limit(
+            request,
+            [
+                client_ip_bucket(request, "mutation-ip", settings.rate_limit_mutation_ip),
+                RateLimitBucket(
+                    "mutation-subject",
+                    str(user.id),
+                    settings.rate_limit_mutation_subject,
+                ),
+            ],
+        )
         organization = await OrganizationService(session).create_organization(
             user_id=user.id, name=payload.name
         )

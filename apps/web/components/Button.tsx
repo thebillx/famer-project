@@ -1,34 +1,65 @@
 import type React from "react";
 
+type ButtonVariant = "primary" | "secondary" | "danger" | "ghost";
+type ButtonSize = "sm" | "md" | "lg";
+
+const variantClasses: Record<ButtonVariant, string> = {
+  primary: "as-button-primary",
+  secondary: "as-button-secondary",
+  danger: "as-button-danger",
+  ghost: "as-button-ghost"
+};
+
+const sizeClasses: Record<ButtonSize, string> = {
+  sm: "as-button-sm",
+  md: "as-button-md",
+  lg: "as-button-lg"
+};
+
+export function buttonClassName({
+  variant = "primary",
+  size = "md",
+  className = ""
+}: {
+  variant?: ButtonVariant;
+  size?: ButtonSize;
+  className?: string;
+} = {}) {
+  return `as-button ${sizeClasses[size]} ${variantClasses[variant]} ${className}`.trim();
+}
+
 export function Button({
   children,
   variant = "primary",
   size = "md",
+  isLoading = false,
+  loadingLabel = "กำลังดำเนินการ…",
+  disabled,
   ...props
 }: React.ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: "primary" | "secondary" | "danger" | "ghost";
-  size?: "sm" | "md" | "lg";
+  variant?: ButtonVariant;
+  size?: ButtonSize;
+  isLoading?: boolean;
+  loadingLabel?: string;
 }) {
-  const styles = {
-    primary:
-      "border border-[var(--as-primary)] bg-[var(--as-primary)] text-white shadow-[var(--as-shadow-sm)] hover:bg-[var(--as-primary-strong)]",
-    secondary:
-      "border border-[var(--as-border)] bg-white/80 text-[var(--as-primary)] hover:border-[var(--as-border-strong)] hover:bg-[var(--as-surface-soft)]",
-    danger:
-      "border border-[var(--as-danger)] bg-[var(--as-danger)] text-white shadow-[var(--as-shadow-sm)] hover:brightness-95",
-    ghost: "border border-transparent bg-transparent text-[var(--as-primary)] hover:bg-[var(--as-surface-soft)]"
-  };
-  const sizes = {
-    sm: "min-h-9 px-3 text-sm",
-    md: "min-h-11 px-4 text-sm",
-    lg: "min-h-12 px-5 text-base"
-  };
+  const unavailable = Boolean(disabled || isLoading);
+
   return (
     <button
       {...props}
-      className={`inline-flex items-center justify-center gap-2 rounded-[var(--as-radius-sm)] font-semibold transition duration-200 ease-out active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50 ${sizes[size]} ${styles[variant]} ${props.className ?? ""}`}
+      aria-busy={isLoading || undefined}
+      disabled={unavailable}
+      className={buttonClassName({ variant, size, className: props.className })}
     >
-      {children}
+      <span className="as-button-label" aria-hidden={isLoading || undefined}>
+        {children}
+      </span>
+      {isLoading ? (
+        <span className="as-button-loading" role="status">
+          <span className="as-button-spinner" aria-hidden="true" />
+          {loadingLabel}
+        </span>
+      ) : null}
     </button>
   );
 }

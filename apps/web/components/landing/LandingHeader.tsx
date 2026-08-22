@@ -29,7 +29,7 @@ export function LandingHeader() {
         </Link>
 
         <nav className={styles.headerNav} aria-label="เมนูหลัก">
-          {landingNavItems.map((item) => (
+          {landingNavItems.slice(0, 3).map((item) => (
             <a key={item.href} href={item.href}>
               {item.label}
             </a>
@@ -37,11 +37,8 @@ export function LandingHeader() {
         </nav>
 
         <div className={styles.headerActions}>
-          <Link className={`${styles.button} ${styles.buttonQuiet}`} href="/login">
-            เข้าสู่ระบบ
-          </Link>
           <Link className={`${styles.button} ${styles.buttonPrimary} ${styles.headerPrimary}`} href="/login">
-            เริ่มใช้งาน
+            ขอ Demo
           </Link>
         </div>
       </div>

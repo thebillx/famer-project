@@ -34,6 +34,10 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class CsrfResponse(BaseModel):
+    csrf_token: str
+
+
 class UserResponse(BaseModel):
     id: str
     email: str
@@ -55,7 +59,25 @@ class RegisterResponse(BaseModel):
 router = APIRouter(prefix="/auth", tags=["auth"]) if APIRouter else None
 
 
+def _rate_email(value: str) -> str:
+    return value.strip().lower() or "invalid"
+
+
 if router:
+    from uuid import UUID
+
+    from apps.api.agriscope_api.core.csrf import (
+        delete_csrf_cookie,
+        new_csrf_token,
+        set_csrf_cookie,
+        validate_csrf,
+    )
+    from apps.api.agriscope_api.core.rate_limit import (
+        RateLimitBucket,
+        client_ip_bucket,
+        enforce_rate_limit,
+    )
+    from apps.api.agriscope_api.core.security import TokenType, parse_token
     from apps.api.agriscope_api.dependencies.auth import get_current_user
     from apps.api.agriscope_api.dependencies.runtime import get_db_session, get_settings
     from apps.api.agriscope_api.services.auth import AuthService
@@ -83,8 +105,78 @@ if router:
 
     def _delete_auth_cookies(response: Response, request: Request) -> None:
         settings = request.app.state.settings
-        response.delete_cookie(ACCESS_COOKIE_NAME, path="/")
-        response.delete_cookie(REFRESH_COOKIE_NAME, path=f"{settings.api_v1_prefix}/auth")
+        response.delete_cookie(
+            ACCESS_COOKIE_NAME,
+            path="/",
+            secure=settings.cookie_secure,
+            httponly=True,
+            samesite=settings.cookie_samesite,
+        )
+        response.delete_cookie(
+            REFRESH_COOKIE_NAME,
+            path=f"{settings.api_v1_prefix}/auth",
+            secure=settings.cookie_secure,
+            httponly=True,
+            samesite=settings.cookie_samesite,
+        )
+        delete_csrf_cookie(response, settings)
+
+    def _refresh_subject(request: Request, raw_token: str | None) -> str | None:
+        if not raw_token:
+            return None
+        try:
+            claims = parse_token(
+                raw_token,
+                request.app.state.settings.session_secret,
+                TokenType.REFRESH,
+            )
+            if claims.session_id is None:
+                return None
+            UUID(claims.session_id)
+            return str(UUID(claims.subject))
+        except (KeyError, TypeError, ValueError):
+            return None
+
+    async def _best_effort_revoke_refresh(
+        request: Request,
+        settings,
+        raw_refresh_token: str | None,
+    ) -> None:
+        if _refresh_subject(request, raw_refresh_token) is None:
+            return
+
+        session = None
+        try:
+            session = request.app.state.session_factory()
+            await AuthService(settings).logout(session, raw_refresh_token)
+            await session.commit()
+        except Exception:
+            if session is not None:
+                try:
+                    await session.rollback()
+                except Exception:
+                    # Transaction cleanup cannot mask terminal browser-cookie cleanup.
+                    pass
+        finally:
+            if session is not None:
+                try:
+                    await session.close()
+                except Exception:
+                    # The response must still clear cookies after best-effort resource cleanup.
+                    pass
+
+    @router.get("/csrf", response_model=CsrfResponse)
+    async def csrf_bootstrap(request: Request, response: Response) -> CsrfResponse:
+        settings = request.app.state.settings
+        enforce_rate_limit(
+            request,
+            [client_ip_bucket(request, "csrf-ip", settings.rate_limit_csrf_ip)],
+        )
+        token = new_csrf_token()
+        set_csrf_cookie(response, settings, token)
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["Vary"] = "Origin"
+        return CsrfResponse(csrf_token=token)
 
     @router.post("/register", status_code=status.HTTP_201_CREATED, response_model=RegisterResponse)
     async def register(
@@ -94,6 +186,18 @@ if router:
         session=Depends(get_db_session),
         settings=Depends(get_settings),
     ) -> RegisterResponse:
+        validate_csrf(request, always=True)
+        enforce_rate_limit(
+            request,
+            [
+                client_ip_bucket(request, "register-ip", settings.rate_limit_register_ip),
+                RateLimitBucket(
+                    "register-email",
+                    _rate_email(payload.email),
+                    settings.rate_limit_register_email,
+                ),
+            ],
+        )
         service = AuthService(settings)
         user, organization, access_token, refresh_token = await service.register(
             session,
@@ -121,6 +225,18 @@ if router:
         session=Depends(get_db_session),
         settings=Depends(get_settings),
     ) -> Response:
+        validate_csrf(request, always=True)
+        enforce_rate_limit(
+            request,
+            [
+                client_ip_bucket(request, "login-ip", settings.rate_limit_login_ip),
+                RateLimitBucket(
+                    "login-email",
+                    _rate_email(payload.email),
+                    settings.rate_limit_login_email,
+                ),
+            ],
+        )
         service = AuthService(settings)
         _, access_token, refresh_token = await service.login(
             session, email=payload.email, password=payload.password
@@ -133,11 +249,11 @@ if router:
     async def logout(
         request: Request,
         response: Response,
-        session=Depends(get_db_session),
         settings=Depends(get_settings),
     ) -> Response:
-        service = AuthService(settings)
-        await service.logout(session, request.cookies.get(REFRESH_COOKIE_NAME))
+        validate_csrf(request, always=True)
+        raw_refresh_token = request.cookies.get(REFRESH_COOKIE_NAME)
+        await _best_effort_revoke_refresh(request, settings, raw_refresh_token)
         _delete_auth_cookies(response, request)
         response.status_code = status.HTTP_204_NO_CONTENT
         return response
@@ -149,7 +265,29 @@ if router:
         session=Depends(get_db_session),
         settings=Depends(get_settings),
     ) -> Response:
+        validate_csrf(request, always=True)
         raw_refresh_token = request.cookies.get(REFRESH_COOKIE_NAME)
+        buckets = [
+            client_ip_bucket(request, "session-ip", settings.rate_limit_session_ip),
+        ]
+        subject = _refresh_subject(request, raw_refresh_token)
+        if subject is not None:
+            buckets.append(
+                RateLimitBucket(
+                    "session-subject",
+                    subject,
+                    settings.rate_limit_session_subject,
+                )
+            )
+        elif raw_refresh_token:
+            buckets.append(
+                RateLimitBucket(
+                    "session-token",
+                    raw_refresh_token,
+                    settings.rate_limit_session_token,
+                )
+            )
+        enforce_rate_limit(request, buckets)
         if not raw_refresh_token:
             raise ApiException("invalid_refresh_token", "Refresh session is invalid", 401)
         service = AuthService(settings)

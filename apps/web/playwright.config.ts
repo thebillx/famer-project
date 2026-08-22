@@ -28,7 +28,7 @@ export default defineConfig({
     },
     {
       command:
-        "NEXT_PUBLIC_API_BASE_URL=http://localhost:8000 NEXT_PUBLIC_MAP_STYLE_URL=https://tiles.openfreemap.org/styles/liberty npm -w apps/web run dev",
+        "NEXT_PUBLIC_API_BASE_URL=http://localhost:8000 NEXT_PUBLIC_MAP_STYLE_URL=https://tiles.openfreemap.org/styles/liberty npm -w apps/web run build && npm -w apps/web run start",
       url: "http://localhost:3000",
       reuseExistingServer: true,
       cwd: "../..",

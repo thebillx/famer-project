@@ -94,6 +94,6 @@ Report files changed, commands executed, tests, UI states covered, accessibility
 ## References
 
 - `AGENTS.md`
-- `.agents/workflows/contract-first.md`
+- `.agents/workflows/delivery.md`
 - `.agents/templates/handoff-report.md`
 - Next.js, React, TanStack Query, React Hook Form, Zod, and WCAG documentation as project references.

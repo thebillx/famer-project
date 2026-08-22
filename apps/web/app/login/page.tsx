@@ -1,36 +1,77 @@
 "use client";
 
-import { zodResolver } from "@hookform/resolvers/zod";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
+import type { FieldError, FieldErrors, FieldValues, Resolver } from "react-hook-form";
 import { z } from "zod";
 import { Button } from "../../components/Button";
-import { PageShell } from "../../components/PageShell";
-import { Card, FormInput } from "../../components/Primitives";
+import { FormInput } from "../../components/Primitives";
 import { apiFetch } from "../../lib/api";
 
+const LOGIN_FAILURE = "เข้าสู่ระบบไม่สำเร็จ กรุณาตรวจสอบข้อมูลและลองอีกครั้ง";
+const REGISTER_FAILURE = "สร้างบัญชีไม่สำเร็จ กรุณาตรวจสอบข้อมูลและลองอีกครั้ง";
+
+const emailSchema = z.string().trim().min(1, "กรุณากรอกอีเมล").email("กรุณากรอกอีเมลให้ถูกต้อง");
+
 const registerSchema = z.object({
-  email: z.string().email(),
-  password: z.string().min(12),
-  display_name: z.string().min(1),
-  organization_name: z.string().min(1)
+  email: emailSchema,
+  password: z
+    .string()
+    .min(12, "รหัสผ่านต้องมีอย่างน้อย 12 ตัวอักษร")
+    .regex(/[A-Z]/, "รหัสผ่านต้องมีตัวพิมพ์ใหญ่อย่างน้อย 1 ตัว")
+    .regex(/[a-z]/, "รหัสผ่านต้องมีตัวพิมพ์เล็กอย่างน้อย 1 ตัว")
+    .regex(/[0-9]/, "รหัสผ่านต้องมีตัวเลขอย่างน้อย 1 ตัว"),
+  display_name: z.string().trim().min(1, "กรุณากรอกชื่อของคุณ"),
+  organization_name: z.string().trim().min(1, "กรุณากรอกชื่อองค์กร")
 });
 
 const loginSchema = z.object({
-  email: z.string().email(),
-  password: z.string().min(1)
+  email: emailSchema,
+  password: z.string().min(1, "กรุณากรอกรหัสผ่าน")
 });
 
 type RegisterForm = z.infer<typeof registerSchema>;
 type LoginForm = z.infer<typeof loginSchema>;
+type AuthMode = "register" | "login";
+
+function schemaResolver<T extends FieldValues>(schema: z.ZodType<T>): Resolver<T> {
+  return async (values) => {
+    const result = schema.safeParse(values);
+    if (result.success) return { values: result.data, errors: {} };
+
+    const errors: FieldErrors<T> = {};
+    for (const issue of result.error.issues) {
+      const fieldName = String(issue.path[0] ?? "");
+      const fieldErrors = errors as Record<string, FieldError | undefined>;
+      if (fieldName && !fieldErrors[fieldName]) {
+        fieldErrors[fieldName] = { type: issue.code, message: issue.message };
+      }
+    }
+    return { values: {} as T, errors };
+  };
+}
+
+function BrandMark() {
+  return (
+    <span className="as-brand-mark" aria-hidden="true">
+      <svg viewBox="0 0 32 32" focusable="false">
+        <path d="M24.8 6.5C16.9 6.7 10.2 10.2 7.7 16c-1.8 4.2.6 8.9 5.2 9.6 4.7.7 8.2-2.4 9-6.5.9-4.5-1.2-7.9 2.9-12.6Z" />
+        <path d="M9.2 23.4c3.2-5.8 6.9-9.4 11.5-12.1M12.1 17.4c1.9.1 3.8.5 5.6 1.2M15.6 13.2c-.1 1.7.1 3.2.6 4.7" />
+      </svg>
+    </span>
+  );
+}
 
 export default function LoginPage() {
   const router = useRouter();
-  const [mode, setMode] = useState<"register" | "login">("register");
-  const [error, setError] = useState<string | null>(null);
+  const [mode, setMode] = useState<AuthMode>("register");
+  const [serverError, setServerError] = useState<string | null>(null);
   const registerForm = useForm<RegisterForm>({
-    resolver: zodResolver(registerSchema),
+    resolver: schemaResolver(registerSchema),
+    mode: "onBlur",
+    reValidateMode: "onChange",
     defaultValues: {
       email: "",
       password: "",
@@ -39,130 +80,213 @@ export default function LoginPage() {
     }
   });
   const loginForm = useForm<LoginForm>({
-    resolver: zodResolver(loginSchema),
+    resolver: schemaResolver(loginSchema),
+    mode: "onBlur",
+    reValidateMode: "onChange",
     defaultValues: { email: "", password: "" }
   });
+  const pending = registerForm.formState.isSubmitting || loginForm.formState.isSubmitting;
+
+  function selectMode(nextMode: AuthMode) {
+    if (pending || nextMode === mode) return;
+    setServerError(null);
+    registerForm.clearErrors();
+    loginForm.clearErrors();
+    setMode(nextMode);
+  }
 
   async function register(values: RegisterForm) {
-    setError(null);
+    setServerError(null);
     try {
       await apiFetch("/api/v1/auth/register", {
         method: "POST",
         body: JSON.stringify(values)
       });
       router.push("/farms");
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Registration failed");
+    } catch {
+      setServerError(REGISTER_FAILURE);
     }
   }
 
   async function login(values: LoginForm) {
-    setError(null);
+    setServerError(null);
     try {
       await apiFetch("/api/v1/auth/login", {
         method: "POST",
         body: JSON.stringify(values)
       });
       router.push("/farms");
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Login failed");
+    } catch {
+      setServerError(LOGIN_FAILURE);
     }
   }
 
   return (
-    <PageShell>
-      <div className="grid min-h-[calc(100dvh-6rem)] items-center gap-8 lg:grid-cols-[1.08fr_0.92fr]">
-        <section className="max-w-2xl">
-          <p className="as-kicker">Premium field intelligence</p>
-          <h1 className="as-display mt-4">See every saved field with calm confidence.</h1>
-          <p className="mt-6 max-w-xl text-lg text-[var(--as-ink-muted)]">
-            Draw farm boundaries, preserve field geometry, and check the latest Sentinel-2 acquisition metadata
-            from one polished workspace.
-          </p>
-          <div className="mt-8 grid gap-3 sm:grid-cols-3">
-            <Insight label="Map-first" value="Boundaries" />
-            <Insight label="Source" value="Sentinel-2" />
-            <Insight label="Language" value="Safe Thai" />
-          </div>
-          <div className="mt-8 overflow-hidden rounded-[var(--as-radius-xl)] border border-[var(--as-border)] bg-[var(--as-surface-map)] shadow-[var(--as-shadow-lg)]">
-            <div className="grid min-h-72 grid-cols-[1fr_0.8fr] gap-0">
-              <div className="relative p-5">
-                <div className="absolute inset-0 opacity-40 [background-image:linear-gradient(var(--as-border)_1px,transparent_1px),linear-gradient(90deg,var(--as-border)_1px,transparent_1px)] [background-size:34px_34px]" />
-                <div className="relative mt-8 rounded-[32px] border-2 border-[var(--as-primary)] bg-[rgba(63,141,77,0.18)] p-12 shadow-[var(--as-shadow-md)]" />
-              </div>
-              <div className="border-l border-[var(--as-border)] bg-white/80 p-5">
-                <p className="as-kicker">Latest satellite check</p>
-                <p className="mt-4 text-3xl font-bold text-[var(--as-ink)]">12.4%</p>
-                <p className="text-sm text-[var(--as-ink-muted)]">Cloud cover metadata</p>
-                <div className="mt-8 space-y-3">
-                  <div className="h-3 rounded-full bg-[var(--as-surface-soft)]" />
-                  <div className="h-3 w-2/3 rounded-full bg-[var(--as-surface-soft)]" />
-                  <div className="h-3 w-4/5 rounded-full bg-[var(--as-surface-soft)]" />
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-        <Card premium className="mx-auto w-full max-w-md p-5 sm:p-6">
-          <div>
-            <h2 className="text-2xl font-bold text-[var(--as-ink)]">Start managing fields</h2>
-            <p className="mt-2 text-[var(--as-ink-muted)]">Create an account or log in to save farm boundaries.</p>
-          </div>
-          <div className="mt-6 grid grid-cols-2 rounded-[var(--as-radius-md)] border border-[var(--as-border)] bg-[var(--as-surface-soft)] p-1">
-            <button
-              type="button"
-              className={`min-h-10 rounded-[var(--as-radius-sm)] px-3 py-2 text-sm font-bold transition ${
-                mode === "register" ? "bg-white text-[var(--as-primary)] shadow-[var(--as-shadow-sm)]" : "text-[var(--as-ink-muted)]"
-              }`}
-              onClick={() => setMode("register")}
-            >
-              Register
-            </button>
-            <button
-              type="button"
-              className={`min-h-10 rounded-[var(--as-radius-sm)] px-3 py-2 text-sm font-bold transition ${
-                mode === "login" ? "bg-white text-[var(--as-primary)] shadow-[var(--as-shadow-sm)]" : "text-[var(--as-ink-muted)]"
-              }`}
-              onClick={() => setMode("login")}
-            >
-              Login
-            </button>
-          </div>
-          {error ? (
-            <p className="mt-4 rounded-[var(--as-radius-md)] border border-[var(--as-danger)] bg-[var(--as-danger-soft)] p-3 text-sm font-semibold text-[var(--as-danger)]">
-              {error}
-            </p>
-          ) : null}
-          {mode === "register" ? (
-            <form className="mt-6 space-y-4" onSubmit={registerForm.handleSubmit(register)}>
-              <FormInput label="Email" type="email" autoComplete="email" {...registerForm.register("email")} />
-              <FormInput label="Password" type="password" autoComplete="new-password" {...registerForm.register("password")} />
-              <FormInput label="Your name" autoComplete="name" {...registerForm.register("display_name")} />
-              <FormInput label="Organization name" {...registerForm.register("organization_name")} />
-              <Button className="w-full" type="submit" size="lg">
-                Register
-              </Button>
-            </form>
-          ) : (
-            <form className="mt-6 space-y-4" onSubmit={loginForm.handleSubmit(login)}>
-              <FormInput label="Email" type="email" autoComplete="email" {...loginForm.register("email")} />
-              <FormInput label="Password" type="password" autoComplete="current-password" {...loginForm.register("password")} />
-              <Button className="w-full" type="submit" size="lg">
-                Login
-              </Button>
-            </form>
-          )}
-        </Card>
-      </div>
-    </PageShell>
-  );
-}
+    <div className="as-auth-page">
+      <a className="as-skip-link" href="#main-content">
+        ข้ามไปยังเนื้อหา
+      </a>
+      <header className="as-auth-header">
+        <Link className="as-public-brand" href="/" prefetch={false} aria-label="AgriScope Thailand หน้าหลัก">
+          <BrandMark />
+          <span>
+            <strong>AgriScope</strong>
+            <small>THAILAND · FARM INTELLIGENCE</small>
+          </span>
+        </Link>
+      </header>
 
-function Insight({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-[var(--as-radius-md)] border border-[var(--as-border)] bg-white/70 p-4">
-      <p className="text-xs font-bold text-[var(--as-ink-muted)]">{label}</p>
-      <p className="mt-1 font-bold text-[var(--as-ink)]">{value}</p>
+      <main id="main-content" className="as-auth-main" tabIndex={-1}>
+        <div className="as-auth-layout">
+          <section className="as-auth-form-panel" aria-labelledby="auth-title">
+            <p className="as-kicker">พื้นที่ทำงาน AgriScope</p>
+            <h1 id="auth-title" className="as-auth-title">
+              {mode === "register" ? "สร้างบัญชี AgriScope" : "เข้าสู่ระบบ AgriScope"}
+            </h1>
+            <p className="as-auth-intro">
+              {mode === "register"
+                ? "เริ่มจัดเก็บฟาร์มและขอบเขตแปลงในพื้นที่ทำงานขององค์กรคุณ"
+                : "กลับไปยังฟาร์มและขอบเขตแปลงที่องค์กรของคุณจัดเก็บไว้"}
+            </p>
+
+            <div className="as-auth-modes" role="group" aria-label="เลือกรูปแบบการเข้าใช้งาน">
+              <button
+                type="button"
+                aria-pressed={mode === "register"}
+                disabled={pending}
+                onClick={() => selectMode("register")}
+              >
+                สร้างบัญชี
+              </button>
+              <button
+                type="button"
+                aria-pressed={mode === "login"}
+                disabled={pending}
+                onClick={() => selectMode("login")}
+              >
+                เข้าสู่ระบบ
+              </button>
+            </div>
+
+            {serverError ? (
+              <p className="as-server-error" role="alert">
+                {serverError}
+              </p>
+            ) : null}
+
+            {mode === "register" ? (
+              <form className="as-auth-form" noValidate onSubmit={registerForm.handleSubmit(register)}>
+                <FormInput
+                  label="อีเมล"
+                  type="email"
+                  inputMode="email"
+                  autoComplete="email"
+                  aria-required="true"
+                  hint="ใช้สำหรับเข้าสู่ระบบ"
+                  error={registerForm.formState.errors.email?.message}
+                  disabled={pending}
+                  {...registerForm.register("email")}
+                />
+                <FormInput
+                  label="รหัสผ่าน"
+                  type="password"
+                  autoComplete="new-password"
+                  aria-required="true"
+                  hint="อย่างน้อย 12 ตัวอักษร พร้อมตัวพิมพ์ใหญ่ ตัวพิมพ์เล็ก และตัวเลข"
+                  error={registerForm.formState.errors.password?.message}
+                  disabled={pending}
+                  {...registerForm.register("password")}
+                />
+                <FormInput
+                  label="ชื่อของคุณ"
+                  autoComplete="name"
+                  aria-required="true"
+                  hint="ชื่อที่จะแสดงในพื้นที่ทำงาน"
+                  error={registerForm.formState.errors.display_name?.message}
+                  disabled={pending}
+                  {...registerForm.register("display_name")}
+                />
+                <FormInput
+                  label="ชื่อองค์กร"
+                  autoComplete="organization"
+                  aria-required="true"
+                  hint="ชื่อฟาร์มหรือองค์กรของคุณ"
+                  error={registerForm.formState.errors.organization_name?.message}
+                  disabled={pending}
+                  {...registerForm.register("organization_name")}
+                />
+                <Button
+                  className="as-auth-submit"
+                  type="submit"
+                  size="lg"
+                  isLoading={registerForm.formState.isSubmitting}
+                  loadingLabel="กำลังสร้างบัญชี…"
+                >
+                  สร้างบัญชี
+                </Button>
+              </form>
+            ) : (
+              <form className="as-auth-form" noValidate onSubmit={loginForm.handleSubmit(login)}>
+                <FormInput
+                  label="อีเมล"
+                  type="email"
+                  inputMode="email"
+                  autoComplete="email"
+                  aria-required="true"
+                  hint="อีเมลที่ใช้สมัครบัญชี"
+                  error={loginForm.formState.errors.email?.message}
+                  disabled={pending}
+                  {...loginForm.register("email")}
+                />
+                <FormInput
+                  label="รหัสผ่าน"
+                  type="password"
+                  autoComplete="current-password"
+                  aria-required="true"
+                  hint="กรอกรหัสผ่านของคุณ"
+                  error={loginForm.formState.errors.password?.message}
+                  disabled={pending}
+                  {...loginForm.register("password")}
+                />
+                <Button
+                  className="as-auth-submit"
+                  type="submit"
+                  size="lg"
+                  isLoading={loginForm.formState.isSubmitting}
+                  loadingLabel="กำลังเข้าสู่ระบบ…"
+                >
+                  เข้าสู่ระบบ
+                </Button>
+              </form>
+            )}
+          </section>
+
+          <aside className="as-auth-proof" aria-labelledby="sample-title">
+            <p className="as-kicker">ข้อมูลตัวอย่าง</p>
+            <h2 id="sample-title">ขอบเขตแปลงที่อ่านง่ายในพื้นที่ทำงานเดียว</h2>
+            <p>
+              ภาพประกอบนี้แสดงรูปแบบการจัดวางเท่านั้น ไม่ใช่ข้อมูลฟาร์มจริงหรือผลวิเคราะห์จากดาวเทียม
+            </p>
+            <div
+              className="as-sample-map"
+              role="img"
+              aria-label="ภาพประกอบขอบเขตแปลงตัวอย่างบนพื้นผิวแผนที่"
+            >
+              <svg viewBox="0 0 560 360" focusable="false" aria-hidden="true">
+                <path className="as-sample-road" d="M-20 285C115 235 170 270 264 206c78-53 164-39 318-136" />
+                <path className="as-sample-water" d="M32-24c78 96 44 156 132 214 72 47 128 31 198 131" />
+                <path className="as-sample-boundary" d="m156 72 221 25 57 129-99 79-208-42-35-108Z" />
+                <path className="as-sample-row" d="m148 108 227 27M128 150l268 34M120 197l290 37M136 244l225 30" />
+              </svg>
+              <span>ตัวอย่างขอบเขตแปลง</span>
+            </div>
+            <ul className="as-proof-list">
+              <li>จัดเก็บขอบเขตแปลงที่บันทึกไว้</li>
+              <li>ตรวจข้อมูลเมทาดาทา Sentinel-2 ตามคำขอ</li>
+            </ul>
+          </aside>
+        </div>
+      </main>
     </div>
   );
 }

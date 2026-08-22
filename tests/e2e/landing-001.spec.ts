@@ -77,7 +77,9 @@ function firstShadowColor(boxShadow: string): Rgba {
 }
 
 const viewports = [
+  { name: "small mobile", width: 375, height: 812 },
   { name: "mobile", width: 390, height: 844 },
+  { name: "portrait tablet", width: 768, height: 1024 },
   { name: "tablet", width: 1024, height: 768 },
   { name: "desktop", width: 1920, height: 1080 },
 ] as const;
@@ -109,6 +111,8 @@ test("renders a public Thai-first landing page without API requests", async ({ p
   }
 
   await expect(page.getByText("ตัวอย่างข้อมูล").first()).toBeVisible();
+  await expect(page.getByText("AgriScope · แผนที่แปลงตัวอย่าง", { exact: true })).toBeVisible();
+  await expect(page.getByText(/Live Farm Map/i)).toHaveCount(0);
   await expect(page.getByText(/ตัวเลขและชื่อแปลงทั้งหมดเป็นข้อมูลสมมติ/).first()).toBeVisible();
   await expect(page.getByText(/ข้อมูลดาวเทียมใช้ประกอบการตรวจแปลงภาคสนาม ไม่ยืนยันโรคพืช/)).toBeVisible();
   await expect(page.getByText(/ข้อมูลไม่เพียงพอ/)).toBeVisible();
@@ -120,7 +124,7 @@ test("exposes valid CTA destinations and section anchors", async ({ page }) => {
   await page.goto("/");
 
   await expect(page.getByRole("link", { name: "สมัครใช้งาน" })).toHaveAttribute("href", "/login");
-  await expect(page.getByRole("link", { name: "เข้าสู่ระบบ", exact: true })).toHaveAttribute("href", "/login");
+  await expect(page.getByRole("link", { name: "ขอ Demo", exact: true })).toHaveAttribute("href", "/login");
   await expect(page.getByRole("link", { name: "ดูตัวอย่างข้อมูล" })).toHaveAttribute("href", "#farm-insight");
 
   for (const id of ["how-it-works", "features", "farm-insight", "trust"]) {
@@ -148,6 +152,53 @@ test("keeps keyboard focus visible and honors reduced motion", async ({ page }) 
   await expect(page.locator("#main-content")).toBeVisible();
 });
 
+test("uses local Thai display fallbacks and disables the illustrative map scan for reduced motion", async ({ page }) => {
+  await page.goto("/");
+
+  const headingFont = await page.getByRole("heading", { level: 1 }).evaluate((element) => getComputedStyle(element).fontFamily);
+  expect(headingFont).toContain("Sukhumvit Set");
+  expect(headingFont).toContain("Thonburi");
+  expect(headingFont).toContain("system-ui");
+
+  await expect(page.locator('[data-map-layer="aerial-texture"]')).toHaveCount(1);
+  await expect(page.locator('[data-map-layer="boundary-radar"]')).toHaveCount(1);
+  const scan = page.getByTestId("illustrative-map-scan");
+  await expect(scan).toHaveCount(1);
+
+  const motion = await scan.evaluate((element) => {
+    const animation = element.getAnimations()[0];
+    if (!animation || !(animation.effect instanceof KeyframeEffect)) return null;
+    const ignoredKeys = new Set(["offset", "computedOffset", "easing", "composite"]);
+    const animatedProperties = [
+      ...new Set(animation.effect.getKeyframes().flatMap((keyframe) => Object.keys(keyframe).filter((key) => !ignoredKeys.has(key)))),
+    ].sort();
+    const style = getComputedStyle(element);
+    return {
+      animatedProperties,
+      animationName: style.animationName,
+      duration: animation.effect.getTiming().duration,
+      iterations: animation.effect.getTiming().iterations,
+    };
+  });
+  expect(motion).not.toBeNull();
+  expect(motion!.animationName).toContain("landing-map-scan");
+  expect(motion!.animatedProperties).toEqual(["opacity", "transform"]);
+  expect(motion!.duration).toBe(7000);
+  expect(motion!.iterations).toBe(1);
+
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const reducedMotion = await scan.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      activeAnimations: element.getAnimations().length,
+      animationName: style.animationName,
+      opacity: style.opacity,
+      transform: style.transform,
+    };
+  });
+  expect(reducedMotion).toEqual({ activeAnimations: 0, animationName: "none", opacity: "0", transform: "none" });
+});
+
 test("keeps normal-size section labels and two-tone focus indicators at accessible contrast", async ({ page }) => {
   await page.goto("/");
 
@@ -158,9 +209,9 @@ test("keeps normal-size section labels and two-tone focus indicators at accessib
   }
 
   const primaryNav = page.getByRole("navigation", { name: "เมนูหลัก" });
-  await primaryNav.getByRole("link", { name: "ความน่าเชื่อถือ" }).focus();
+  await primaryNav.getByRole("link", { name: "ข้อมูลแปลง" }).focus();
   await page.keyboard.press("Tab");
-  const lightSurfaceLink = page.getByRole("link", { name: "เข้าสู่ระบบ", exact: true });
+  const lightSurfaceLink = page.getByRole("link", { name: "ขอ Demo", exact: true });
   await expect(lightSurfaceLink).toBeFocused();
   const lightFocus = await computedColorContext(lightSurfaceLink, true);
   expect(lightFocus.outlineStyle).toBe("solid");
@@ -181,6 +232,65 @@ test("keeps normal-size section labels and two-tone focus indicators at accessib
     contrastRatio(parseCssColor(darkFocus.outlineColor), renderedBackground(darkFocus.backgrounds)),
     "white inner focus ring on dark CTA",
   ).toBeGreaterThanOrEqual(3);
+});
+
+test("matches the Canva reference composition at 1336 by 760", async ({ page }) => {
+  await page.setViewportSize({ width: 1336, height: 760 });
+  await page.goto("/");
+
+  const header = await page.getByRole("banner").boundingBox();
+  const eyebrow = await page.getByText("ข้อมูลดาวเทียมเพื่อเกษตรไทย", { exact: true }).boundingBox();
+  const heading = await page.getByRole("heading", {
+    level: 1,
+    name: "เห็นข้อมูลแปลงชัดขึ้น ก่อนออกไปดูพื้นที่จริง",
+  }).boundingBox();
+  const preview = await page.locator("figure").first().boundingBox();
+  const nextSection = await page.locator("#how-it-works").boundingBox();
+
+  expect(header).not.toBeNull();
+  expect(eyebrow).not.toBeNull();
+  expect(heading).not.toBeNull();
+  expect(preview).not.toBeNull();
+  expect(nextSection).not.toBeNull();
+  expect(header!.height).toBeGreaterThanOrEqual(70);
+  expect(header!.height).toBeLessThanOrEqual(74);
+  expect(eyebrow!.x).toBeGreaterThanOrEqual(78);
+  expect(eyebrow!.y).toBeGreaterThanOrEqual(232);
+  expect(eyebrow!.y).toBeLessThanOrEqual(252);
+  expect(heading!.y).toBeGreaterThanOrEqual(292);
+  expect(heading!.y).toBeLessThanOrEqual(326);
+  expect(preview!.x).toBeGreaterThanOrEqual(568);
+  expect(preview!.x).toBeLessThanOrEqual(604);
+  expect(preview!.y).toBeGreaterThanOrEqual(146);
+  expect(preview!.y).toBeLessThanOrEqual(160);
+  expect(preview!.width).toBeGreaterThanOrEqual(645);
+  expect(preview!.width).toBeLessThanOrEqual(670);
+  expect(preview!.height).toBeGreaterThanOrEqual(510);
+  expect(preview!.height).toBeLessThanOrEqual(535);
+  expect(preview!.x).toBeGreaterThan(heading!.x + heading!.width + 40);
+  expect(nextSection!.y).toBeGreaterThanOrEqual(759);
+
+  await expect(page.getByRole("navigation", { name: "เมนูหลัก" }).getByRole("link")).toHaveCount(3);
+  for (const name of ["สมัครใช้งาน", "ดูตัวอย่างข้อมูล"]) {
+    const target = await page.getByRole("link", { name }).boundingBox();
+    expect(target).not.toBeNull();
+    expect(target!.width).toBeGreaterThanOrEqual(44);
+    expect(target!.height).toBeGreaterThanOrEqual(44);
+  }
+
+  const headerTargets = [
+    page.getByRole("link", { name: "AgriScope Thailand หน้าหลัก" }),
+    page.getByRole("navigation", { name: "เมนูหลัก" }).getByRole("link"),
+    page.getByRole("link", { name: "ขอ Demo", exact: true }),
+  ];
+  for (const locator of headerTargets) {
+    const targets = await locator.all();
+    for (const target of targets) {
+      const box = await target.boundingBox();
+      expect(box).not.toBeNull();
+      expect(box!.height).toBeGreaterThanOrEqual(44);
+    }
+  }
 });
 
 for (const viewport of viewports) {

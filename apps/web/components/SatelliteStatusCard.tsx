@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "./Button";
 import { apiFetch } from "../lib/api";
-import type { SatelliteLatest } from "../lib/types";
+import type { SatelliteLatest, SatelliteSearch } from "../lib/types";
 import { Badge, Card } from "./Primitives";
 
 export function SatelliteStatusCard({ fieldId }: { fieldId: string }) {
@@ -15,7 +15,7 @@ export function SatelliteStatusCard({ fieldId }: { fieldId: string }) {
   });
   const search = useMutation({
     mutationFn: () =>
-      apiFetch<SatelliteLatest>(`/api/v1/fields/${fieldId}/satellite/search-latest`, {
+      apiFetch<SatelliteSearch>(`/api/v1/fields/${fieldId}/satellite/search-latest`, {
         method: "POST"
       }),
     onSuccess: (data) => {
@@ -23,7 +23,8 @@ export function SatelliteStatusCard({ fieldId }: { fieldId: string }) {
     }
   });
   const result = search.data ?? latest.data;
-  const unavailable = search.isError || result?.status === "temporarily_unavailable";
+  const requestError = search.error ?? (search.data ? null : latest.error);
+  const unavailable = search.isError || (!search.data && latest.isError) || result?.status === "temporarily_unavailable";
 
   return (
     <Card premium className="p-5">
@@ -41,13 +42,15 @@ export function SatelliteStatusCard({ fieldId }: { fieldId: string }) {
       <div className="mt-5 rounded-[var(--as-radius-lg)] border border-[var(--as-border)] bg-[var(--as-blue-soft)] p-4" aria-live="polite">
         {latest.isLoading ? <p className="text-[var(--as-ink-muted)]">กำลังโหลดสถานะดาวเทียม...</p> : null}
         {unavailable ? (
-          <p className="font-semibold text-[var(--as-warning)]">ยังไม่สามารถตรวจสอบข้อมูลดาวเทียมได้ กรุณาลองใหม่ภายหลัง</p>
+          <p role="alert" className="font-semibold text-[var(--as-warning)]">
+            {requestError?.message ?? "ยังไม่สามารถตรวจสอบข้อมูลดาวเทียมได้ กรุณาลองใหม่ภายหลัง"}
+          </p>
         ) : null}
-        {!unavailable && result?.status === "available" && result.acquisition ? (
+        {!unavailable && result?.status === "available" ? (
           <div className="space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <p className="text-lg font-bold text-[var(--as-ink)]">พบภาพล่าสุด</p>
-              <span className="as-pill text-[var(--as-satellite)]">ข้อมูลพร้อมสำหรับการวิเคราะห์ขั้นถัดไป</span>
+              <span className="as-pill text-[var(--as-satellite)]">มีข้อมูลประกอบภาพล่าสุด</span>
             </div>
             <div className="grid gap-3 md:grid-cols-2">
               <Info label="วันที่ดาวเทียมบันทึกภาพ" value={formatThaiDate(result.acquisition.acquired_at)} />
@@ -70,6 +73,14 @@ export function SatelliteStatusCard({ fieldId }: { fieldId: string }) {
         ) : null}
         {!unavailable && result?.status === "no_data" ? (
           <p className="font-semibold text-[var(--as-ink-muted)]">ยังไม่พบภาพ Sentinel-2 ที่ตรงกับเงื่อนไขในช่วงเวลาที่ค้นหา</p>
+        ) : null}
+        {!unavailable && result?.status === "not_searched" ? (
+          <div>
+            <p className="font-semibold text-[var(--as-ink)]">ยังไม่มีผลการค้นหาดาวเทียมที่บันทึกไว้</p>
+            <p className="mt-1 text-sm text-[var(--as-ink-muted)]">
+              เริ่มตรวจสอบเมื่อพร้อม ระบบจะแสดงเฉพาะข้อมูลประกอบภาพที่ค้นพบ
+            </p>
+          </div>
         ) : null}
         {!latest.isLoading && !result && !unavailable ? (
           <p className="text-[var(--as-ink-muted)]">ยังไม่มีการตรวจสอบภาพดาวเทียมล่าสุด</p>

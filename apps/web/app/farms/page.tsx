@@ -2,10 +2,11 @@
 
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { Button } from "../../components/Button";
+import { buttonClassName } from "../../components/Button";
 import { PageShell } from "../../components/PageShell";
 import { EmptyState, LoadingBlock, MetricCard } from "../../components/Primitives";
 import { apiFetch } from "../../lib/api";
+import { useManageableOrganizations } from "../../lib/permissions";
 import type { Farm } from "../../lib/types";
 
 export default function FarmsPage() {
@@ -13,7 +14,9 @@ export default function FarmsPage() {
     queryKey: ["farms"],
     queryFn: () => apiFetch<Farm[]>("/api/v1/farms")
   });
+  const permissions = useManageableOrganizations();
   const farmCount = farms.data?.length ?? 0;
+  const canCreateFarm = permissions.manageableOrganizations.length > 0;
 
   return (
     <PageShell>
@@ -26,39 +29,55 @@ export default function FarmsPage() {
               Create farms, draw verified boundaries, and keep satellite catalogue checks tied to the saved field.
             </p>
           </div>
-          <Link href="/farms/new">
-            <Button size="lg">Create farm</Button>
-          </Link>
+          {canCreateFarm ? (
+            <Link href="/farms/new" className={buttonClassName({ size: "lg" })}>Create farm</Link>
+          ) : null}
         </section>
 
+        {!permissions.isLoading && permissions.isError ? (
+          <EmptyState
+            title={permissions.error instanceof Error ? permissions.error.message : "Organization permission could not be loaded."}
+            description="Mutation controls are unavailable until your organization role can be verified."
+            role="alert"
+          />
+        ) : null}
+
+        {!permissions.isLoading && !permissions.isError && permissions.organizations.length > 0 && !canCreateFarm ? (
+          <EmptyState
+            title="View-only access"
+            description="Your organization role can inspect farms and fields, but field-manager access is required to create them."
+          />
+        ) : null}
+
         <div className="grid gap-3 md:grid-cols-3">
-          <MetricCard label="Farms" value={farms.isLoading ? "-" : String(farmCount)} detail="Active saved workspaces" />
-          <MetricCard label="Satellite" value="Ready" detail="Latest Sentinel metadata" tone="satellite" />
-          <MetricCard label="Map" value="Live" detail="Draw and reload boundaries" tone="success" />
+          <MetricCard
+            label="Farms"
+            value={farms.isError ? "Unavailable" : farms.isLoading ? "-" : String(farmCount)}
+            detail="Active saved workspaces"
+          />
+          <MetricCard label="Satellite" value="Sentinel-2" detail="Metadata checks run from saved fields" tone="satellite" />
+          <MetricCard label="Map" value="MapLibre" detail="Boundary drawing workspace" tone="success" />
         </div>
 
         {farms.isLoading ? <LoadingBlock label="Loading farms..." /> : null}
 
         {farms.isError ? (
           <EmptyState
-            title="Login is required before farms can be shown."
+            title={farms.error.message}
             description="Sign in to load your organization workspace and saved field boundaries."
+            role="alert"
             action={
-              <Link href="/login">
-                <Button>Go to login</Button>
-              </Link>
+              <Link href="/login" className={buttonClassName()}>Go to login</Link>
             }
           />
         ) : null}
 
-        {farms.data?.length === 0 ? (
+        {farms.data?.length === 0 && canCreateFarm ? (
           <EmptyState
             title="No farms yet."
             description="Create your first farm to unlock the map workflow and save a field boundary."
             action={
-              <Link href="/farms/new">
-                <Button>Create your first farm</Button>
-              </Link>
+              <Link href="/farms/new" className={buttonClassName()}>Create your first farm</Link>
             }
           />
         ) : null}

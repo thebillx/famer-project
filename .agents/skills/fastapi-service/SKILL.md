@@ -98,6 +98,6 @@ Report routes, schemas, migrations, tests, authorization checks, organization-sc
 ## References
 
 - `AGENTS.md`
-- `.agents/workflows/contract-first.md`
+- `.agents/workflows/delivery.md`
 - `.agents/templates/handoff-report.md`
 - FastAPI, Pydantic, SQLAlchemy, and OWASP ASVS documentation as references.

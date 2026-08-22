@@ -9,8 +9,17 @@ from uuid import UUID, uuid4
 import psycopg
 import pytest
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
 from apps.api.agriscope_api.application import create_app
+from apps.api.agriscope_api.api.v1 import auth as auth_api
+from apps.api.agriscope_api.api.v1.satellite import (
+    SatelliteAvailableResponse,
+    SatelliteEmptySearchResponse,
+    SatelliteNotSearchedResponse,
+    _search_response,
+)
+from apps.api.agriscope_api.core.errors import ApiException
 from apps.api.agriscope_api.core.security import TokenClaims, TokenType, create_token, parse_token
 from apps.api.agriscope_api.providers.cdse_stac import (
     CDSE_STAC_PROVIDER,
@@ -19,9 +28,11 @@ from apps.api.agriscope_api.providers.cdse_stac import (
     CdseStacSearchResult,
     CdseStacUnavailable,
 )
+from apps.api.agriscope_api.services.satellite import SatelliteResponse
 
 
 DATABASE_URL = "postgresql://agriscope:agriscope_dev_password@localhost:5432/agriscope"
+APP_ORIGIN = "http://localhost:3000"
 
 
 def _connect():
@@ -45,7 +56,17 @@ def client():
         yield test_client
 
 
+def _prime_csrf(client: TestClient) -> str:
+    response = client.get("/api/v1/auth/csrf")
+    assert response.status_code == 200, response.text
+    token = response.json()["csrf_token"]
+    assert client.cookies["agriscope_csrf"] == token
+    client.headers.update({"Origin": APP_ORIGIN, "X-CSRF-Token": token})
+    return token
+
+
 def _register(client: TestClient, email: str = "farmer@example.com") -> dict:
+    _prime_csrf(client)
     response = client.post(
         "/api/v1/auth/register",
         json={
@@ -117,11 +138,22 @@ def test_duplicate_email_and_invalid_credentials_use_safe_errors(client: TestCli
 def test_login_me_refresh_rotation_and_logout_revoke_database_session(client: TestClient):
     _register(client)
     client.cookies.clear()
+    _prime_csrf(client)
     login = client.post(
         "/api/v1/auth/login",
         json={"email": "farmer@example.com", "password": "StrongPass12345"},
     )
     assert login.status_code == 204
+    login_cookies = [value.lower() for value in login.headers.get_list("set-cookie")]
+    login_by_name = {value.split("=", 1)[0]: value for value in login_cookies}
+    assert "max-age=900" in login_by_name["agriscope_access"]
+    assert "path=/" in login_by_name["agriscope_access"]
+    assert "max-age=2592000" in login_by_name["agriscope_refresh"]
+    assert "path=/api/v1/auth" in login_by_name["agriscope_refresh"]
+    assert all(
+        "httponly" in value and "samesite=lax" in value and "domain=" not in value
+        for value in login_by_name.values()
+    )
     old_refresh = client.cookies["agriscope_refresh"]
 
     me = client.get("/api/v1/auth/me")
@@ -130,6 +162,10 @@ def test_login_me_refresh_rotation_and_logout_revoke_database_session(client: Te
 
     refresh = client.post("/api/v1/auth/refresh")
     assert refresh.status_code == 204
+    refresh_cookie_names = {
+        value.split("=", 1)[0].lower() for value in refresh.headers.get_list("set-cookie")
+    }
+    assert refresh_cookie_names == {"agriscope_access", "agriscope_refresh"}
     new_refresh = client.cookies["agriscope_refresh"]
     assert new_refresh != old_refresh
 
@@ -163,6 +199,7 @@ def test_login_me_refresh_rotation_and_logout_revoke_database_session(client: Te
 def test_concurrent_refresh_rotates_session_exactly_once(client: TestClient):
     _register(client)
     client.cookies.clear()
+    _prime_csrf(client)
     login = client.post(
         "/api/v1/auth/login",
         json={"email": "farmer@example.com", "password": "StrongPass12345"},
@@ -175,6 +212,7 @@ def test_concurrent_refresh_rotates_session_exactly_once(client: TestClient):
 
     def refresh_once() -> int:
         worker = TestClient(client.app)
+        _prime_csrf(worker)
         worker.cookies.set("agriscope_refresh", raw_refresh, path="/api/v1/auth")
         return worker.post("/api/v1/auth/refresh").status_code
 
@@ -210,6 +248,16 @@ def test_expired_and_wrong_type_refresh_rejected(client: TestClient):
     _register(client)
     app = client.app
     settings = app.state.settings
+
+    class BucketKinds:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, ...]] = []
+
+        def check(self, buckets) -> None:
+            self.calls.append(tuple(bucket.kind for bucket in buckets))
+
+    limiter = BucketKinds()
+    app.state.rate_limiter = limiter
     expired = create_token(
         TokenClaims(
             subject=str(uuid4()),
@@ -221,6 +269,7 @@ def test_expired_and_wrong_type_refresh_rejected(client: TestClient):
     )
     client.cookies.set("agriscope_refresh", expired, path="/api/v1/auth")
     assert client.post("/api/v1/auth/refresh").status_code == 401
+    assert limiter.calls[-1] == ("session-ip", "session-token")
 
     wrong_type = create_token(
         TokenClaims(
@@ -232,6 +281,252 @@ def test_expired_and_wrong_type_refresh_rejected(client: TestClient):
     )
     client.cookies.set("agriscope_refresh", wrong_type, path="/api/v1/auth")
     assert client.post("/api/v1/auth/refresh").status_code == 401
+    assert limiter.calls[-1] == ("session-ip", "session-token")
+
+
+def test_csrf_bootstrap_rotation_headers_and_cookie_attributes(client: TestClient):
+    first_response = client.get("/api/v1/auth/csrf")
+    first = first_response.json()["csrf_token"]
+    second_response = client.get("/api/v1/auth/csrf")
+    second = second_response.json()["csrf_token"]
+
+    assert first != second
+    assert first_response.headers["cache-control"] == "no-store"
+    assert first_response.headers["vary"] == "Origin"
+    cookie = first_response.headers.get_list("set-cookie")[0].lower()
+    assert "agriscope_csrf=" in cookie
+    assert "max-age=900" in cookie
+    assert "path=/" in cookie
+    assert "samesite=lax" in cookie
+    assert "domain=" not in cookie
+    assert "httponly" not in cookie
+
+
+@pytest.mark.parametrize(
+    "origin",
+    [None, "null", "not-an-origin", "https://localhost:3000", "http://localhost:3001"],
+)
+def test_invalid_origin_rejects_registration_before_limiter_or_database(client: TestClient, origin: str | None):
+    token = _prime_csrf(client)
+    client.headers.pop("Origin", None)
+    if origin is not None:
+        client.headers["Origin"] = origin
+    before_keys = client.app.state.rate_limiter.active_entry_count()
+
+    response = client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": "blocked@example.com",
+            "password": "StrongPass12345",
+            "display_name": "Blocked",
+            "organization_name": "Blocked Farm",
+        },
+        headers={"X-CSRF-Token": token},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "csrf_failed"
+    assert client.app.state.rate_limiter.active_entry_count() == before_keys
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT count(*) FROM users WHERE email = 'blocked@example.com'")
+            assert cur.fetchone()[0] == 0
+
+
+def test_duplicate_origin_and_mismatched_token_fail_closed(client: TestClient):
+    token = _prime_csrf(client)
+    payload = {
+        "email": "blocked@example.com",
+        "password": "StrongPass12345",
+        "display_name": "Blocked",
+        "organization_name": "Blocked Farm",
+    }
+    duplicate_origin = client.post(
+        "/api/v1/auth/register",
+        json=payload,
+        headers=[
+            ("origin", APP_ORIGIN),
+            ("origin", APP_ORIGIN),
+            ("x-csrf-token", token),
+        ],
+    )
+    mismatched_token = client.post(
+        "/api/v1/auth/register",
+        json=payload,
+        headers={"Origin": APP_ORIGIN, "X-CSRF-Token": "not-the-cookie-token"},
+    )
+    assert duplicate_origin.status_code == 403
+    assert mismatched_token.status_code == 403
+
+
+def test_bearer_only_mutation_skips_csrf_but_auth_cookie_presence_enforces(client: TestClient):
+    _register(client, "bearer@example.com")
+    access_token = client.cookies["agriscope_access"]
+    client.cookies.clear()
+    client.headers.clear()
+    client.headers["Authorization"] = f"Bearer {access_token}"
+
+    bearer_only = client.post("/api/v1/organizations", json={"name": "Bearer Farm"})
+    assert bearer_only.status_code == 201, bearer_only.text
+
+    client.cookies.set("agriscope_access", access_token, path="/")
+    cookie_bearing = client.post("/api/v1/organizations", json={"name": "Cookie Farm"})
+    assert cookie_bearing.status_code == 403
+    assert cookie_bearing.json()["error"]["code"] == "csrf_failed"
+
+
+def test_logout_is_idempotent_exempt_from_limiter_and_clears_matching_cookies(client: TestClient):
+    _register(client, "logout@example.com")
+
+    class RejectEveryLimit:
+        def check(self, _buckets) -> None:
+            raise AssertionError("logout must not consult the limiter")
+
+    client.app.state.rate_limiter = RejectEveryLimit()
+    response = client.post("/api/v1/auth/logout")
+    assert response.status_code == 204
+    assert not {"agriscope_access", "agriscope_refresh", "agriscope_csrf"} & set(client.cookies)
+
+    set_cookies = [value.lower() for value in response.headers.get_list("set-cookie")]
+    by_name = {value.split("=", 1)[0]: value for value in set_cookies}
+    assert set(by_name) == {"agriscope_access", "agriscope_refresh", "agriscope_csrf"}
+    assert "path=/" in by_name["agriscope_access"]
+    assert "httponly" in by_name["agriscope_access"]
+    assert "path=/api/v1/auth" in by_name["agriscope_refresh"]
+    assert "httponly" in by_name["agriscope_refresh"]
+    assert "path=/" in by_name["agriscope_csrf"]
+    assert "httponly" not in by_name["agriscope_csrf"]
+    assert all("domain=" not in value and "samesite=lax" in value for value in by_name.values())
+
+    client.cookies.set("agriscope_csrf", "again", path="/")
+    client.headers.update({"Origin": APP_ORIGIN, "X-CSRF-Token": "again"})
+    assert client.post("/api/v1/auth/logout").status_code == 204
+
+
+@pytest.mark.parametrize("failure", ["revoke", "commit"])
+def test_logout_terminal_cleanup_survives_transaction_failures(
+    client: TestClient,
+    monkeypatch,
+    failure: str,
+):
+    _register(client, f"logout-{failure}@example.com")
+    events: list[str] = []
+
+    class FailingSession:
+        async def commit(self) -> None:
+            events.append("commit")
+            if failure == "commit":
+                raise RuntimeError("commit fixture failure")
+
+        async def rollback(self) -> None:
+            events.append("rollback")
+            raise RuntimeError("rollback fixture failure")
+
+        async def close(self) -> None:
+            events.append("close")
+            raise RuntimeError("close fixture failure")
+
+    def session_factory():
+        events.append("factory")
+        return FailingSession()
+
+    async def logout(_service, _session, _raw_refresh_token) -> None:
+        events.append("revoke")
+        if failure == "revoke":
+            raise RuntimeError("revoke fixture failure")
+
+    client.app.state.session_factory = session_factory
+    monkeypatch.setattr(auth_api.AuthService, "logout", logout)
+
+    response = client.post("/api/v1/auth/logout")
+    assert response.status_code == 204
+    assert not {"agriscope_access", "agriscope_refresh", "agriscope_csrf"} & set(client.cookies)
+    if failure == "revoke":
+        assert events == ["factory", "revoke", "rollback", "close"]
+    else:
+        assert events == ["factory", "revoke", "commit", "rollback", "close"]
+    assert {
+        value.split("=", 1)[0].lower() for value in response.headers.get_list("set-cookie")
+    } == {"agriscope_access", "agriscope_refresh", "agriscope_csrf"}
+
+
+@pytest.mark.parametrize("refresh_value", [None, "malformed-refresh-fixture"])
+def test_logout_missing_or_malformed_refresh_never_opens_a_session(
+    client: TestClient,
+    refresh_value: str | None,
+):
+    _register(client, "logout-no-session@example.com")
+    if refresh_value is None:
+        client.cookies.delete("agriscope_refresh", path="/api/v1/auth")
+    else:
+        client.cookies.set("agriscope_refresh", refresh_value, path="/api/v1/auth")
+
+    def forbidden_session_factory():
+        raise AssertionError("invalid refresh state must not open or mutate a session")
+
+    client.app.state.session_factory = forbidden_session_factory
+    response = client.post("/api/v1/auth/logout")
+    assert response.status_code == 204
+    assert not {"agriscope_access", "agriscope_refresh", "agriscope_csrf"} & set(client.cookies)
+
+
+def test_validation_errors_exclude_raw_input_context_and_pii(client: TestClient):
+    private_email = "private.person@example.com"
+    private_password = "TopSecret9"
+    response = client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": private_email,
+            "password": private_password,
+            "display_name": {"private": "display-value"},
+        },
+    )
+    assert response.status_code == 422
+    body = response.json()
+    rendered = response.text
+    assert private_email not in rendered
+    assert private_password not in rendered
+    assert '"password"' not in rendered.lower()
+    assert "display-value" not in rendered
+    errors = body["error"]["details"]["errors"]
+    assert errors
+    for item in errors:
+        assert set(item) == {"loc", "type", "message"}
+        assert isinstance(item["loc"], list)
+        assert isinstance(item["type"], str)
+        assert item["message"] in {"Field required", "Invalid value"}
+    assert "input" not in rendered
+    assert "ctx" not in rendered
+
+
+def test_refresh_limit_keys_use_valid_subject_or_privacy_safe_token_fallback(client: TestClient):
+    class CapturingLimiter:
+        def __init__(self) -> None:
+            self.calls: list[tuple[tuple[str, str], ...]] = []
+
+        def check(self, buckets) -> None:
+            self.calls.append(tuple((bucket.kind, bucket.value) for bucket in buckets))
+
+    _register(client, "refresh-buckets@example.com")
+    limiter = CapturingLimiter()
+    client.app.state.rate_limiter = limiter
+    valid_refresh = client.cookies["agriscope_refresh"]
+    valid_subject = parse_token(
+        valid_refresh,
+        client.app.state.settings.session_secret,
+        TokenType.REFRESH,
+    ).subject
+    assert client.post("/api/v1/auth/refresh").status_code == 204
+    assert [kind for kind, _value in limiter.calls[-1]] == ["session-ip", "session-subject"]
+    assert limiter.calls[-1][1][1] == valid_subject
+
+    client.cookies.set("agriscope_refresh", "malformed-private-token", path="/api/v1/auth")
+    assert client.post("/api/v1/auth/refresh").status_code == 401
+    assert [kind for kind, _value in limiter.calls[-1]] == ["session-ip", "session-token"]
+
+    client.cookies.delete("agriscope_refresh", path="/api/v1/auth")
+    assert client.post("/api/v1/auth/refresh").status_code == 401
+    assert [kind for kind, _value in limiter.calls[-1]] == ["session-ip"]
 
 
 def test_organization_tenant_scope_and_disabled_membership(client: TestClient):
@@ -334,13 +629,32 @@ class FakeAvailableProvider:
 
 
 class FakeNoDataProvider:
+    def __init__(self) -> None:
+        self.calls = 0
+
     async def search_latest(self, geometry, *, now=None):
+        self.calls += 1
         return CdseStacSearchResult(item=None, searched_at=now or datetime.now(UTC))
 
 
 class FakeUnavailableProvider:
+    def __init__(self) -> None:
+        self.calls = 0
+
     async def search_latest(self, geometry, *, now=None):
+        self.calls += 1
         raise CdseStacUnavailable("fixture unavailable")
+
+
+class TrackingLimiter:
+    def __init__(self, *, reject: bool = False) -> None:
+        self.reject = reject
+        self.calls: list[tuple[str, ...]] = []
+
+    def check(self, buckets) -> None:
+        self.calls.append(tuple(bucket.kind for bucket in buckets))
+        if self.reject:
+            raise ApiException("rate_limited", "Too many requests", 429, {"retry_after": 30})
 
 
 def test_farm_and_field_crud_persists_geometry_and_area(client: TestClient):
@@ -488,6 +802,16 @@ def test_satellite_search_persists_latest_acquisition_idempotently_and_uses_pers
     provider = FakeAvailableProvider()
     client.app.state.cdse_stac_provider = provider
 
+    initial = client.get(f"/api/v1/fields/{field['id']}/satellite/latest")
+    assert initial.status_code == 200
+    assert initial.json() == {
+        "field_id": field["id"],
+        "status": "not_searched",
+        "acquisition": None,
+        "searched_at": None,
+        "message_th": "ยังไม่มีผลการค้นหาดาวเทียมที่บันทึกไว้",
+    }
+
     first = client.post(f"/api/v1/fields/{field['id']}/satellite/search-latest")
     assert first.status_code == 200, first.text
     body = first.json()
@@ -531,11 +855,18 @@ def test_satellite_no_data_unavailable_auth_and_tenant_scope(client: TestClient)
     no_data = client.post(f"/api/v1/fields/{field['id']}/satellite/search-latest")
     assert no_data.status_code == 200
     assert no_data.json()["status"] == "no_data"
+    assert no_data.json()["acquisition"] is None
+    assert no_data.json()["searched_at"] is not None
 
     client.app.state.cdse_stac_provider = FakeUnavailableProvider()
     unavailable = client.post(f"/api/v1/fields/{field['id']}/satellite/search-latest")
     assert unavailable.status_code == 200
     assert unavailable.json()["status"] == "temporarily_unavailable"
+    assert unavailable.json()["acquisition"] is None
+    assert unavailable.json()["searched_at"] is not None
+    latest_after_negative = client.get(f"/api/v1/fields/{field['id']}/satellite/latest")
+    assert latest_after_negative.json()["status"] == "not_searched"
+    assert latest_after_negative.json()["searched_at"] is None
 
     other_client = TestClient(client.app)
     _register(other_client, "satellite-foreign@example.com")
@@ -546,6 +877,92 @@ def test_satellite_no_data_unavailable_auth_and_tenant_scope(client: TestClient)
         with conn.cursor() as cur:
             cur.execute("UPDATE fields SET status = 'deleted' WHERE id = %s", (field["id"],))
     assert client.post(f"/api/v1/fields/{field['id']}/satellite/search-latest").status_code == 404
+
+
+def test_security_ordering_blocks_limiter_repository_and_provider_side_effects(client: TestClient):
+    owner = _register(client, "ordering-owner@example.com")
+    farm = _create_farm(client, owner["organization"]["id"])
+    field = _create_field(client, farm["id"])
+    provider = FakeNoDataProvider()
+    client.app.state.cdse_stac_provider = provider
+
+    limiter = TrackingLimiter()
+    client.app.state.rate_limiter = limiter
+    anonymous = TestClient(client.app)
+    assert anonymous.post(f"/api/v1/fields/{field['id']}/satellite/search-latest").status_code == 401
+    assert limiter.calls == []
+    assert provider.calls == 0
+    csrf_rejected = client.post(
+        f"/api/v1/fields/{field['id']}/satellite/search-latest",
+        headers={"Origin": APP_ORIGIN, "X-CSRF-Token": "mismatch"},
+    )
+    assert csrf_rejected.status_code == 403
+    assert limiter.calls == []
+    assert provider.calls == 0
+
+    other = TestClient(client.app)
+    _register(other, "ordering-other@example.com")
+    limiter.calls.clear()
+    foreign = other.post(f"/api/v1/fields/{field['id']}/satellite/search-latest")
+    assert foreign.status_code == 404
+    assert limiter.calls == []
+    assert provider.calls == 0
+
+    rejected_limiter = TrackingLimiter(reject=True)
+    client.app.state.rate_limiter = rejected_limiter
+    limited_search = client.post(f"/api/v1/fields/{field['id']}/satellite/search-latest")
+    assert limited_search.status_code == 429
+    assert limited_search.headers["retry-after"] == "30"
+    assert rejected_limiter.calls == [("satellite-subject", "satellite-field")]
+    assert provider.calls == 0
+
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT count(*) FROM field_acquisitions WHERE field_id = %s", (field["id"],))
+            assert cur.fetchone()[0] == 0
+            cur.execute("SELECT count(*) FROM farms WHERE organization_id = %s", (owner["organization"]["id"],))
+            before = cur.fetchone()[0]
+    limited_mutation = client.post(
+        "/api/v1/farms",
+        json={"organization_id": owner["organization"]["id"], "name": "Never created"},
+    )
+    assert limited_mutation.status_code == 429
+    assert rejected_limiter.calls[-1] == ("mutation-ip", "mutation-subject")
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT count(*) FROM farms WHERE organization_id = %s", (owner["organization"]["id"],))
+            assert cur.fetchone()[0] == before
+
+
+def test_role_failure_precedes_limiter_and_mutation(client: TestClient):
+    owner = _register(client, "ordering-role-owner@example.com")
+    owner_org_id = owner["organization"]["id"]
+    viewer = TestClient(client.app)
+    _register(viewer, "ordering-viewer@example.com")
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT id FROM users WHERE email = %s", ("ordering-viewer@example.com",))
+            viewer_id = cur.fetchone()[0]
+            cur.execute(
+                """
+                INSERT INTO memberships (organization_id, user_id, role, status, joined_at)
+                VALUES (%s, %s, 'viewer', 'active', now())
+                """,
+                (owner_org_id, viewer_id),
+            )
+
+    limiter = TrackingLimiter()
+    client.app.state.rate_limiter = limiter
+    response = viewer.post(
+        "/api/v1/farms",
+        json={"organization_id": owner_org_id, "name": "Viewer must not create"},
+    )
+    assert response.status_code == 403
+    assert limiter.calls == []
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT count(*) FROM farms WHERE organization_id = %s", (owner_org_id,))
+            assert cur.fetchone()[0] == 0
 
 
 def test_satellite_viewer_can_search_and_database_rejects_mismatched_field_organization(client: TestClient):
@@ -592,3 +1009,50 @@ def test_satellite_viewer_can_search_and_database_rejects_mismatched_field_organ
                     """,
                     (field["id"], other["organization"]["id"], Decimal("12.40")),
                 )
+
+
+def test_satellite_response_models_reject_impossible_discriminator_shapes():
+    field_id = str(uuid4())
+    now = datetime.now(UTC)
+    valid_initial = SatelliteNotSearchedResponse(
+        field_id=field_id,
+        status="not_searched",
+        acquisition=None,
+        searched_at=None,
+        message_th="ยังไม่มีผลการค้นหาดาวเทียมที่บันทึกไว้",
+    )
+    assert valid_initial.searched_at is None
+    with pytest.raises(ValidationError):
+        SatelliteNotSearchedResponse(
+            field_id=field_id,
+            status="not_searched",
+            acquisition=None,
+            searched_at=now,
+            message_th="invalid",
+        )
+    with pytest.raises(ValidationError):
+        SatelliteEmptySearchResponse(
+            field_id=field_id,
+            status="no_data",
+            acquisition=None,
+            searched_at=None,
+            message_th="invalid",
+        )
+    with pytest.raises(ValidationError):
+        SatelliteAvailableResponse(
+            field_id=field_id,
+            status="available",
+            acquisition=None,
+            searched_at=now,
+            message_th="invalid",
+        )
+    with pytest.raises(ValueError, match="cannot return not_searched"):
+        _search_response(
+            SatelliteResponse(
+                field_id=UUID(field_id),
+                status="not_searched",
+                acquisition=None,
+                searched_at=None,
+                message_th="initial state is GET-only",
+            )
+        )

@@ -1,107 +1,34 @@
 ---
 name: test-security-gate
-description: Review AgriScope work for requirement coverage, tests, geospatial correctness, frontend states, security, tenant isolation, regression risk, and release readiness.
+description: Perform an owner-requested, read-only AgriScope security review outside the automated lifecycle.
 ---
 
 # test-security-gate
 
-## Purpose
+## Boundary
 
-Provide the mandatory QA and security review gate before AgriScope work can be verified or marked done.
+This skill is never part of the automated lifecycle and Ponytail never substitutes
+for it. Use it only after the owner explicitly decides that a security review is
+required and supplies the exact contribution boundary and evidence.
 
-## When to use
+## Inputs
 
-- Work has been implemented and handed off.
-- A task needs review for security, tests, accessibility, geospatial correctness, or regression risk.
-- The orchestrator requests release readiness evidence.
+- Owner request and exact scope.
+- Commit/diff or working-tree boundary selected by the owner.
+- Relevant contracts and validation evidence.
+- CI or runtime evidence when the owner chooses to include it.
 
-## When not to use
+## Review
 
-- Before implementation exists.
-- To replace owner self-verification.
-- To approve work without code diff or test evidence.
+Check secrets, privacy, authentication, authorization, tenant isolation, input and
+GeoJSON validation, CSRF/XSS, logging, rate limiting, dependencies, external
+providers, idempotency, quality gates, and safe satellite wording affected by the
+scope. Cite direct evidence and return `APPROVED`, `CHANGES_REQUIRED`, or `BLOCKED`.
 
-## Required inputs
+## Rules
 
-- Task brief.
-- Handoff report.
-- Code diff.
-- Test output.
-- Contract and acceptance criteria.
-
-## Preconditions
-
-- Implementing agent has completed self-verification.
-- Review has access to changed files and commands executed.
-- Required contracts are available.
-
-## Procedure
-
-1. Review functional requirement coverage.
-2. Check acceptance criteria.
-3. Check error behavior.
-4. Assess regression risk.
-5. Review backend unit, API, integration, migration, organization-scope, and permission tests.
-6. Review geospatial numerical fixtures, division by zero, NaN, NoData, invalid geometry, area accuracy, and cloud/quality behavior.
-7. Review frontend component states, API error state, mobile behavior, accessibility, keyboard navigation, and color-independent status.
-8. Review authentication, authorization, cross-tenant access, secret exposure, logging, input validation, CSRF/XSS considerations, rate-limit considerations, and dependency risk.
-9. Detect mock implementations in production flow.
-10. Produce a decision: `APPROVED`, `APPROVED_WITH_NOTES`, `CHANGES_REQUIRED`, or `BLOCKED`.
-
-## Expected outputs
-
-- Review report using `.agents/templates/review-report.md`.
-- Recommended task status.
-- Required changes when applicable.
-
-## Validation
-
-- Every finding cites file diff or test evidence.
-- Failed or missing tests are explicitly listed.
-- Security findings include impact and required fix.
-- `DONE` is recommended only when evidence supports it.
-
-## Failure handling
-
-- If evidence is missing, return `CHANGES_REQUIRED`.
-- If review cannot run due to environment or missing contracts, return `BLOCKED` or `CHANGES_REQUIRED` with reason.
-- If a severe security issue is found, return `BLOCKED`.
-
-## Security considerations
-
-- Never expose secrets in review output.
-- Treat logs and fixtures as possible secret sources.
-- Verify tenant isolation for tenant-owned data.
-- Verify satellite limitations are preserved in user-facing language.
-
-## Handoff requirements
-
-Return decision, evidence, tests executed, tests passed, tests failed, security findings, regression risks, required changes, and recommended status.
-
-## Prohibited actions
-
-- Do not approve based on implementation claims alone.
-- Do not rewrite feature implementation unless assigned.
-- Do not ignore missing tests.
-- Do not mark `CHANGES_REQUIRED` work as ready.
-
-## References
-
-- `AGENTS.md`
-- `.agents/workflows/qa-security-review.md`
-- `.agents/templates/review-report.md`
-- OWASP ASVS and Playwright documentation as references.
-
-## Review output
-
-```text
-Decision:
-Evidence:
-Tests executed:
-Tests passed:
-Tests failed:
-Security findings:
-Regression risks:
-Required changes:
-Recommended status:
-```
+- Read-only; do not fix findings.
+- Do not broaden scope or expose sensitive values.
+- Do not claim compliance certification.
+- Do not trigger staging, commit, push, CI, deployment, or merge.
+- Return control to the owner after the decision.
