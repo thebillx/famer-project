@@ -59,6 +59,10 @@ class RegisterResponse(BaseModel):
 router = APIRouter(prefix="/auth", tags=["auth"]) if APIRouter else None
 
 
+def _rate_email(value: str) -> str:
+    return value.strip().lower() or "invalid"
+
+
 if router:
     from uuid import UUID
 
@@ -116,9 +120,6 @@ if router:
             samesite=settings.cookie_samesite,
         )
         delete_csrf_cookie(response, settings)
-
-    def _rate_email(value: str) -> str:
-        return value.strip().lower() or "invalid"
 
     def _refresh_subject(request: Request, raw_token: str | None) -> str | None:
         if not raw_token:
