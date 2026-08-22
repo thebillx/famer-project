@@ -6,7 +6,7 @@ FOUNDATION-001 establishes the backend foundation for continued development on b
 
 Reviewed commit: pending `fix(api): complete executable auth and tenant foundation`
 
-The review is based on repository inspection, `.agents/reviews/ARCH-001-review.md`, `.agents/reviews/FOUNDATION-001-review.md`, the committed code, and recorded validation outputs.
+The review is based on repository inspection, `docs/reviews/archive/ARCH-001-review.md`, `docs/reviews/archive/FOUNDATION-001-review.md`, the committed code, and recorded validation outputs.
 
 ## Architecture
 

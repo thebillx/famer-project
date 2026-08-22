@@ -94,5 +94,5 @@ Report geometry schema used, validation behavior, UI states, accessibility check
 
 - `AGENTS.md`
 - `.agents/skills/postgis-field-geometry/SKILL.md`
-- `.agents/workflows/contract-first.md`
+- `.agents/workflows/delivery.md`
 - MapLibre GL JS documentation as reference.

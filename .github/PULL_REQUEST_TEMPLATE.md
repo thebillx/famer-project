@@ -1,35 +1,30 @@
 # Summary
 
-## Business Goal
+## User outcome
 
-## Scope
+## Scope and exclusions
 
-## Out of Scope
+## API, data, or architecture changes
 
-## Architecture Impact
+## Validation
 
-## Database Impact
+- Local commands/results:
+- Ponytail LOCAL_NATIVE decision:
 
-## API Changes
+## Owner-controlled delivery evidence
 
-## Security Changes
+- Commit SHA:
+- CI link/status:
+- Security review: `NOT_REQUESTED | REQUESTED | APPROVED | CHANGES_REQUIRED | BLOCKED`
+- Security review link, when requested:
 
-## Testing
-
-## Migration
-
-## Known Risks
+## Risks, migration, and rollback
 
 ## Screenshots
 
-## Checklist
+## Owner checklist
 
-- [ ] Architecture reviewed
-- [ ] Security reviewed
-- [ ] RBAC impact reviewed
-- [ ] Tenant scope reviewed
-- [ ] Tests added or updated
-- [ ] Tests executed and results documented
-- [ ] Migration impact reviewed
-- [ ] Documentation updated
-- [ ] CTO review completed or explicitly requested
+- [ ] Contribution boundary is intentional
+- [ ] Tenant/RBAC impact is covered where relevant
+- [ ] No secrets are included
+- [ ] Commit/push/CI/security/merge decisions were made by the owner

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
+import ipaddress
 import os
 from typing import Any
 
@@ -61,6 +62,21 @@ class SettingsSnapshot:
     cookie_secure: bool
     cookie_samesite: str
     log_level: str
+    rate_limit_window_seconds: int = 900
+    rate_limit_max_entries: int = 10000
+    rate_limit_csrf_ip: int = 60
+    rate_limit_register_ip: int = 25
+    rate_limit_register_email: int = 5
+    rate_limit_login_ip: int = 50
+    rate_limit_login_email: int = 10
+    rate_limit_session_ip: int = 60
+    rate_limit_session_subject: int = 30
+    rate_limit_session_token: int = 10
+    rate_limit_mutation_ip: int = 300
+    rate_limit_mutation_subject: int = 60
+    rate_limit_satellite_subject: int = 20
+    rate_limit_satellite_field: int = 10
+    trusted_proxy_cidrs: tuple[str, ...] = ()
     cdse_client_id: str = ""
     cdse_client_secret: str = ""
     cdse_token_url: str = ""
@@ -116,6 +132,23 @@ def settings_from_env(environ: dict[str, str] | None = None) -> SettingsSnapshot
         cookie_secure=_bool(env.get("COOKIE_SECURE", ""), app_env == AppEnvironment.PRODUCTION),
         cookie_samesite=env.get("COOKIE_SAMESITE", CookieSameSite.LAX.value).lower(),
         log_level=env.get("LOG_LEVEL", "INFO").upper(),
+        rate_limit_window_seconds=int(env.get("RATE_LIMIT_WINDOW_SECONDS", "900")),
+        rate_limit_max_entries=int(env.get("RATE_LIMIT_MAX_ENTRIES", "10000")),
+        rate_limit_csrf_ip=int(env.get("RATE_LIMIT_CSRF_IP", "60")),
+        rate_limit_register_ip=int(env.get("RATE_LIMIT_REGISTER_IP", "25")),
+        rate_limit_register_email=int(env.get("RATE_LIMIT_REGISTER_EMAIL", "5")),
+        rate_limit_login_ip=int(env.get("RATE_LIMIT_LOGIN_IP", "50")),
+        rate_limit_login_email=int(env.get("RATE_LIMIT_LOGIN_EMAIL", "10")),
+        rate_limit_session_ip=int(env.get("RATE_LIMIT_SESSION_IP", "60")),
+        rate_limit_session_subject=int(env.get("RATE_LIMIT_SESSION_SUBJECT", "30")),
+        rate_limit_session_token=int(env.get("RATE_LIMIT_SESSION_TOKEN", "10")),
+        rate_limit_mutation_ip=int(env.get("RATE_LIMIT_MUTATION_IP", "300")),
+        rate_limit_mutation_subject=int(env.get("RATE_LIMIT_MUTATION_SUBJECT", "60")),
+        rate_limit_satellite_subject=int(env.get("RATE_LIMIT_SATELLITE_SUBJECT", "20")),
+        rate_limit_satellite_field=int(env.get("RATE_LIMIT_SATELLITE_FIELD", "10")),
+        trusted_proxy_cidrs=tuple(
+            value.strip() for value in env.get("TRUSTED_PROXY_CIDRS", "").split(",") if value.strip()
+        ),
         cdse_client_id=env.get("CDSE_CLIENT_ID", ""),
         cdse_client_secret=env.get("CDSE_CLIENT_SECRET", ""),
         cdse_token_url=env.get("CDSE_TOKEN_URL", ""),
@@ -150,6 +183,32 @@ def validate_settings(settings: SettingsSnapshot) -> list[SettingsValidationIssu
         issues.append(SettingsValidationIssue("ACCESS_TOKEN_TTL_MINUTES", "must be positive"))
     if settings.refresh_token_ttl_days <= 0:
         issues.append(SettingsValidationIssue("REFRESH_TOKEN_TTL_DAYS", "must be positive"))
+    if not 60 <= settings.rate_limit_window_seconds <= 86400:
+        issues.append(SettingsValidationIssue("RATE_LIMIT_WINDOW_SECONDS", "must be 60-86400"))
+    if not 100 <= settings.rate_limit_max_entries <= 100000:
+        issues.append(SettingsValidationIssue("RATE_LIMIT_MAX_ENTRIES", "must be 100-100000"))
+    rate_limit_counters = (
+        ("RATE_LIMIT_CSRF_IP", settings.rate_limit_csrf_ip),
+        ("RATE_LIMIT_REGISTER_IP", settings.rate_limit_register_ip),
+        ("RATE_LIMIT_REGISTER_EMAIL", settings.rate_limit_register_email),
+        ("RATE_LIMIT_LOGIN_IP", settings.rate_limit_login_ip),
+        ("RATE_LIMIT_LOGIN_EMAIL", settings.rate_limit_login_email),
+        ("RATE_LIMIT_SESSION_IP", settings.rate_limit_session_ip),
+        ("RATE_LIMIT_SESSION_SUBJECT", settings.rate_limit_session_subject),
+        ("RATE_LIMIT_SESSION_TOKEN", settings.rate_limit_session_token),
+        ("RATE_LIMIT_MUTATION_IP", settings.rate_limit_mutation_ip),
+        ("RATE_LIMIT_MUTATION_SUBJECT", settings.rate_limit_mutation_subject),
+        ("RATE_LIMIT_SATELLITE_SUBJECT", settings.rate_limit_satellite_subject),
+        ("RATE_LIMIT_SATELLITE_FIELD", settings.rate_limit_satellite_field),
+    )
+    for name, value in rate_limit_counters:
+        if not 1 <= value <= 10000:
+            issues.append(SettingsValidationIssue(name, "must be 1-10000"))
+    for network in settings.trusted_proxy_cidrs:
+        try:
+            ipaddress.ip_network(network)
+        except ValueError:
+            issues.append(SettingsValidationIssue("TRUSTED_PROXY_CIDRS", "must contain valid IP networks"))
     if settings.satellite_search_lookback_days <= 0:
         issues.append(SettingsValidationIssue("SATELLITE_SEARCH_LOOKBACK_DAYS", "must be positive"))
     if settings.satellite_search_timeout_seconds <= 0:

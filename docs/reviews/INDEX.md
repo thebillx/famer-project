@@ -1,16 +1,11 @@
-# Review Index
+# Review index
 
-This index tracks permanent review records for external CTO and engineering review.
+| Review | Historical status | Location |
+| --- | --- | --- |
+| ARCH-001 | VERIFIED | `archive/ARCH-001-review.md` |
+| FIELD-001 | VERIFIED | `archive/FIELD-001-review.md` |
+| FOUNDATION-001 | VERIFIED | `archive/FOUNDATION-001-review.md` and `FOUNDATION-001.md` |
+| SATELLITE-001 | VERIFIED | `archive/SATELLITE-001-review.md` |
 
-| Review | Status | Reviewer | Date | Decision |
-| --- | --- | --- | --- | --- |
-| ARCH-001 | VERIFIED | qa-security-agent | 2026-08-01 | APPROVED_WITH_NOTES |
-| FOUNDATION-001 | VERIFIED | qa-security-agent | 2026-08-01 | APPROVED |
-
-## Future Reviews
-
-| Review | Status | Reviewer | Date | Decision |
-| --- | --- | --- | --- | --- |
-| FIELD-001 | PLANNED | TBD | TBD | TBD |
-| FIELD-002 | PLANNED | TBD | TBD | TBD |
-| FIELD-003 | PLANNED | TBD | TBD | TBD |
+Add only owner-requested durable reviews here with task ID, exact reviewed boundary,
+reviewer, date, decision, and any immutable evidence reference.

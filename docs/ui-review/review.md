@@ -19,7 +19,7 @@ The frontend defines AgriScope tokens in `apps/web/app/globals.css`:
 - Success, warning, and danger: semantic status colors with soft background pairs.
 - Typography: slate/forest ink tokens for strong contrast.
 
-Light mode is fully represented in this package. Dark-mode CSS tokens exist through system preference support, but no product theme switcher is available yet.
+Light mode is fully represented in this package. Dark mode is intentionally disabled until every component and state has dedicated contrast coverage.
 
 ## Typography
 

@@ -30,7 +30,7 @@ Screens are captured with these viewport sizes. Longer pages may produce taller 
 
 ## Theme
 
-The current screenshots cover the light theme. The CSS includes dark-mode tokens through `prefers-color-scheme`, but the application does not yet expose a user-facing theme switcher. Dark mode should be captured in a later review once theme selection is part of the product surface.
+The current screenshots cover the light theme. Dark mode is intentionally disabled until every component and state has dedicated contrast coverage and a user-facing theme switcher is part of the product surface.
 
 ## Interaction States
 

@@ -10,13 +10,13 @@ test("farmer creates farm, draws field, saves, and sees it after reload", async 
   await page.locator("form").getByRole("button", { name: "Register" }).click();
   await expect(page).toHaveURL(/\/farms$/);
 
-  await page.getByRole("button", { name: "Create farm" }).click();
+  await page.getByRole("link", { name: "Create farm" }).click();
   await page.getByLabel("Farm name").fill("North Farm");
   await page.getByLabel("Province").fill("Chiang Mai");
   await page.getByRole("button", { name: "Save farm" }).click();
   await expect(page.getByRole("heading", { name: "North Farm" })).toBeVisible();
 
-  await page.getByRole("button", { name: "Draw first field" }).click();
+  await page.getByRole("link", { name: "Draw first field" }).click();
   await expect(page.getByRole("heading", { name: "Draw field" })).toBeVisible();
   const map = page.locator(".maplibregl-canvas");
   const mapContainer = page.getByLabel("Field map");

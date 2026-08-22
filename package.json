@@ -2,9 +2,9 @@
   "name": "agriscope-thailand",
   "version": "0.1.0",
   "private": true,
-  "packageManager": "npm@10.9.2",
+  "packageManager": "npm@11.17.0",
   "engines": {
-    "node": "23.6.0"
+    "node": "24.19.0"
   },
   "workspaces": [
     "apps/web",

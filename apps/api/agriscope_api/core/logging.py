@@ -10,9 +10,17 @@ SENSITIVE_LOG_KEYS = {
     "password",
     "password_hash",
     "cookie",
+    "set_cookie",
     "authorization",
     "access_token",
     "refresh_token",
+    "agriscope_access",
+    "agriscope_refresh",
+    "agriscope_csrf",
+    "csrf_token",
+    "x_csrf_token",
+    "rate_limit_key",
+    "rate_limit_keys",
     "session_secret",
     "database_url",
     "cdse_client_secret",
@@ -23,7 +31,11 @@ SENSITIVE_LOG_KEYS = {
 def redact(value: Any) -> Any:
     if isinstance(value, dict):
         return {
-            key: ("********" if key.lower() in SENSITIVE_LOG_KEYS else redact(inner))
+            key: (
+                "********"
+                if key.lower().replace("-", "_") in SENSITIVE_LOG_KEYS
+                else redact(inner)
+            )
             for key, inner in value.items()
         }
     if isinstance(value, list):

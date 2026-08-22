@@ -108,7 +108,7 @@ Report endpoints used, evalscript version, cache key, mock fixtures, numerical c
 ## References
 
 - `AGENTS.md`
-- `.agents/workflows/contract-first.md`
+- `.agents/workflows/delivery.md`
 - Sentinel Hub documentation, `sentinelhub-py`, and Sentinel Hub custom scripts as references.
 
 ## Allowed wording

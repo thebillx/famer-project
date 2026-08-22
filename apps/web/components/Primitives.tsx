@@ -1,3 +1,4 @@
+import { useId } from "react";
 import type React from "react";
 
 export function Card({
@@ -24,11 +25,11 @@ export function Badge({
   tone?: "neutral" | "success" | "warning" | "danger" | "satellite";
 }) {
   const tones = {
-    neutral: "text-[var(--as-ink-muted)]",
-    success: "text-[var(--as-success)]",
-    warning: "text-[var(--as-warning)]",
-    danger: "text-[var(--as-danger)]",
-    satellite: "text-[var(--as-satellite)]"
+    neutral: "as-badge-neutral",
+    success: "as-badge-success",
+    warning: "as-badge-warning",
+    danger: "as-badge-danger",
+    satellite: "as-badge-satellite"
   };
   return <span className={`as-pill ${tones[tone]}`}>{children}</span>;
 }
@@ -45,10 +46,10 @@ export function MetricCard({
   tone?: "neutral" | "success" | "warning" | "satellite";
 }) {
   const toneClass = {
-    neutral: "bg-[var(--as-surface-soft)] text-[var(--as-primary)]",
-    success: "bg-[#ecf8ef] text-[var(--as-success)]",
-    warning: "bg-[var(--as-amber-soft)] text-[var(--as-warning)]",
-    satellite: "bg-[var(--as-blue-soft)] text-[var(--as-satellite)]"
+    neutral: "as-metric-neutral",
+    success: "as-metric-success",
+    warning: "as-metric-warning",
+    satellite: "as-metric-satellite"
   };
   return (
     <Card className="p-4">
@@ -64,20 +65,24 @@ export function MetricCard({
 export function EmptyState({
   title,
   description,
-  action
+  action,
+  role
 }: {
   title: string;
   description: string;
   action?: React.ReactNode;
+  role?: "alert" | "status";
 }) {
   return (
     <Card premium className="p-8 text-center">
-      <div className="mx-auto mb-5 flex size-14 items-center justify-center rounded-2xl bg-[var(--as-surface-soft)] text-lg font-bold text-[var(--as-primary)]">
-        AS
+      <div role={role}>
+        <div className="mx-auto mb-5 flex size-14 items-center justify-center rounded-2xl bg-[var(--as-surface-soft)] text-lg font-bold text-[var(--as-primary)]">
+          AS
+        </div>
+        <h2 className="text-xl font-bold text-[var(--as-ink)]">{title}</h2>
+        <p className="mx-auto mt-2 max-w-md text-[var(--as-ink-muted)]">{description}</p>
+        {action ? <div className="mt-6">{action}</div> : null}
       </div>
-      <h2 className="text-xl font-bold text-[var(--as-ink)]">{title}</h2>
-      <p className="mx-auto mt-2 max-w-md text-[var(--as-ink-muted)]">{description}</p>
-      {action ? <div className="mt-6">{action}</div> : null}
     </Card>
   );
 }
@@ -85,6 +90,9 @@ export function EmptyState({
 export function LoadingBlock({ label = "Loading..." }: { label?: string }) {
   return (
     <Card className="space-y-4 p-5" aria-label={label}>
+      <div role="status" aria-live="polite" aria-busy="true" className="text-sm font-semibold text-[var(--as-ink-muted)]">
+        {label}
+      </div>
       <div className="as-skeleton h-5 w-40 rounded-full" />
       <div className="as-skeleton h-20 rounded-[var(--as-radius-md)]" />
       <div className="grid gap-3 md:grid-cols-3">
@@ -99,13 +107,41 @@ export function LoadingBlock({ label = "Loading..." }: { label?: string }) {
 export function FormInput({
   label,
   hint,
+  error,
   ...props
-}: React.InputHTMLAttributes<HTMLInputElement> & { label: string; hint?: string }) {
+}: React.InputHTMLAttributes<HTMLInputElement> & { label: string; hint?: string; error?: string }) {
+  const generatedId = useId();
+  const inputId = props.id ?? `as-input-${generatedId.replaceAll(":", "")}`;
+  const hintId = hint ? `${inputId}-hint` : undefined;
+  const errorId = error ? `${inputId}-error` : undefined;
+  const describedBy = [props["aria-describedby"], hintId, errorId].filter(Boolean).join(" ") || undefined;
+
   return (
-    <label className="block">
-      <span className="as-label">{label}</span>
-      <input {...props} className={`as-input ${props.className ?? ""}`} />
-      {hint ? <span className="mt-2 block text-sm text-[var(--as-ink-muted)]">{hint}</span> : null}
-    </label>
+    <div className="as-field">
+      <label className="as-label" htmlFor={inputId}>
+        {label}
+        {props["aria-required"] ? <span aria-hidden="true"> *</span> : null}
+      </label>
+      <input
+        {...props}
+        id={inputId}
+        aria-describedby={describedBy}
+        aria-invalid={error ? "true" : props["aria-invalid"]}
+        data-state={error ? "error" : undefined}
+        className={`as-input ${props.className ?? ""}`}
+      />
+      <span className="as-field-message">
+        {hint ? (
+          <span id={hintId} className="as-field-hint">
+            {hint}
+          </span>
+        ) : null}
+        {error ? (
+          <span id={errorId} className="as-field-error" role="alert">
+            {error}
+          </span>
+        ) : null}
+      </span>
+    </div>
   );
 }
