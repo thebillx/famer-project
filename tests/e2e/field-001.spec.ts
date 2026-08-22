@@ -3,14 +3,14 @@ import { expect, test } from "@playwright/test";
 test("farmer creates farm, draws field, saves, and sees it after reload", async ({ page }) => {
   const email = `field-${Date.now()}@example.com`;
   await page.goto("/login");
-  await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Password").fill("StrongPass12345");
-  await page.getByLabel("Your name").fill("Field Farmer");
-  await page.getByLabel("Organization name").fill("Field Org");
-  await page.locator("form").getByRole("button", { name: "Register" }).click();
+  await page.getByLabel("อีเมล").fill(email);
+  await page.getByLabel("รหัสผ่าน").fill("StrongPass12345");
+  await page.getByLabel("ชื่อของคุณ").fill("Field Farmer");
+  await page.getByLabel("ชื่อองค์กร").fill("Field Org");
+  await page.locator("form").getByRole("button", { name: "สร้างบัญชี" }).click();
   await expect(page).toHaveURL(/\/farms$/);
 
-  await page.getByRole("link", { name: "Create farm" }).click();
+  await page.getByRole("link", { name: "สร้างฟาร์มแรก", exact: true }).click();
   await page.getByLabel("Farm name").fill("North Farm");
   await page.getByLabel("Province").fill("Chiang Mai");
   await page.getByRole("button", { name: "Save farm" }).click();
