@@ -10,12 +10,13 @@ VALIDATION REVIEWED: <commands/results or NOT_RUN>
 FINDINGS: <blocking findings with evidence and minimal required change, or NONE>
 REGRESSION RISKS: <compact list or NONE>
 DECISION: APPROVED | CHANGES_REQUIRED
-RECOMMENDED OWNER ACTION: <one action>
+RECOMMENDED LIFECYCLE ACTION: <one bounded action>
 ```
 
 Ponytail performs code/native review only. It may report an apparent security risk
-as a code-review blocker, but it cannot issue security approval or authorize commit,
-push, CI, deployment, merge, or automatic corrections.
+as a code-review blocker, but it cannot issue security approval or authorize a
+correction, commit, push, CI, deployment, or merge. The accepted lifecycle policy
+decides whether an in-contract correction or non-production delivery is eligible.
 
 Terminal transport receipt must be exactly one line:
 

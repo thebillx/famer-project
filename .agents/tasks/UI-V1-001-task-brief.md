@@ -186,11 +186,12 @@ After merge, an authenticated user can register or sign in, see only farms avail
 - Implementation owner self-verification passes.
 - Orchestrator completes desktop/mobile/tablet visual QA and an uncontended production build.
 - Ponytail local native code/design review returns an approved or changes-required
-  decision, then the automated lifecycle creates the owner handoff and stops.
-- Review findings are not auto-fixed. The owner decides corrections, additional
-  validation, security review, staging, commit, push, PR, CI, deployment, and merge.
-- Status reaches `READY_FOR_OWNER_REVIEW` after Ponytail approval; delivery remains
-  entirely owner-controlled.
+  decision. In-contract corrections follow the bounded lifecycle budget.
+- Approved non-production slices proceed through exact-boundary commit, PR, green
+  CI, and merge. Formal security review occurs at the immutable production release
+  candidate; deployment remains owner-controlled.
+- Status reaches `MERGED` only after matching CI passes. Feature merge does not
+  claim production readiness or security approval.
 
 ## Risks
 

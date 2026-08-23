@@ -17,13 +17,14 @@ ASSUMPTIONS/RISKS: <maximum three compact bullets>
 UNRESOLVED: <blockers only or NONE>
 SENSITIVE DATA: <NONE or bounded impact; never include values>
 GIT: <branch, HEAD, concise working-tree state>
-OWNER DECISION: <smallest decision required>
-NEXT: <one exact owner action>
+GATE DECISION: <smallest decision required, or NONE>
+NEXT: <one exact lifecycle action>
 ```
 
 Allowed final statuses:
 
-- `READY_FOR_OWNER_REVIEW`
+- `MERGED`
+- `READY_FOR_PRODUCTION_SECURITY`
 - `CHANGES_REQUIRED`
 - `HUMAN_GATE`
 - `BLOCKED`

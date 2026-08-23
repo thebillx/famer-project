@@ -1,22 +1,23 @@
 ---
 name: test-security-gate
-description: Perform an owner-requested, read-only AgriScope security review outside the automated lifecycle.
+description: Perform a read-only AgriScope production release-candidate security review, or an earlier owner-requested review, outside the feature lifecycle.
 ---
 
 # test-security-gate
 
 ## Boundary
 
-This skill is never part of the automated lifecycle and Ponytail never substitutes
-for it. Use it only after the owner explicitly decides that a security review is
-required and supplies the exact contribution boundary and evidence.
+This skill is never part of the non-production feature lifecycle and Ponytail never
+substitutes for it. Use it only for an immutable production release candidate under
+ADR-0007, or earlier when the owner explicitly requests a review. The exact remote
+SHA, accumulated change boundary, and matching CI evidence are mandatory.
 
 ## Inputs
 
-- Owner request and exact scope.
-- Commit/diff or working-tree boundary selected by the owner.
+- Production release-candidate gate under ADR-0007, or an explicit owner request.
+- Immutable remote commit SHA and exact accumulated change scope.
 - Relevant contracts and validation evidence.
-- CI or runtime evidence when the owner chooses to include it.
+- Matching CI and relevant runtime evidence.
 
 ## Review
 
@@ -31,4 +32,4 @@ scope. Cite direct evidence and return `APPROVED`, `CHANGES_REQUIRED`, or `BLOCK
 - Do not broaden scope or expose sensitive values.
 - Do not claim compliance certification.
 - Do not trigger staging, commit, push, CI, deployment, or merge.
-- Return control to the owner after the decision.
+- Return the release decision to the orchestrator; only the owner can deploy.

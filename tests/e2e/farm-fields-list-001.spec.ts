@@ -150,6 +150,13 @@ test("renders all fields in API order and one selection drives every field surfa
   const fieldNames = collection.locator("button > span:first-child");
   await expect(fieldNames).toHaveText(fields.map((field) => field.name));
   for (const field of fields) await expect(fieldNames.filter({ hasText: field.name })).toHaveCount(1);
+  const items = collection.getByRole("listitem");
+  for (const [index, field] of fields.entries()) {
+    await expect(items.nth(index).getByRole("link", { name: `เปิดพื้นที่ทำงานของ ${field.name}` })).toHaveAttribute(
+      "href",
+      `/fields/${field.id}`
+    );
+  }
 
   const first = collection.getByRole("button", { name: fields[0].name, exact: false });
   const third = collection.getByRole("button", { name: fields[2].name, exact: false });
