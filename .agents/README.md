@@ -13,11 +13,10 @@
 
 Task briefs grant ownership; role profiles only describe capabilities.
 
-The automated lifecycle ends after Ponytail LOCAL_NATIVE review. Local review is
-transport context, not a permanent repository report. Only owner-requested durable
-reviews belong under `docs/reviews/`.
+The lifecycle continuously delivers bounded non-production features after
+Ponytail LOCAL_NATIVE approval and green CI. Local review is transport context, not
+a permanent repository report. Production security review is a release-candidate
+gate and its durable record belongs under `docs/reviews/`.
 
-`READY_FOR_OWNER_REVIEW` means focused validation and LOCAL_NATIVE review passed.
-It does not mean staged, committed, pushed, CI-approved, security-approved,
-deployed, merged, or `DONE`; those are owner-controlled decisions outside the
-automated lifecycle.
+Feature merge means local validation, LOCAL_NATIVE, and matching CI passed. It does
+not mean production-ready, security-approved, deployed, or `DONE`.

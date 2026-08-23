@@ -15,8 +15,8 @@
 
 - Commit SHA:
 - CI link/status:
-- Security review: `NOT_REQUESTED | REQUESTED | APPROVED | CHANGES_REQUIRED | BLOCKED`
-- Security review link, when requested:
+- Production security review: `N/A_FOR_FEATURE_PR | REQUESTED | APPROVED | CHANGES_REQUIRED | BLOCKED`
+- Release-candidate security review link, when applicable:
 
 ## Risks, migration, and rollback
 
@@ -27,4 +27,4 @@
 - [ ] Contribution boundary is intentional
 - [ ] Tenant/RBAC impact is covered where relevant
 - [ ] No secrets are included
-- [ ] Commit/push/CI/security/merge decisions were made by the owner
+- [ ] This feature is non-production, or its production release gate is recorded

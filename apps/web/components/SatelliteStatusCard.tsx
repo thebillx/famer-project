@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "./Button";
-import { apiFetch } from "../lib/api";
+import { ApiError, apiFetch } from "../lib/api";
 import type { SatelliteLatest, SatelliteSearch } from "../lib/types";
 import { Badge, Card } from "./Primitives";
 
@@ -11,7 +11,8 @@ export function SatelliteStatusCard({ fieldId }: { fieldId: string }) {
   const latest = useQuery({
     queryKey: ["satellite-latest", fieldId],
     queryFn: () => apiFetch<SatelliteLatest>(`/api/v1/fields/${fieldId}/satellite/latest`),
-    enabled: Boolean(fieldId)
+    enabled: Boolean(fieldId),
+    retry: false
   });
   const search = useMutation({
     mutationFn: () =>
@@ -20,7 +21,8 @@ export function SatelliteStatusCard({ fieldId }: { fieldId: string }) {
       }),
     onSuccess: (data) => {
       queryClient.setQueryData(["satellite-latest", fieldId], data);
-    }
+    },
+    retry: false
   });
   const result = search.data ?? latest.data;
   const requestError = search.error ?? (search.data ? null : latest.error);
@@ -43,7 +45,7 @@ export function SatelliteStatusCard({ fieldId }: { fieldId: string }) {
         {latest.isLoading ? <p className="text-[var(--as-ink-muted)]">กำลังโหลดสถานะดาวเทียม...</p> : null}
         {unavailable ? (
           <p role="alert" className="font-semibold text-[var(--as-warning)]">
-            {requestError?.message ?? "ยังไม่สามารถตรวจสอบข้อมูลดาวเทียมได้ กรุณาลองใหม่ภายหลัง"}
+            {satelliteErrorCopy(requestError)}
           </p>
         ) : null}
         {!unavailable && result?.status === "available" ? (
@@ -88,6 +90,13 @@ export function SatelliteStatusCard({ fieldId }: { fieldId: string }) {
       </div>
     </Card>
   );
+}
+
+function satelliteErrorCopy(error: unknown): string {
+  if (error instanceof ApiError && error.status === 429) {
+    return "มีคำขอตรวจสอบข้อมูลดาวเทียมมากเกินไป กรุณารอสักครู่แล้วลองใหม่อีกครั้ง";
+  }
+  return "ยังไม่สามารถตรวจสอบข้อมูลดาวเทียมได้ กรุณาลองใหม่ภายหลัง";
 }
 
 function Info({ label, value }: { label: string; value: string }) {

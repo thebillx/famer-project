@@ -93,6 +93,13 @@ export default function FarmDetailPage() {
                           <span className="block break-words">{field.name}</span>
                           {active ? <span className="mt-1 block text-xs font-semibold">กำลังดูแปลงนี้</span> : null}
                         </button>
+                        <Link
+                          href={`/fields/${field.id}`}
+                          aria-label={`เปิดพื้นที่ทำงานของ ${field.name}`}
+                          className={buttonClassName({ variant: "secondary", className: "mt-2 w-full" })}
+                        >
+                          เปิดพื้นที่ทำงานแปลง
+                        </Link>
                       </li>
                     );
                   })}

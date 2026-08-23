@@ -36,22 +36,30 @@
 - UI features cover loading, empty, error, and permission states.
 - Mock behavior is not production completion.
 
-## Automated lifecycle boundary
+## Continuous lifecycle boundary
 
 Follow `.agents/workflows/delivery.md`:
 
-`prompt -> scope gate -> justified exploration/planning -> implementation -> focused validation -> Ponytail LOCAL_NATIVE review -> owner handoff -> STOP`
+`prompt -> scope gate -> justified exploration/planning -> implementation -> focused validation -> Ponytail LOCAL_NATIVE review -> bounded correction when needed -> feature PR/CI/merge -> next contract-ready slice`
 
 - Ponytail/`code_review` performs code review only. It never performs or substitutes
   for security review.
-- `REVIEW_DECISION: CHANGES_REQUIRED` is terminal for the automated lifecycle. Do
-  not edit the reviewed diff or start a correction automatically.
-- After LOCAL_NATIVE review, preserve the working tree and return control to the
-  owner.
-- The orchestrator must not stage, commit, push, manage CI or pull requests,
-  deploy, merge, or make delivery/security decisions for the owner.
-- Security review, further validation, correction, staging, commit, push, CI,
-  deployment, and merge occur only after a new owner decision.
+- `REVIEW_DECISION: CHANGES_REQUIRED` may trigger a bounded correction only when
+  the finding stays inside the approved contract and ownership. Revalidate and
+  request Ponytail delta review; stop after two correction submissions for one
+  stable root cause or on any scope/contract/authority expansion.
+- `REVIEW_DECISION: APPROVED` grants standing feature-delivery authority: stage
+  only the reviewed boundary, commit, push a feature branch, open a PR, wait for
+  matching CI, and merge only when CI passes. A post-review byte change requires
+  focused validation and another Ponytail review before delivery.
+- After a successful non-production merge, the orchestrator may continue with the
+  next already-supported vertical slice. A new product decision, API/ADR change,
+  ownership conflict, destructive operation, dependency installation, credential,
+  production data, deployment, or unclear requirement remains a Human Gate.
+- Formal security review is not a per-feature merge gate. It is required for the
+  immutable production release candidate, or earlier only when the owner asks.
+- Production deployment always remains owner-controlled and requires green CI plus
+  an approved release security review.
 
 ## Context and handoff
 

@@ -11,8 +11,9 @@ Prompt
 -> Implementation or Fast Coding / Tests
 -> Focused Validation
 -> Ponytail LOCAL_NATIVE Code Review
--> Owner Handoff
--> STOP
+-> Bounded Correction (only when findings stay in contract)
+-> Feature Commit / Push / PR / CI / Merge
+-> Next Contract-Ready Slice or Production Gate
 ```
 
 ## Context / scope / ownership gate
@@ -82,8 +83,42 @@ Valid terminal receipts are exactly:
 Timeout, partial analysis, launch confirmation, or missing terminal receipt is not
 approval.
 
-If `CHANGES_REQUIRED`, do not edit the reviewed diff. Preserve the working tree,
-return findings to the owner, set final status `CHANGES_REQUIRED`, and stop.
+If `CHANGES_REQUIRED`, classify each finding by a stable root cause. The
+orchestrator may assign a correction only when it stays inside the same accepted
+contract, ownership, sensitive-data boundary, and authority. Re-run focused
+validation and request a delta LOCAL_NATIVE review. Permit at most two correction
+submissions per stable root cause. A repeated finding after that budget, contract
+or ownership expansion, destructive action, dependency installation, credential,
+production data, or ambiguous product decision returns a Human Gate and stops.
+
+## Feature delivery
+
+After `APPROVED`, the orchestrator may deliver the exact reviewed contribution:
+
+1. reauthenticate the reviewed path set and ensure no unrelated owner work enters;
+2. stage only those paths and commit on a `codex/` feature branch;
+3. push, open a PR, and bind its evidence to the commit SHA;
+4. wait for matching CI; never bypass or relabel a failed check;
+5. merge only after CI passes, then verify the commit is reachable from remote
+   `main`.
+
+Any byte change after approval reopens focused validation and LOCAL_NATIVE review.
+A CI failure may receive one bounded correction under the same rules. Feature PRs
+do not require formal security review and do not claim production readiness.
+
+After a successful merge, continue only with the next requirement-supported,
+contract-ready vertical slice. Stop for a new product choice, API/ADR change,
+ownership conflict, or any Human Gate above.
+
+## Production gate
+
+Formal security review runs once against an immutable production release-candidate
+SHA with matching green CI, covering the accumulated change since the last
+security-approved production SHA plus deployment, dependency, authentication,
+tenant, provider, secret, and data boundaries. Only `security_review` may issue
+that decision. Production deployment requires owner approval and security
+`APPROVED`; `CHANGES_REQUIRED` or `BLOCKED` prevents deployment but does not rewrite
+historical feature evidence.
 
 ## Context transfer and storage
 
@@ -112,15 +147,13 @@ exact checked/changed files, validation, review status, unresolved boundary, Git
 state, exact resume action, and `CHECKPOINT_STATUS: PAUSED`. For that requested
 pause, do not start another phase or create a repository handoff file.
 
-## Owner handoff and authority
+## Handoff and authority
 
-After LOCAL_NATIVE review, preserve the working tree and return the capsule from
-`.agents/templates/handoff-report.md`, then stop.
+The orchestrator may scope, delegate bounded work, validate, request LOCAL_NATIVE,
+apply the bounded correction policy, deliver approved non-production features, and
+continue the existing roadmap. Return the compact capsule when a Human Gate,
+correction budget, blocked CI, production gate, or owner pause is reached.
 
-The orchestrator may scope, inspect, delegate bounded exploration/planning/work,
-run focused validation, request LOCAL_NATIVE review, and prepare handoff. It must
-not automatically fix review findings, continue after review, stage, commit, push,
-manage PR/CI, deploy, merge, or make delivery/security decisions.
-
-The owner exclusively decides corrections, additional validation, security review,
-contribution/staging/commit strategy, push/PR/CI, deployment, and merge timing.
+The owner retains all new product/API/architecture decisions, dependency installs,
+destructive or credential-bearing actions, production security disposition, and
+deployment authority.
