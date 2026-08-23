@@ -424,7 +424,7 @@ test("farm smoke routes retain active navigation and loading, permission, and er
   await page.goto(`/farms/${farm.id}`);
   await expect(page.locator("main#main-content")).toHaveCount(1);
   await expect(page.getByRole("link", { name: "ฟาร์ม", exact: true })).toHaveAttribute("aria-current", "page");
-  await expect(page.getByText("No field boundary saved yet.")).toBeVisible();
+  await expect(page.getByText("ยังไม่มีขอบเขตแปลงที่บันทึกไว้")).toBeVisible();
   await expectNoHorizontalOverflow(page);
 
   await page.unrouteAll({ behavior: "wait" });
@@ -462,8 +462,9 @@ test("field and satellite failures remain errors rather than empty states", asyn
   });
 
   await page.goto(`/farms/${farm.id}`);
-  await expect(page.getByText("Fields unavailable")).toBeVisible({ timeout: 20_000 });
-  await expect(page.getByText("No field boundary saved yet.")).toHaveCount(0);
+  await expect(page.getByRole("alert").filter({ hasText: "โหลดข้อมูลแปลงไม่สำเร็จ" })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByText("Fields unavailable")).toHaveCount(0);
+  await expect(page.getByText("ยังไม่มีขอบเขตแปลงที่บันทึกไว้")).toHaveCount(0);
 
   await page.unrouteAll({ behavior: "wait" });
   await page.route("http://localhost:8000/api/v1/**", async (route) => {
