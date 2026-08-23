@@ -7,6 +7,7 @@ from enum import StrEnum
 import ipaddress
 import os
 from typing import Any
+from urllib.parse import urlparse
 
 
 class AppEnvironment(StrEnum):
@@ -27,6 +28,7 @@ SENSITIVE_FIELDS = {
     "redis_url",
     "session_secret",
     "encryption_key",
+    "cdse_client_id",
     "cdse_client_secret",
     "object_storage_secret_key",
 }
@@ -79,7 +81,9 @@ class SettingsSnapshot:
     trusted_proxy_cidrs: tuple[str, ...] = ()
     cdse_client_id: str = ""
     cdse_client_secret: str = ""
-    cdse_token_url: str = ""
+    cdse_token_url: str = (
+        "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token"
+    )
     cdse_catalog_url: str = "https://sh.dataspace.copernicus.eu/catalog/v1"
     cdse_process_url: str = "https://sh.dataspace.copernicus.eu/process/v1"
     cdse_statistical_url: str = "https://sh.dataspace.copernicus.eu/statistics/v1"
@@ -87,6 +91,8 @@ class SettingsSnapshot:
     satellite_search_lookback_days: int = 90
     satellite_search_timeout_seconds: int = 15
     satellite_max_cloud_cover_percent: float = 80.0
+    satellite_preview_min_valid_ratio: float = 0.4
+    satellite_analysis_min_valid_ratio: float = 0.4
     object_storage_secret_key: str = ""
 
     def safe_dict(self) -> dict[str, Any]:
@@ -121,12 +127,8 @@ def settings_from_env(environ: dict[str, str] | None = None) -> SettingsSnapshot
         redis_url=env.get("REDIS_URL", "redis://localhost:6379/0"),
         object_storage_endpoint=env.get("OBJECT_STORAGE_ENDPOINT", "http://localhost:9000"),
         object_storage_bucket=env.get("OBJECT_STORAGE_BUCKET", "agriscope-dev"),
-        session_secret=env.get(
-            "SESSION_SECRET", "change-me-development-session-secret-32"
-        ),
-        encryption_key=env.get(
-            "ENCRYPTION_KEY", "change-me-development-encryption-key-32"
-        ),
+        session_secret=env.get("SESSION_SECRET", "change-me-development-session-secret-32"),
+        encryption_key=env.get("ENCRYPTION_KEY", "change-me-development-encryption-key-32"),
         access_token_ttl_minutes=int(env.get("ACCESS_TOKEN_TTL_MINUTES", "15")),
         refresh_token_ttl_days=int(env.get("REFRESH_TOKEN_TTL_DAYS", "30")),
         cookie_secure=_bool(env.get("COOKIE_SECURE", ""), app_env == AppEnvironment.PRODUCTION),
@@ -147,11 +149,16 @@ def settings_from_env(environ: dict[str, str] | None = None) -> SettingsSnapshot
         rate_limit_satellite_subject=int(env.get("RATE_LIMIT_SATELLITE_SUBJECT", "20")),
         rate_limit_satellite_field=int(env.get("RATE_LIMIT_SATELLITE_FIELD", "10")),
         trusted_proxy_cidrs=tuple(
-            value.strip() for value in env.get("TRUSTED_PROXY_CIDRS", "").split(",") if value.strip()
+            value.strip()
+            for value in env.get("TRUSTED_PROXY_CIDRS", "").split(",")
+            if value.strip()
         ),
         cdse_client_id=env.get("CDSE_CLIENT_ID", ""),
         cdse_client_secret=env.get("CDSE_CLIENT_SECRET", ""),
-        cdse_token_url=env.get("CDSE_TOKEN_URL", ""),
+        cdse_token_url=env.get(
+            "CDSE_TOKEN_URL",
+            "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token",
+        ),
         cdse_catalog_url=env.get(
             "CDSE_CATALOG_URL", "https://sh.dataspace.copernicus.eu/catalog/v1"
         ),
@@ -165,6 +172,12 @@ def settings_from_env(environ: dict[str, str] | None = None) -> SettingsSnapshot
         satellite_search_lookback_days=int(env.get("SATELLITE_SEARCH_LOOKBACK_DAYS", "90")),
         satellite_search_timeout_seconds=int(env.get("SATELLITE_SEARCH_TIMEOUT_SECONDS", "15")),
         satellite_max_cloud_cover_percent=float(env.get("SATELLITE_MAX_CLOUD_COVER_PERCENT", "80")),
+        satellite_preview_min_valid_ratio=float(
+            env.get("SATELLITE_PREVIEW_MIN_VALID_RATIO", "0.40")
+        ),
+        satellite_analysis_min_valid_ratio=float(
+            env.get("SATELLITE_ANALYSIS_MIN_VALID_RATIO", "0.40")
+        ),
         object_storage_secret_key=env.get("OBJECT_STORAGE_SECRET_KEY", ""),
     )
 
@@ -178,7 +191,9 @@ def validate_settings(settings: SettingsSnapshot) -> list[SettingsValidationIssu
     if settings.cookie_samesite not in {item.value for item in CookieSameSite}:
         issues.append(SettingsValidationIssue("COOKIE_SAMESITE", "unsupported SameSite policy"))
     if settings.cookie_samesite == CookieSameSite.NONE and not settings.cookie_secure:
-        issues.append(SettingsValidationIssue("COOKIE_SECURE", "SameSite=None requires Secure cookies"))
+        issues.append(
+            SettingsValidationIssue("COOKIE_SECURE", "SameSite=None requires Secure cookies")
+        )
     if settings.access_token_ttl_minutes <= 0:
         issues.append(SettingsValidationIssue("ACCESS_TOKEN_TTL_MINUTES", "must be positive"))
     if settings.refresh_token_ttl_days <= 0:
@@ -208,20 +223,36 @@ def validate_settings(settings: SettingsSnapshot) -> list[SettingsValidationIssu
         try:
             ipaddress.ip_network(network)
         except ValueError:
-            issues.append(SettingsValidationIssue("TRUSTED_PROXY_CIDRS", "must contain valid IP networks"))
+            issues.append(
+                SettingsValidationIssue("TRUSTED_PROXY_CIDRS", "must contain valid IP networks")
+            )
     if settings.satellite_search_lookback_days <= 0:
         issues.append(SettingsValidationIssue("SATELLITE_SEARCH_LOOKBACK_DAYS", "must be positive"))
     if settings.satellite_search_timeout_seconds <= 0:
-        issues.append(SettingsValidationIssue("SATELLITE_SEARCH_TIMEOUT_SECONDS", "must be positive"))
+        issues.append(
+            SettingsValidationIssue("SATELLITE_SEARCH_TIMEOUT_SECONDS", "must be positive")
+        )
     if not 0 <= settings.satellite_max_cloud_cover_percent <= 100:
         issues.append(SettingsValidationIssue("SATELLITE_MAX_CLOUD_COVER_PERCENT", "must be 0-100"))
+    if not 0 < settings.satellite_preview_min_valid_ratio <= 1:
+        issues.append(
+            SettingsValidationIssue("SATELLITE_PREVIEW_MIN_VALID_RATIO", "must be >0 and <=1")
+        )
+    if not 0 < settings.satellite_analysis_min_valid_ratio <= 1:
+        issues.append(
+            SettingsValidationIssue("SATELLITE_ANALYSIS_MIN_VALID_RATIO", "must be >0 and <=1")
+        )
 
     for field_name in ("session_secret", "encryption_key"):
         value = getattr(settings, field_name)
         if len(value) < 32:
-            issues.append(SettingsValidationIssue(field_name.upper(), "must be at least 32 characters"))
+            issues.append(
+                SettingsValidationIssue(field_name.upper(), "must be at least 32 characters")
+            )
         if settings.app_env == AppEnvironment.PRODUCTION and value in KNOWN_DEVELOPMENT_SECRETS:
-            issues.append(SettingsValidationIssue(field_name.upper(), "known development secret is forbidden"))
+            issues.append(
+                SettingsValidationIssue(field_name.upper(), "known development secret is forbidden")
+            )
 
     if settings.app_env == AppEnvironment.PRODUCTION:
         required = {
@@ -231,12 +262,24 @@ def validate_settings(settings: SettingsSnapshot) -> list[SettingsValidationIssu
             "ENCRYPTION_KEY": settings.encryption_key,
             "OBJECT_STORAGE_ENDPOINT": settings.object_storage_endpoint,
             "OBJECT_STORAGE_BUCKET": settings.object_storage_bucket,
+            "CDSE_CLIENT_ID": settings.cdse_client_id,
+            "CDSE_CLIENT_SECRET": settings.cdse_client_secret,
+            "CDSE_TOKEN_URL": settings.cdse_token_url,
+            "CDSE_PROCESS_URL": settings.cdse_process_url,
+            "CDSE_STATISTICAL_URL": settings.cdse_statistical_url,
         }
         for name, value in required.items():
             if not value:
                 issues.append(SettingsValidationIssue(name, "required in production"))
         if not settings.cookie_secure:
             issues.append(SettingsValidationIssue("COOKIE_SECURE", "must be true in production"))
+        for name, value in (
+            ("CDSE_TOKEN_URL", settings.cdse_token_url),
+            ("CDSE_PROCESS_URL", settings.cdse_process_url),
+            ("CDSE_STATISTICAL_URL", settings.cdse_statistical_url),
+        ):
+            if value and urlparse(value).scheme != "https":
+                issues.append(SettingsValidationIssue(name, "must use https in production"))
     return issues
 
 

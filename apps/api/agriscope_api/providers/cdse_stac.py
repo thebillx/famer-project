@@ -50,7 +50,8 @@ class CdseStacClient:
         timeout_seconds: int,
         lookback_days: int,
         max_cloud_cover_percent: float,
-        post_json: Callable[[str, dict[str, Any], int], Awaitable[tuple[int, dict[str, Any]]]] | None = None,
+        post_json: Callable[[str, dict[str, Any], int], Awaitable[tuple[int, dict[str, Any]]]]
+        | None = None,
     ) -> None:
         self.stac_url = stac_url
         self.timeout_seconds = timeout_seconds
@@ -71,7 +72,9 @@ class CdseStacClient:
             raise CdseStacUnavailable("cdse stac unavailable")
         if status_code >= 400:
             raise CdseStacMalformedResponse("cdse stac rejected request")
-        return CdseStacSearchResult(item=self.select_latest_valid_item(body), searched_at=searched_at)
+        return CdseStacSearchResult(
+            item=self.select_latest_valid_item(body), searched_at=searched_at
+        )
 
     async def _send(self, payload: dict[str, Any]) -> tuple[int, dict[str, Any]]:
         if self._post_json is not None:
@@ -147,7 +150,10 @@ class CdseStacClient:
             item = self._parse_feature(feature)
             if item is None:
                 continue
-            if item.cloud_cover_percent is not None and item.cloud_cover_percent > self.max_cloud_cover_percent:
+            if (
+                item.cloud_cover_percent is not None
+                and item.cloud_cover_percent > self.max_cloud_cover_percent
+            ):
                 continue
             if selected is None or item.acquired_at > selected.acquired_at:
                 selected = item
@@ -159,7 +165,11 @@ class CdseStacClient:
         item_id = feature.get("id")
         collection = feature.get("collection") or SENTINEL_2_L2A_COLLECTION
         properties = feature.get("properties")
-        if not isinstance(item_id, str) or not isinstance(collection, str) or not isinstance(properties, dict):
+        if (
+            not isinstance(item_id, str)
+            or not isinstance(collection, str)
+            or not isinstance(properties, dict)
+        ):
             raise CdseStacMalformedResponse("cdse stac feature missing required fields")
         raw_datetime = properties.get("datetime")
         if not isinstance(raw_datetime, str):

@@ -27,6 +27,7 @@ EXPECTED_SCHEMAS = {
     "SatelliteAvailableResponse",
     "SatelliteEmptySearchResponse",
     "SatelliteLatestResponse",
+    "SatelliteNdviSummary",
     "SatelliteNotSearchedResponse",
     "SatelliteSearchResponse",
     "User",
@@ -51,6 +52,8 @@ EXPECTED_METHODS = {
     "/api/v1/fields/{field_id}": {"delete", "get", "patch"},
     "/api/v1/fields/{field_id}/satellite/search-latest": {"post"},
     "/api/v1/fields/{field_id}/satellite/latest": {"get"},
+    "/api/v1/fields/{field_id}/satellite/preview": {"get"},
+    "/api/v1/fields/{field_id}/satellite/ndvi-summary": {"get"},
 }
 
 EXPECTED_RESPONSES = {
@@ -91,12 +94,28 @@ EXPECTED_RESPONSES = {
         "404",
         "422",
     },
+    ("/api/v1/fields/{field_id}/satellite/preview", "get"): {
+        "200",
+        "401",
+        "404",
+        "409",
+        "422",
+        "429",
+        "503",
+    },
+    ("/api/v1/fields/{field_id}/satellite/ndvi-summary", "get"): {
+        "200",
+        "401",
+        "404",
+        "409",
+        "422",
+        "429",
+        "503",
+    },
 }
 
 EXPECTED_RATE_LIMITS = {
-    ("/api/v1/auth/csrf", "get"): (
-        "trusted-client-IP aggregate 60 per configured fixed window."
-    ),
+    ("/api/v1/auth/csrf", "get"): ("trusted-client-IP aggregate 60 per configured fixed window."),
     ("/api/v1/auth/register", "post"): (
         "trusted-client-IP 25 and HMAC(normalized email) 5 per configured window."
     ),
@@ -130,6 +149,66 @@ EXPECTED_RATE_LIMITS = {
     ("/api/v1/fields/{field_id}/satellite/search-latest", "post"): (
         "authenticated subject 20 and subject plus HMAC(field ID) 10 per configured window."
     ),
+    ("/api/v1/fields/{field_id}/satellite/preview", "get"): (
+        "authenticated subject 20 and subject plus HMAC(field ID) 10 per configured window."
+    ),
+    ("/api/v1/fields/{field_id}/satellite/ndvi-summary", "get"): (
+        "authenticated subject 20 and subject plus HMAC(field ID) 10 per configured window."
+    ),
+}
+
+OWNER_SCOPE_ASSERTIONS = {
+    ("/api/v1/farms", "get"): {
+        "x-organization-scope": ("owner",),
+        "x-validation": ("non-owner", "omitted"),
+    },
+    ("/api/v1/farms/{farm_id}", "get"): {
+        "x-organization-scope": ("farm owner",),
+        "x-validation": ("non-owner",),
+    },
+    ("/api/v1/farms/{farm_id}", "patch"): {
+        "x-organization-scope": ("owner", "organization owner"),
+        "x-validation": ("non-owner",),
+    },
+    ("/api/v1/farms/{farm_id}", "delete"): {
+        "x-organization-scope": ("owner", "organization owner"),
+        "x-validation": ("non-owner",),
+    },
+    ("/api/v1/farms/{farm_id}/fields", "get"): {
+        "x-organization-scope": ("farm owner",),
+        "x-validation": ("non-owned",),
+    },
+    ("/api/v1/farms/{farm_id}/fields", "post"): {
+        "x-organization-scope": ("farm owner", "organization owner"),
+    },
+    ("/api/v1/fields/{field_id}", "get"): {
+        "x-organization-scope": ("farm owner",),
+        "x-validation": ("non-owner",),
+    },
+    ("/api/v1/fields/{field_id}", "patch"): {
+        "x-organization-scope": ("farm owner", "organization owner"),
+        "x-validation": ("non-owner",),
+    },
+    ("/api/v1/fields/{field_id}", "delete"): {
+        "x-organization-scope": ("farm owner", "organization owner"),
+        "x-validation": ("non-owner",),
+    },
+    ("/api/v1/fields/{field_id}/satellite/search-latest", "post"): {
+        "x-organization-scope": ("owner", "before any provider request"),
+        "x-validation": ("non-owner",),
+    },
+    ("/api/v1/fields/{field_id}/satellite/latest", "get"): {
+        "x-organization-scope": ("farm owner", "before"),
+        "x-validation": ("non-owner",),
+    },
+    ("/api/v1/fields/{field_id}/satellite/preview", "get"): {
+        "x-organization-scope": ("farm owner",),
+        "x-validation": ("foreign fields",),
+    },
+    ("/api/v1/fields/{field_id}/satellite/ndvi-summary", "get"): {
+        "x-organization-scope": ("farm owner",),
+        "x-validation": ("foreign and non-owner fields",),
+    },
 }
 
 
@@ -225,7 +304,13 @@ class FoundationContractTests(unittest.TestCase):
         )
         self.assertEqual(
             set(components["responses"]),
-            {"UnauthorizedError", "ForbiddenError", "NotFoundError", "ValidationError", "RateLimitedError"},
+            {
+                "UnauthorizedError",
+                "ForbiddenError",
+                "NotFoundError",
+                "ValidationError",
+                "RateLimitedError",
+            },
         )
         retry_after = components["responses"]["RateLimitedError"]["headers"]["Retry-After"]
         self.assertEqual(retry_after["schema"], {"type": "integer", "minimum": 1})
@@ -264,9 +349,7 @@ class FoundationContractTests(unittest.TestCase):
         )
         self.assertEqual(empty_search["properties"]["acquisition"], {"type": "null"})
         self.assertEqual(empty_search["properties"]["searched_at"]["format"], "date-time")
-        search_refs = {
-            branch["$ref"] for branch in schemas["SatelliteSearchResponse"]["oneOf"]
-        }
+        search_refs = {branch["$ref"] for branch in schemas["SatelliteSearchResponse"]["oneOf"]}
         self.assertEqual(
             search_refs,
             {
@@ -278,6 +361,33 @@ class FoundationContractTests(unittest.TestCase):
             "not_searched",
             schemas["SatelliteSearchResponse"]["discriminator"]["mapping"],
         )
+
+    def test_satellite_preview_is_binary_on_demand_and_fail_closed(self):
+        preview = self.document["paths"]["/api/v1/fields/{field_id}/satellite/preview"]["get"]
+        self.assertEqual(
+            preview["responses"]["200"]["content"],
+            {"image/png": {"schema": {"type": "string", "format": "binary"}}},
+        )
+        self.assertEqual(
+            preview["responses"]["200"]["headers"]["Cache-Control"]["schema"],
+            {"type": "string", "const": "private, no-store"},
+        )
+        self.assertIn("persisted field geometry", preview["x-validation"])
+        self.assertIn("no automatic preview request", preview["x-idempotency"])
+
+    def test_satellite_ndvi_summary_is_explicit_bounded_and_fail_closed(self):
+        summary = self.document["paths"]["/api/v1/fields/{field_id}/satellite/ndvi-summary"]["get"]
+        self.assertEqual(
+            summary["responses"]["200"]["content"],
+            {"application/json": {"schema": {"$ref": "#/components/schemas/SatelliteNdviSummary"}}},
+        )
+        self.assertEqual(
+            summary["responses"]["200"]["headers"]["Cache-Control"]["schema"],
+            {"type": "string", "const": "private, no-store"},
+        )
+        self.assertIn("persisted field geometry", summary["x-validation"])
+        self.assertIn("UTC day", summary["x-validation"])
+        self.assertIn("no automatic summary request", summary["x-idempotency"])
 
     def test_standard_error_schema_is_structural(self):
         error_response = self.document["components"]["schemas"]["ErrorResponse"]
@@ -297,11 +407,10 @@ class FoundationContractTests(unittest.TestCase):
     def test_required_paths_methods_and_operation_metadata(self):
         paths = self.document["paths"]
         self.assertEqual(set(paths), set(EXPECTED_METHODS))
-        self.assertEqual(set(EXPECTED_RESPONSES), {
-            (path, method)
-            for path, methods in EXPECTED_METHODS.items()
-            for method in methods
-        })
+        self.assertEqual(
+            set(EXPECTED_RESPONSES),
+            {(path, method) for path, methods in EXPECTED_METHODS.items() for method in methods},
+        )
 
         for path, methods in EXPECTED_METHODS.items():
             self.assertEqual(set(paths[path]), methods, path)
@@ -332,6 +441,30 @@ class FoundationContractTests(unittest.TestCase):
                             self.assertIs(type(operation.get(extension)), str)
                             self.assertTrue(operation[extension])
 
+    def test_owner_scope_contracts_for_farms_fields_and_satellite_apis(self):
+        paths = self.document["paths"]
+        for (path, method), assertions in OWNER_SCOPE_ASSERTIONS.items():
+            operation = paths[path][method]
+            for key, expected_fragments in assertions.items():
+                value = operation.get(key, "")
+                lowered = value.lower()
+                for fragment in expected_fragments:
+                    self.assertIn(fragment.lower(), lowered)
+
+    def test_farm_and_field_schemas_do_not_expose_owner_user_id(self):
+        schemas = self.document["components"]["schemas"]
+        for schema_name in (
+            "Farm",
+            "FarmCreateRequest",
+            "FarmUpdateRequest",
+            "Field",
+            "FieldCreateRequest",
+            "FieldUpdateRequest",
+        ):
+            schema = schemas[schema_name]
+            self.assertNotIn("owner_user_id", schema["properties"])
+            self.assertNotIn("owner_user_id", schema.get("required", []))
+
     def test_security_alternatives_match_browser_and_bearer_contract(self):
         public_operations = {
             ("/health/live", "get"),
@@ -349,7 +482,13 @@ class FoundationContractTests(unittest.TestCase):
             for path, methods in EXPECTED_METHODS.items()
             for method in methods
             if method in {"post", "patch", "delete"}
-            and path not in {"/api/v1/auth/register", "/api/v1/auth/login", "/api/v1/auth/logout", "/api/v1/auth/refresh"}
+            and path
+            not in {
+                "/api/v1/auth/register",
+                "/api/v1/auth/login",
+                "/api/v1/auth/logout",
+                "/api/v1/auth/refresh",
+            }
         }
         for path, methods in EXPECTED_METHODS.items():
             for method in methods:

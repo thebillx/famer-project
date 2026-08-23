@@ -1,15 +1,30 @@
 "use client";
 
 import maplibregl, { LngLatBounds, Map, Marker } from "maplibre-gl";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { GeoJsonPolygon } from "../lib/types";
 import { Button } from "./Button";
+import { FormInput } from "./Primitives";
 
 type LngLat = [number, number];
 
 const DEFAULT_STYLE_URL = "https://tiles.openfreemap.org/styles/liberty";
 const THAILAND_CENTER: LngLat = [100.5232, 13.7367];
 const THAILAND_ZOOM = 5.4;
+const THAILAND_BOUNDS: [LngLat, LngLat] = [
+  [97.34, 5.61],
+  [105.64, 20.47]
+];
+const THAILAND_BOUNDS_ERROR = "พิกัดต้องอยู่ในกรอบพื้นที่ให้บริการประเทศไทยโดยประมาณ";
+
+function isWithinThailandBounds([longitude, latitude]: LngLat) {
+  return (
+    longitude >= THAILAND_BOUNDS[0][0] &&
+    longitude <= THAILAND_BOUNDS[1][0] &&
+    latitude >= THAILAND_BOUNDS[0][1] &&
+    latitude <= THAILAND_BOUNDS[1][1]
+  );
+}
 
 function closedPolygon(points: LngLat[]): GeoJsonPolygon {
   return { type: "Polygon", coordinates: [[...points, points[0]]] };
@@ -32,6 +47,9 @@ export function FieldMap({
   const [mapError, setMapError] = useState<string | null>(null);
   const [locationStatus, setLocationStatus] = useState<string | null>(null);
   const [geolocationAvailable, setGeolocationAvailable] = useState(false);
+  const [latitudeInput, setLatitudeInput] = useState("");
+  const [longitudeInput, setLongitudeInput] = useState("");
+  const [coordinateError, setCoordinateError] = useState<string | null>(null);
   const [points, setPoints] = useState<LngLat[]>(() =>
     initialGeometry ? (initialGeometry.coordinates[0].slice(0, -1) as LngLat[]) : []
   );
@@ -44,6 +62,7 @@ export function FieldMap({
       style: styleUrl,
       center: points[0] ?? THAILAND_CENTER,
       zoom: points.length ? 14 : THAILAND_ZOOM,
+      maxBounds: editable ? THAILAND_BOUNDS : undefined,
       attributionControl: { compact: true }
     });
     map.addControl(new maplibregl.NavigationControl({ showCompass: true }), "top-right");
@@ -60,7 +79,13 @@ export function FieldMap({
       if (dragStateRef.current.dragging || dragStateRef.current.markerDragging) return;
       const target = event.originalEvent.target as HTMLElement | null;
       if (target?.closest(".maplibregl-ctrl, .maplibregl-marker")) return;
-      setPoints((current) => [...current, [event.lngLat.lng, event.lngLat.lat]]);
+      const point: LngLat = [event.lngLat.lng, event.lngLat.lat];
+      if (!isWithinThailandBounds(point)) {
+        setCoordinateError(THAILAND_BOUNDS_ERROR);
+        return;
+      }
+      setCoordinateError(null);
+      setPoints((current) => [...current, point]);
     });
     map.on("load", () => {
       setMapLoaded(true);
@@ -99,9 +124,19 @@ export function FieldMap({
         });
         marker.on("dragend", () => {
           const lngLat = marker.getLngLat();
+          const nextPoint: LngLat = [lngLat.lng, lngLat.lat];
+          if (!isWithinThailandBounds(nextPoint)) {
+            marker.setLngLat(point);
+            setCoordinateError(THAILAND_BOUNDS_ERROR);
+            window.setTimeout(() => {
+              dragStateRef.current.markerDragging = false;
+            }, 0);
+            return;
+          }
+          setCoordinateError(null);
           setPoints((current) =>
             current.map((existing, existingIndex) =>
-              existingIndex === index ? [lngLat.lng, lngLat.lat] : existing
+              existingIndex === index ? nextPoint : existing
             )
           );
           window.setTimeout(() => {
@@ -162,9 +197,14 @@ export function FieldMap({
     setLocationStatus("กำลังค้นหาตำแหน่ง...");
     navigator.geolocation.getCurrentPosition(
       (position) => {
+        const point: LngLat = [position.coords.longitude, position.coords.latitude];
+        if (!isWithinThailandBounds(point)) {
+          setLocationStatus("ตำแหน่งปัจจุบันอยู่นอกกรอบพื้นที่ให้บริการประเทศไทยโดยประมาณ");
+          return;
+        }
         setLocationStatus(null);
         mapRef.current?.flyTo({
-          center: [position.coords.longitude, position.coords.latitude],
+          center: point,
           zoom: 15,
           essential: true
         });
@@ -174,6 +214,38 @@ export function FieldMap({
       },
       { enableHighAccuracy: true, timeout: 8000 }
     );
+  }
+
+  function addCoordinatePoint(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const latitude = Number(latitudeInput.trim());
+    const longitude = Number(longitudeInput.trim());
+    if (!latitudeInput.trim() || !longitudeInput.trim() || !Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+      setCoordinateError("กรุณากรอกละติจูดและลองจิจูดเป็นเลขทศนิยม");
+      return;
+    }
+    const point: LngLat = [longitude, latitude];
+    if (!isWithinThailandBounds(point)) {
+      setCoordinateError(THAILAND_BOUNDS_ERROR);
+      return;
+    }
+    const duplicate = points.some(
+      ([existingLongitude, existingLatitude]) =>
+        Math.abs(existingLongitude - longitude) < 1e-9 && Math.abs(existingLatitude - latitude) < 1e-9
+    );
+    if (duplicate) {
+      setCoordinateError("พิกัดนี้ถูกเพิ่มแล้ว");
+      return;
+    }
+
+    setPoints((current) => [...current, point]);
+    setLatitudeInput("");
+    setLongitudeInput("");
+    setCoordinateError(null);
+    const map = mapRef.current;
+    if (map) {
+      map.jumpTo({ center: point, zoom: Math.max(map.getZoom(), 16) });
+    }
   }
 
   return (
@@ -186,6 +258,7 @@ export function FieldMap({
           aria-label="Field map"
           data-map-style-url={styleUrl}
           data-vertex-count={points.length}
+          data-map-bounds={editable ? "97.34,5.61,105.64,20.47" : undefined}
         />
         <div className="pointer-events-none absolute left-3 right-3 top-3 flex flex-wrap items-center justify-between gap-3">
           <div className="pointer-events-auto flex flex-wrap gap-2 rounded-2xl border border-[var(--as-border)] bg-white/90 p-1.5 shadow-[var(--as-shadow-sm)] backdrop-blur">
@@ -225,22 +298,96 @@ export function FieldMap({
         ) : null}
       </div>
       {editable ? (
-        <div className="flex flex-wrap items-center gap-2 rounded-[var(--as-radius-lg)] border border-[var(--as-border)] bg-white/80 p-2 shadow-[var(--as-shadow-sm)]">
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            onClick={() => setPoints((current) => current.slice(0, -1))}
-            disabled={!points.length}
-          >
-            Undo
-          </Button>
-          <Button type="button" variant="danger" size="sm" onClick={() => setPoints([])} disabled={!points.length}>
-            Delete polygon
-          </Button>
-          <span className="self-center text-sm text-[var(--as-ink-muted)]">
-            Click the map to add vertices. Drag markers to edit before saving.
-          </span>
+        <div className="space-y-3">
+          {coordinateError ? (
+            <p
+              role="alert"
+              className="rounded-[var(--as-radius-sm)] border border-[var(--as-danger)] bg-[var(--as-danger-soft)] px-3 py-2 text-sm font-semibold text-[var(--as-danger)]"
+            >
+              {coordinateError}
+            </p>
+          ) : null}
+          <details className="rounded-[var(--as-radius-lg)] border border-[var(--as-border)] bg-white/80 p-4 shadow-[var(--as-shadow-sm)]">
+            <summary className="min-h-11 cursor-pointer font-bold text-[var(--as-primary)]">
+              เพิ่มจุดด้วยพิกัด
+            </summary>
+            <div className="mt-3 space-y-4">
+              <p className="text-sm text-[var(--as-ink-muted)]">
+                กรอกพิกัด WGS84 แบบทศนิยมตามลำดับรอบขอบเขตอย่างน้อย 3 จุด ภายในกรอบพื้นที่ให้บริการประเทศไทยโดยประมาณ
+                ระบบจะปิดรูปแปลงให้อัตโนมัติเมื่อบันทึก
+              </p>
+              <form className="space-y-3" noValidate onSubmit={addCoordinatePoint}>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <FormInput
+                    label="ละติจูด"
+                    type="number"
+                    inputMode="decimal"
+                    step="any"
+                    min={THAILAND_BOUNDS[0][1]}
+                    max={THAILAND_BOUNDS[1][1]}
+                    value={latitudeInput}
+                    onChange={(event) => setLatitudeInput(event.target.value)}
+                    hint="ช่วง 5.61 ถึง 20.47 — ตัวอย่าง 18.7901"
+                    aria-required="true"
+                  />
+                  <FormInput
+                    label="ลองจิจูด"
+                    type="number"
+                    inputMode="decimal"
+                    step="any"
+                    min={THAILAND_BOUNDS[0][0]}
+                    max={THAILAND_BOUNDS[1][0]}
+                    value={longitudeInput}
+                    onChange={(event) => setLongitudeInput(event.target.value)}
+                    hint="ช่วง 97.34 ถึง 105.64 — ตัวอย่าง 98.9801"
+                    aria-required="true"
+                  />
+                </div>
+                <Button type="submit" variant="secondary" size="sm">
+                  เพิ่มจุดพิกัด
+                </Button>
+              </form>
+              {points.length ? (
+                <ol aria-label="รายการจุดพิกัด" className="grid gap-2 text-sm text-[var(--as-ink-muted)] md:grid-cols-2">
+                  {points.map(([longitude, latitude], index) => (
+                    <li key={`${longitude}-${latitude}-${index}`} className="rounded-[var(--as-radius-sm)] bg-[var(--as-surface-soft)] px-3 py-2">
+                      <span className="font-bold text-[var(--as-ink)]">จุด {index + 1}</span>
+                      {`: ละติจูด ${latitude.toFixed(6)}, ลองจิจูด ${longitude.toFixed(6)}`}
+                    </li>
+                  ))}
+                </ol>
+              ) : null}
+            </div>
+          </details>
+          <div className="flex flex-wrap items-center gap-2 rounded-[var(--as-radius-lg)] border border-[var(--as-border)] bg-white/80 p-2 shadow-[var(--as-shadow-sm)]">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                setCoordinateError(null);
+                setPoints((current) => current.slice(0, -1));
+              }}
+              disabled={!points.length}
+            >
+              Undo
+            </Button>
+            <Button
+              type="button"
+              variant="danger"
+              size="sm"
+              onClick={() => {
+                setCoordinateError(null);
+                setPoints([]);
+              }}
+              disabled={!points.length}
+            >
+              Delete polygon
+            </Button>
+            <span className="self-center text-sm text-[var(--as-ink-muted)]">
+              Click the map to add vertices. Drag markers to edit before saving.
+            </span>
+          </div>
         </div>
       ) : null}
     </section>

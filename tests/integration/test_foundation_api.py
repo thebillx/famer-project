@@ -4,6 +4,8 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 import json
 from decimal import Decimal
+import os
+from urllib.parse import unquote, urlsplit
 from uuid import UUID, uuid4
 
 import psycopg
@@ -28,25 +30,176 @@ from apps.api.agriscope_api.providers.cdse_stac import (
     CdseStacSearchResult,
     CdseStacUnavailable,
 )
+from apps.api.agriscope_api.providers.cdse_process import (
+    CdseNdviSummary,
+    CdseTrueColorPreview,
+)
 from apps.api.agriscope_api.services.satellite import SatelliteResponse
 
 
-DATABASE_URL = "postgresql://agriscope:agriscope_dev_password@localhost:5432/agriscope"
+TEST_DATABASE_ENV = "AGRISCOPE_TEST_DATABASE_URL"
 APP_ORIGIN = "http://localhost:3000"
 
 
+def _test_database_config() -> tuple[str, dict[str, str | int]]:
+    raw_url = os.environ.get(TEST_DATABASE_ENV)
+    if not raw_url:
+        raise RuntimeError(
+            f"{TEST_DATABASE_ENV} is required; integration tests never use the development database"
+        )
+
+    parsed = urlsplit(raw_url)
+    database = unquote(parsed.path.removeprefix("/"))
+    username = unquote(parsed.username or "")
+    password = unquote(parsed.password or "")
+    if (
+        parsed.scheme != "postgresql+psycopg"
+        or parsed.hostname != "127.0.0.1"
+        or parsed.port is None
+        or parsed.query
+        or parsed.fragment
+        or not username.startswith("agriscope_test_")
+        or not database.startswith("agriscope_test_")
+        or not password
+    ):
+        raise RuntimeError(
+            f"{TEST_DATABASE_ENV} must identify a loopback-only agriscope_test database and user"
+        )
+    return raw_url, {
+        "host": "127.0.0.1",
+        "port": parsed.port,
+        "dbname": database,
+        "user": username,
+        "password": password,
+    }
+
+
+@pytest.mark.parametrize(
+    "database_url",
+    [
+        pytest.param(
+            "postgresql+psycopg://agriscope_test_user:local-pass@127.0.0.1:5432/agriscope_test_ci",
+            id="valid_disposable_local_host",
+        ),
+        pytest.param(None, id="missing_url"),
+        pytest.param(
+            "postgresql+psycopg://agriscope:dev-pass@127.0.0.1:5432/agriscope",
+            id="development_identity",
+        ),
+        pytest.param(
+            "postgresql://agriscope_test_user:local-pass@127.0.0.1:5432/agriscope_test_ci",
+            id="wrong_scheme",
+        ),
+        pytest.param(
+            "postgresql+psycopg://agriscope_test_user:local-pass@127.0.0.1/agriscope_test_ci",
+            id="missing_port",
+        ),
+        pytest.param(
+            "postgresql+psycopg://agriscope_test_user:local-pass@localhost:5432/agriscope_test_ci",
+            id="non_loopback_host",
+        ),
+        pytest.param(
+            "postgresql+psycopg://agriscope_test_user:local-pass@127.0.0.1:5432/agriscope_test_ci?sslmode=disable",
+            id="query_rejected",
+        ),
+        pytest.param(
+            "postgresql+psycopg://agriscope_test_user:local-pass@127.0.0.1:5432/agriscope_test_ci#build",
+            id="fragment_rejected",
+        ),
+        pytest.param(
+            "postgresql+psycopg://agriscope_test_user@127.0.0.1:5432/agriscope_test_ci",
+            id="missing_password",
+        ),
+        pytest.param(
+            "postgresql+psycopg://agriscope_ci_user:local-pass@127.0.0.1:5432/agriscope_test_ci",
+            id="wrong_user_prefix",
+        ),
+        pytest.param(
+            "postgresql+psycopg://agriscope_test_user:local-pass@127.0.0.1:5432/agri_ci_ci",
+            id="wrong_database_prefix",
+        ),
+    ],
+)
+def test_database_config_url_contract(monkeypatch, database_url: str | None):
+    calls = {"connect": 0}
+
+    def guarded_connect(*_args, **_kwargs) -> None:
+        calls["connect"] += 1
+        raise AssertionError("unexpected database connection while validating URL")
+
+    monkeypatch.setattr(psycopg, "connect", guarded_connect)
+
+    if database_url is None:
+        monkeypatch.delenv(TEST_DATABASE_ENV, raising=False)
+        with pytest.raises(RuntimeError, match="required"):
+            _test_database_config()
+        assert calls["connect"] == 0
+        return
+
+    monkeypatch.setenv(TEST_DATABASE_ENV, database_url)
+    if (
+        database_url
+        == "postgresql+psycopg://agriscope_test_user:local-pass@127.0.0.1:5432/agriscope_test_ci"
+    ):
+        parsed, connection = _test_database_config()
+        assert parsed == database_url
+        assert connection["host"] == "127.0.0.1"
+        assert connection["port"] == 5432
+        assert connection["user"] == "agriscope_test_user"
+        assert connection["dbname"] == "agriscope_test_ci"
+        assert connection["password"] == "local-pass"
+        assert calls["connect"] == 0
+        return
+
+    with pytest.raises(RuntimeError):
+        _test_database_config()
+    assert calls["connect"] == 0
+
+
 def _connect():
-    return psycopg.connect(DATABASE_URL)
+    _, connection = _test_database_config()
+    return psycopg.connect(**connection)
+
+
+def _truncate_application_tables() -> None:
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "TRUNCATE field_acquisitions, fields, farms, refresh_sessions, memberships, organizations, users"
+            )
+
+
+@pytest.fixture(scope="session", autouse=True)
+def isolated_database():
+    database_url, expected = _test_database_config()
+    previous_database_url = os.environ.get("DATABASE_URL")
+    os.environ["DATABASE_URL"] = database_url
+    try:
+        with psycopg.connect(**expected) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT current_database(), current_user, current_setting('server_version_num'), PostGIS_Lib_Version()"
+                )
+                database, user, server_version, postgis_version = cur.fetchone()
+                assert database == expected["dbname"]
+                assert user == expected["user"]
+                assert str(server_version).startswith("16")
+                assert str(postgis_version).startswith("3.4")
+        yield
+    finally:
+        if previous_database_url is None:
+            os.environ.pop("DATABASE_URL", None)
+        else:
+            os.environ["DATABASE_URL"] = previous_database_url
 
 
 @pytest.fixture(autouse=True)
 def clean_database():
-    with _connect() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "TRUNCATE field_acquisitions, fields, farms, refresh_sessions, memberships, organizations, users RESTART IDENTITY"
-            )
-    yield
+    _truncate_application_tables()
+    try:
+        yield
+    finally:
+        _truncate_application_tables()
 
 
 @pytest.fixture
@@ -91,7 +244,9 @@ def test_register_persists_user_org_owner_membership_and_sets_cookies(client: Te
     raw_refresh = client.cookies["agriscope_refresh"]
     with _connect() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT email, password_hash FROM users WHERE email = %s", ("farmer@example.com",))
+            cur.execute(
+                "SELECT email, password_hash FROM users WHERE email = %s", ("farmer@example.com",)
+            )
             user_row = cur.fetchone()
             assert user_row is not None
             assert user_row[1] != "StrongPass12345"
@@ -207,7 +362,9 @@ def test_concurrent_refresh_rotates_session_exactly_once(client: TestClient):
     assert login.status_code == 204
     raw_refresh = client.cookies["agriscope_refresh"]
     old_session_id = UUID(
-        parse_token(raw_refresh, client.app.state.settings.session_secret, TokenType.REFRESH).session_id
+        parse_token(
+            raw_refresh, client.app.state.settings.session_secret, TokenType.REFRESH
+        ).session_id
     )
 
     def refresh_once() -> int:
@@ -306,7 +463,9 @@ def test_csrf_bootstrap_rotation_headers_and_cookie_attributes(client: TestClien
     "origin",
     [None, "null", "not-an-origin", "https://localhost:3000", "http://localhost:3001"],
 )
-def test_invalid_origin_rejects_registration_before_limiter_or_database(client: TestClient, origin: str | None):
+def test_invalid_origin_rejects_registration_before_limiter_or_database(
+    client: TestClient, origin: str | None
+):
     token = _prime_csrf(client)
     client.headers.pop("Origin", None)
     if origin is not None:
@@ -459,7 +618,12 @@ def test_logout_missing_or_malformed_refresh_never_opens_a_session(
     if refresh_value is None:
         client.cookies.delete("agriscope_refresh", path="/api/v1/auth")
     else:
-        client.cookies.set("agriscope_refresh", refresh_value, path="/api/v1/auth")
+        client.cookies.set(
+            "agriscope_refresh",
+            refresh_value,
+            domain="testserver.local",
+            path="/api/v1/auth",
+        )
 
     def forbidden_session_factory():
         raise AssertionError("invalid refresh state must not open or mutate a session")
@@ -532,6 +696,8 @@ def test_refresh_limit_keys_use_valid_subject_or_privacy_safe_token_fallback(cli
 def test_organization_tenant_scope_and_disabled_membership(client: TestClient):
     first = _register(client, "owner@example.com")
     org_id = first["organization"]["id"]
+    farm = _create_farm(client, org_id, name="privacy-scope-farm")
+    field = _create_field(client, farm["id"], name="privacy-scope-field")
     second_client = TestClient(client.app)
     second = _register(second_client, "other@example.com")
     foreign_org_id = second["organization"]["id"]
@@ -552,12 +718,58 @@ def test_organization_tenant_scope_and_disabled_membership(client: TestClient):
 
     with _connect() as conn:
         with conn.cursor() as cur:
-            cur.execute("UPDATE memberships SET status = 'disabled' WHERE organization_id = %s", (org_id,))
+            cur.execute("SELECT count(*) FROM memberships WHERE organization_id = %s", (org_id,))
+            assert cur.fetchone()[0] == 1
+
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE memberships SET status = 'disabled' WHERE organization_id = %s", (org_id,)
+            )
+    disabled_org_list = client.get("/api/v1/organizations")
+    assert disabled_org_list.status_code == 200
+    assert disabled_org_list.json() == []
+    disabled_farms = client.get("/api/v1/farms")
+    assert disabled_farms.status_code == 200
+    assert disabled_farms.json() == []
+    disabled_farm = client.get(f"/api/v1/farms/{farm['id']}")
+    assert disabled_farm.status_code == 404
+    assert disabled_farm.json()["error"]["code"] == "not_found"
+    disabled_field = client.get(f"/api/v1/fields/{field['id']}")
+    assert disabled_field.status_code == 404
+    assert disabled_field.json()["error"]["code"] == "not_found"
+
+    client.app.state.cdse_stac_provider = FakeAvailableProvider()
+    client.app.state.cdse_process_provider = FakeProcessProvider()
+    limiter = TrackingLimiter()
+    client.app.state.rate_limiter = limiter
+    latest = client.get(f"/api/v1/fields/{field['id']}/satellite/latest")
+    search = client.post(f"/api/v1/fields/{field['id']}/satellite/search-latest")
+    preview = client.get(f"/api/v1/fields/{field['id']}/satellite/preview")
+    ndvi = client.get(f"/api/v1/fields/{field['id']}/satellite/ndvi-summary")
+
+    assert latest.status_code == 404
+    assert search.status_code == 404
+    assert preview.status_code == 404
+    assert ndvi.status_code == 404
+    assert limiter.calls == []
+    assert client.app.state.cdse_stac_provider.calls == 0
+    assert client.app.state.cdse_process_provider.render_calls == []
+    assert client.app.state.cdse_process_provider.summary_calls == []
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT count(*) FROM field_acquisitions WHERE field_id = %s", (field["id"],)
+            )
+            assert cur.fetchone()[0] == 0
+
     disabled = client.get(f"/api/v1/organizations/{org_id}/members")
     assert disabled.status_code == 404
 
 
-def test_create_organization_requires_authentication_and_health_masks_dependencies(client: TestClient):
+def test_create_organization_requires_authentication_and_health_masks_dependencies(
+    client: TestClient,
+):
     anonymous = TestClient(client.app)
     unauthorized = anonymous.post("/api/v1/organizations", json={"name": "Other"})
     assert unauthorized.status_code == 401
@@ -635,6 +847,28 @@ class FakeNoDataProvider:
     async def search_latest(self, geometry, *, now=None):
         self.calls += 1
         return CdseStacSearchResult(item=None, searched_at=now or datetime.now(UTC))
+
+
+class FakeProcessProvider:
+    def __init__(self) -> None:
+        self.render_calls: list[tuple[dict, datetime]] = []
+        self.summary_calls: list[tuple[dict, datetime]] = []
+
+    async def render_true_color(self, geometry, *, acquired_at):
+        self.render_calls.append((geometry, acquired_at))
+        return CdseTrueColorPreview(image_png=b"\x89PNG\x0d\x0a\x1a\x0a", valid_pixel_ratio=0.8)
+
+    async def summarize_ndvi(self, geometry, *, acquired_at):
+        self.summary_calls.append((geometry, acquired_at))
+        return CdseNdviSummary(
+            mean=0.5,
+            minimum=0.1,
+            maximum=0.9,
+            standard_deviation=0.05,
+            sample_count=100,
+            valid_sample_count=80,
+            valid_pixel_ratio=0.8,
+        )
 
 
 class FakeUnavailableProvider:
@@ -742,7 +976,11 @@ def test_field_farm_organization_integrity_is_enforced_by_database(client: TestC
                       'active'
                     )
                     """,
-                    (second_farm["id"], first["organization"]["id"], json.dumps(VALID_FIELD_GEOMETRY)),
+                    (
+                        second_farm["id"],
+                        first["organization"]["id"],
+                        json.dumps(VALID_FIELD_GEOMETRY),
+                    ),
                 )
 
 
@@ -751,11 +989,11 @@ def test_invalid_field_geometry_rejected(client: TestClient):
     farm = _create_farm(client, registered["organization"]["id"])
     invalid = {
         "type": "Polygon",
-        "coordinates": [
-            [[98.0, 18.0], [99.0, 19.0], [98.0, 19.0], [99.0, 18.0], [98.0, 18.0]]
-        ],
+        "coordinates": [[[98.0, 18.0], [99.0, 19.0], [98.0, 19.0], [99.0, 18.0], [98.0, 18.0]]],
     }
-    response = client.post(f"/api/v1/farms/{farm['id']}/fields", json={"name": "Bad", "geometry": invalid})
+    response = client.post(
+        f"/api/v1/farms/{farm['id']}/fields", json={"name": "Bad", "geometry": invalid}
+    )
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "invalid_geometry"
 
@@ -791,11 +1029,135 @@ def test_farm_field_tenant_isolation_and_viewer_mutation_denial(client: TestClie
         json={"organization_id": owner_org_id, "name": "Viewer Farm"},
     )
     assert viewer_create.status_code == 403
-    viewer_read = other_client.get(f"/api/v1/farms/{farm['id']}")
-    assert viewer_read.status_code == 200
+    same_org_farms = other_client.get("/api/v1/farms")
+    assert same_org_farms.status_code == 200
+    assert same_org_farms.json() == []
+    assert other_client.get(f"/api/v1/farms/{farm['id']}").status_code == 404
+    assert other_client.get(f"/api/v1/farms/{farm['id']}/fields").status_code == 404
+    assert other_client.get(f"/api/v1/fields/{field['id']}").status_code == 404
+    assert (
+        other_client.patch(f"/api/v1/farms/{farm['id']}", json={"name": "Hidden"}).status_code
+        == 404
+    )
+    assert other_client.delete(f"/api/v1/farms/{farm['id']}").status_code == 404
+    assert (
+        other_client.post(
+            f"/api/v1/farms/{farm['id']}/fields",
+            json={"name": "Hidden", "geometry": VALID_FIELD_GEOMETRY},
+        ).status_code
+        == 404
+    )
+    assert (
+        other_client.patch(f"/api/v1/fields/{field['id']}", json={"name": "Hidden"}).status_code
+        == 404
+    )
+    assert other_client.delete(f"/api/v1/fields/{field['id']}").status_code == 404
 
 
-def test_satellite_search_persists_latest_acquisition_idempotently_and_uses_persisted_geometry(client: TestClient):
+def test_creator_privacy_and_org_owner_override_after_role_change(client: TestClient):
+    creator = _register(client, "creator-privacy@example.com")
+    creator_org_id = creator["organization"]["id"]
+    farm = _create_farm(client, creator_org_id, "Creator Farm")
+    field = _create_field(client, farm["id"], "Creator Field")
+
+    teammate_client = TestClient(client.app)
+    _register(teammate_client, "teammate-privacy@example.com")
+
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id FROM users WHERE email = %s",
+                ("creator-privacy@example.com",),
+            )
+            creator_user_id = cur.fetchone()[0]
+            cur.execute(
+                "SELECT id FROM users WHERE email = %s",
+                ("teammate-privacy@example.com",),
+            )
+            teammate_user_id = cur.fetchone()[0]
+            cur.execute(
+                """
+                UPDATE memberships
+                SET organization_id = %s, role = 'viewer', status = 'active'
+                WHERE user_id = %s
+                """,
+                (creator_org_id, teammate_user_id),
+            )
+            cur.execute(
+                """
+                UPDATE memberships
+                SET role = 'viewer'
+                WHERE user_id = %s
+                """,
+                (creator_user_id,),
+            )
+
+    same_org_farms = teammate_client.get("/api/v1/farms").json()
+    assert same_org_farms == []
+    assert teammate_client.get(f"/api/v1/farms/{farm['id']}").status_code == 404
+    assert teammate_client.get(f"/api/v1/fields/{field['id']}").status_code == 404
+
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE memberships
+                SET role = 'organization_owner'
+                WHERE user_id = %s
+                """,
+                (teammate_user_id,),
+            )
+
+    assert teammate_client.get("/api/v1/farms").json()[0]["id"] == farm["id"]
+    assert teammate_client.get(f"/api/v1/farms/{farm['id']}").status_code == 200
+    assert teammate_client.get(f"/api/v1/farms/{farm['id']}/fields").status_code == 200
+    assert teammate_client.get(f"/api/v1/fields/{field['id']}").status_code == 200
+    assert (
+        teammate_client.patch(
+            f"/api/v1/farms/{farm['id']}", json={"name": "Owner Override Farm"}
+        ).status_code
+        == 200
+    )
+    assert (
+        teammate_client.patch(
+            f"/api/v1/fields/{field['id']}", json={"name": "Owner Override Field"}
+        ).status_code
+        == 200
+    )
+
+    assert client.get("/api/v1/farms").json()[0]["id"] == farm["id"]
+    assert client.get(f"/api/v1/farms/{farm['id']}").status_code == 200
+    assert client.get(f"/api/v1/farms/{farm['id']}/fields").status_code == 200
+    assert client.get(f"/api/v1/fields/{field['id']}").status_code == 200
+    assert (
+        client.post(
+            "/api/v1/farms",
+            json={"organization_id": creator_org_id, "name": "Viewer Cannot Create"},
+        ).status_code
+        == 403
+    )
+    assert (
+        client.patch(f"/api/v1/farms/{farm['id']}", json={"name": "Creator Farm II"}).status_code
+        == 403
+    )
+    assert (
+        client.patch(f"/api/v1/fields/{field['id']}", json={"name": "Creator Field II"}).status_code
+        == 403
+    )
+    assert (
+        client.post(
+            f"/api/v1/farms/{farm['id']}/fields",
+            json={"name": "Viewer Cannot Create", "geometry": VALID_FIELD_GEOMETRY},
+        ).status_code
+        == 403
+    )
+    assert client.delete(f"/api/v1/fields/{field['id']}").status_code == 403
+    assert client.delete(f"/api/v1/farms/{farm['id']}").status_code == 403
+
+
+def test_satellite_search_persists_latest_acquisition_idempotently_and_uses_persisted_geometry(
+    client: TestClient,
+):
     registered = _register(client, "satellite-owner@example.com")
     farm = _create_farm(client, registered["organization"]["id"])
     field = _create_field(client, farm["id"])
@@ -849,7 +1211,9 @@ def test_satellite_no_data_unavailable_auth_and_tenant_scope(client: TestClient)
     field = _create_field(client, farm["id"])
 
     anonymous = TestClient(client.app)
-    assert anonymous.post(f"/api/v1/fields/{field['id']}/satellite/search-latest").status_code == 401
+    assert (
+        anonymous.post(f"/api/v1/fields/{field['id']}/satellite/search-latest").status_code == 401
+    )
 
     client.app.state.cdse_stac_provider = FakeNoDataProvider()
     no_data = client.post(f"/api/v1/fields/{field['id']}/satellite/search-latest")
@@ -870,7 +1234,10 @@ def test_satellite_no_data_unavailable_auth_and_tenant_scope(client: TestClient)
 
     other_client = TestClient(client.app)
     _register(other_client, "satellite-foreign@example.com")
-    assert other_client.post(f"/api/v1/fields/{field['id']}/satellite/search-latest").status_code == 404
+    assert (
+        other_client.post(f"/api/v1/fields/{field['id']}/satellite/search-latest").status_code
+        == 404
+    )
     assert client.post(f"/api/v1/fields/{uuid4()}/satellite/search-latest").status_code == 404
 
     with _connect() as conn:
@@ -889,7 +1256,9 @@ def test_security_ordering_blocks_limiter_repository_and_provider_side_effects(c
     limiter = TrackingLimiter()
     client.app.state.rate_limiter = limiter
     anonymous = TestClient(client.app)
-    assert anonymous.post(f"/api/v1/fields/{field['id']}/satellite/search-latest").status_code == 401
+    assert (
+        anonymous.post(f"/api/v1/fields/{field['id']}/satellite/search-latest").status_code == 401
+    )
     assert limiter.calls == []
     assert provider.calls == 0
     csrf_rejected = client.post(
@@ -918,9 +1287,14 @@ def test_security_ordering_blocks_limiter_repository_and_provider_side_effects(c
 
     with _connect() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT count(*) FROM field_acquisitions WHERE field_id = %s", (field["id"],))
+            cur.execute(
+                "SELECT count(*) FROM field_acquisitions WHERE field_id = %s", (field["id"],)
+            )
             assert cur.fetchone()[0] == 0
-            cur.execute("SELECT count(*) FROM farms WHERE organization_id = %s", (owner["organization"]["id"],))
+            cur.execute(
+                "SELECT count(*) FROM farms WHERE organization_id = %s",
+                (owner["organization"]["id"],),
+            )
             before = cur.fetchone()[0]
     limited_mutation = client.post(
         "/api/v1/farms",
@@ -930,7 +1304,10 @@ def test_security_ordering_blocks_limiter_repository_and_provider_side_effects(c
     assert rejected_limiter.calls[-1] == ("mutation-ip", "mutation-subject")
     with _connect() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT count(*) FROM farms WHERE organization_id = %s", (owner["organization"]["id"],))
+            cur.execute(
+                "SELECT count(*) FROM farms WHERE organization_id = %s",
+                (owner["organization"]["id"],),
+            )
             assert cur.fetchone()[0] == before
 
 
@@ -965,7 +1342,9 @@ def test_role_failure_precedes_limiter_and_mutation(client: TestClient):
             assert cur.fetchone()[0] == 0
 
 
-def test_satellite_viewer_can_search_and_database_rejects_mismatched_field_organization(client: TestClient):
+def test_satellite_viewer_can_search_and_database_rejects_mismatched_field_organization(
+    client: TestClient,
+):
     owner = _register(client, "satellite-db-owner@example.com")
     owner_org_id = owner["organization"]["id"]
     farm = _create_farm(client, owner_org_id)
@@ -985,7 +1364,12 @@ def test_satellite_viewer_can_search_and_database_rejects_mismatched_field_organ
                 (owner_org_id, viewer_user_id),
             )
     viewer.app.state.cdse_stac_provider = FakeAvailableProvider()
-    assert viewer.post(f"/api/v1/fields/{field['id']}/satellite/search-latest").status_code == 200
+    _prime_csrf(viewer)
+    viewer.app.state.rate_limiter = TrackingLimiter()
+    viewer_search = viewer.post(f"/api/v1/fields/{field['id']}/satellite/search-latest")
+    assert viewer_search.status_code == 404
+    assert viewer.app.state.rate_limiter.calls == []
+    assert viewer.app.state.cdse_stac_provider.calls == 0
 
     other = _register(TestClient(client.app), "satellite-db-other@example.com")
     with _connect() as conn:
@@ -1009,6 +1393,60 @@ def test_satellite_viewer_can_search_and_database_rejects_mismatched_field_organ
                     """,
                     (field["id"], other["organization"]["id"], Decimal("12.40")),
                 )
+
+
+def test_hidden_field_satellite_endpoints_return_generic_not_found_before_side_effects(
+    client: TestClient,
+):
+    owner = _register(client, "satellite-hidden-owner@example.com")
+    farm = _create_farm(client, owner["organization"]["id"])
+    field = _create_field(client, farm["id"])
+
+    client.app.state.cdse_stac_provider = FakeAvailableProvider()
+    owner_search = client.post(f"/api/v1/fields/{field['id']}/satellite/search-latest")
+    assert owner_search.status_code == 200
+
+    teammate = TestClient(client.app)
+    teammate_user = _register(teammate, "satellite-hidden-viewer@example.com")
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT id FROM users WHERE email = %s", (teammate_user["user"]["email"],))
+            teammate_user_id = cur.fetchone()[0]
+            cur.execute(
+                """
+                UPDATE memberships
+                SET organization_id = %s, role = 'viewer', status = 'active'
+                WHERE user_id = %s
+                """,
+                (owner["organization"]["id"], teammate_user_id),
+            )
+
+    teammate.app.state.cdse_stac_provider = FakeAvailableProvider()
+    process_provider = FakeProcessProvider()
+    teammate.app.state.cdse_process_provider = process_provider
+    _prime_csrf(teammate)
+    teammate.app.state.rate_limiter = TrackingLimiter()
+
+    latest = teammate.get(f"/api/v1/fields/{field['id']}/satellite/latest")
+    search = teammate.post(f"/api/v1/fields/{field['id']}/satellite/search-latest")
+    preview = teammate.get(f"/api/v1/fields/{field['id']}/satellite/preview")
+    ndvi = teammate.get(f"/api/v1/fields/{field['id']}/satellite/ndvi-summary")
+
+    assert latest.status_code == 404
+    assert search.status_code == 404
+    assert preview.status_code == 404
+    assert ndvi.status_code == 404
+    assert teammate.app.state.rate_limiter.calls == []
+    assert teammate.app.state.cdse_stac_provider.calls == 0
+    assert process_provider.render_calls == []
+    assert process_provider.summary_calls == []
+
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT count(*) FROM field_acquisitions WHERE field_id = %s", (field["id"],)
+            )
+            assert cur.fetchone()[0] == 1
 
 
 def test_satellite_response_models_reject_impossible_discriminator_shapes():

@@ -14,6 +14,7 @@ type CsrfFlight = Readonly<{ epoch: number; forced: boolean; promise: Promise<st
 type RefreshOutcome = Readonly<{ csrfRenewalConsumed: boolean }>;
 type RefreshPermission = { csrfRenewalAllowed: boolean };
 type RefreshFlight = Readonly<{ permission: RefreshPermission; promise: Promise<RefreshOutcome> }>;
+type ResponseParser<T> = (response: Response) => Promise<T>;
 
 const NETWORK_MESSAGE = "ไม่สามารถเชื่อมต่อบริการได้ กรุณาลองใหม่อีกครั้ง";
 const REQUEST_MESSAGE = "คำขอไม่สำเร็จ กรุณาลองใหม่อีกครั้ง";
@@ -184,7 +185,11 @@ async function refreshAccess(allowCsrfRenewal: boolean): Promise<RefreshOutcome>
   return refreshFlight.promise;
 }
 
-export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
+async function apiFetchWithParser<T>(
+  path: string,
+  init: RequestInit,
+  parse: ResponseParser<T>
+): Promise<T> {
   const method = requestMethod(init);
   const unsafe = UNSAFE_METHODS.has(method);
   const budget: RecoveryBudget = { csrfRenewals: 0, accessRefreshes: 0 };
@@ -200,7 +205,7 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
     });
     if (response.ok) {
       if (response.status === 204) return undefined as T;
-      return (await response.json()) as T;
+      return parse(response);
     }
 
     const error = await responseError(response);
@@ -234,6 +239,22 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
   }
 
   throw recoveryExhausted();
+}
+
+export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
+  return apiFetchWithParser(path, init, async (response) => (await response.json()) as T);
+}
+
+export async function apiFetchBlob(path: string, init: RequestInit = {}): Promise<Blob> {
+  const blob = await apiFetchWithParser(path, init, (response) => response.blob());
+  if (blob.type !== "image/png") {
+    throw new ApiError(REQUEST_MESSAGE, {
+      status: 200,
+      code: "invalid_response",
+      requestId: null
+    });
+  }
+  return blob;
 }
 
 export function resetApiClientStateForTests(): void {

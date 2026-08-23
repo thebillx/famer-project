@@ -69,6 +69,8 @@ class SettingsFoundationTests(unittest.TestCase):
                 "SATELLITE_SEARCH_LOOKBACK_DAYS": "0",
                 "SATELLITE_SEARCH_TIMEOUT_SECONDS": "-1",
                 "SATELLITE_MAX_CLOUD_COVER_PERCENT": "101",
+                "SATELLITE_PREVIEW_MIN_VALID_RATIO": "0",
+                "SATELLITE_ANALYSIS_MIN_VALID_RATIO": "1.1",
             }
         )
         fields = {issue.field for issue in validate_settings(settings)}
@@ -76,6 +78,35 @@ class SettingsFoundationTests(unittest.TestCase):
         self.assertIn("SATELLITE_SEARCH_LOOKBACK_DAYS", fields)
         self.assertIn("SATELLITE_SEARCH_TIMEOUT_SECONDS", fields)
         self.assertIn("SATELLITE_MAX_CLOUD_COVER_PERCENT", fields)
+        self.assertIn("SATELLITE_PREVIEW_MIN_VALID_RATIO", fields)
+        self.assertIn("SATELLITE_ANALYSIS_MIN_VALID_RATIO", fields)
+
+    def test_production_requires_server_side_cdse_process_credentials_and_https(self):
+        settings = settings_from_env(
+            {
+                "APP_ENV": "production",
+                "DATABASE_URL": "postgresql+psycopg://user:pass@localhost/db",
+                "REDIS_URL": "redis://localhost:6379/0",
+                "OBJECT_STORAGE_ENDPOINT": "https://storage.example.com",
+                "OBJECT_STORAGE_BUCKET": "agriscope",
+                "SESSION_SECRET": "s" * 40,
+                "ENCRYPTION_KEY": "e" * 40,
+                "COOKIE_SECURE": "true",
+                "CDSE_CLIENT_ID": "",
+                "CDSE_CLIENT_SECRET": "",
+                "CDSE_TOKEN_URL": "http://identity.example.test/token",
+                "CDSE_PROCESS_URL": "http://process.example.test/process/v1",
+                "CDSE_STATISTICAL_URL": "http://process.example.test/statistics/v1",
+            }
+        )
+        issues = validate_settings(settings)
+        issue_pairs = {(issue.field, issue.message) for issue in issues}
+
+        self.assertIn(("CDSE_CLIENT_ID", "required in production"), issue_pairs)
+        self.assertIn(("CDSE_CLIENT_SECRET", "required in production"), issue_pairs)
+        self.assertIn(("CDSE_TOKEN_URL", "must use https in production"), issue_pairs)
+        self.assertIn(("CDSE_PROCESS_URL", "must use https in production"), issue_pairs)
+        self.assertIn(("CDSE_STATISTICAL_URL", "must use https in production"), issue_pairs)
 
 
 if __name__ == "__main__":

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { type QueryClient, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import type { FieldError, FieldErrors, FieldValues, Resolver } from "react-hook-form";
 import { z } from "zod";
@@ -12,6 +13,17 @@ import { apiFetch } from "../../lib/api";
 
 const LOGIN_FAILURE = "เข้าสู่ระบบไม่สำเร็จ กรุณาตรวจสอบข้อมูลและลองอีกครั้ง";
 const REGISTER_FAILURE = "สร้างบัญชีไม่สำเร็จ กรุณาตรวจสอบข้อมูลและลองอีกครั้ง";
+
+const TENANT_QUERY_ROOTS = new Set([
+  "current-user",
+  "organizations",
+  "organization-members",
+  "farms",
+  "farm",
+  "fields",
+  "field",
+  "satellite-latest"
+]);
 
 const emailSchema = z.string().trim().min(1, "กรุณากรอกอีเมล").email("กรุณากรอกอีเมลให้ถูกต้อง");
 
@@ -35,6 +47,12 @@ const loginSchema = z.object({
 type RegisterForm = z.infer<typeof registerSchema>;
 type LoginForm = z.infer<typeof loginSchema>;
 type AuthMode = "register" | "login";
+
+function clearTenantAuthCache(queryClient: QueryClient) {
+  const isTenantQuery = (query: { queryKey: readonly unknown[] }) =>
+    typeof query.queryKey[0] === "string" && TENANT_QUERY_ROOTS.has(query.queryKey[0]);
+  queryClient.removeQueries({ predicate: isTenantQuery });
+}
 
 function schemaResolver<T extends FieldValues>(schema: z.ZodType<T>): Resolver<T> {
   return async (values) => {
@@ -66,6 +84,7 @@ function BrandMark() {
 
 export default function LoginPage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [mode, setMode] = useState<AuthMode>("register");
   const [serverError, setServerError] = useState<string | null>(null);
   const registerForm = useForm<RegisterForm>({
@@ -102,6 +121,7 @@ export default function LoginPage() {
         method: "POST",
         body: JSON.stringify(values)
       });
+      clearTenantAuthCache(queryClient);
       router.push("/farms");
     } catch {
       setServerError(REGISTER_FAILURE);
@@ -115,6 +135,7 @@ export default function LoginPage() {
         method: "POST",
         body: JSON.stringify(values)
       });
+      clearTenantAuthCache(queryClient);
       router.push("/farms");
     } catch {
       setServerError(LOGIN_FAILURE);

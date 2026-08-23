@@ -823,6 +823,71 @@
             "temporarily_unavailable": "#/components/schemas/SatelliteEmptySearchResponse"
           }
         }
+      },
+      "SatelliteNdviSummary": {
+        "type": "object",
+        "required": [
+          "field_id",
+          "acquired_at",
+          "period_basis",
+          "algorithm_version",
+          "ndvi_mean",
+          "ndvi_min",
+          "ndvi_max",
+          "ndvi_stddev",
+          "sample_count",
+          "valid_sample_count",
+          "valid_pixel_ratio"
+        ],
+        "properties": {
+          "field_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "acquired_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "period_basis": {
+            "const": "utc_day"
+          },
+          "algorithm_version": {
+            "const": "agriscope-ndvi-summary-v1"
+          },
+          "ndvi_mean": {
+            "type": "number",
+            "minimum": -1,
+            "maximum": 1
+          },
+          "ndvi_min": {
+            "type": "number",
+            "minimum": -1,
+            "maximum": 1
+          },
+          "ndvi_max": {
+            "type": "number",
+            "minimum": -1,
+            "maximum": 1
+          },
+          "ndvi_stddev": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "sample_count": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "valid_sample_count": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "valid_pixel_ratio": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 1
+          }
+        }
       }
     }
   },
@@ -1441,8 +1506,8 @@
           }
         ],
         "x-required-role": "viewer",
-        "x-organization-scope": "optional organization_id query is checked against active membership; otherwise all current-user organizations.",
-        "x-validation": "foreign organization returns 404.",
+        "x-organization-scope": "organization owner sees all active farms in selected organization; non-owners only see their own farms. optional organization_id query is checked against active membership.",
+        "x-validation": "foreign organization returns 404; non-owner farms are omitted from lists.",
         "x-idempotency": "safe read-only operation.",
         "parameters": [
           {
@@ -1483,7 +1548,7 @@
     },
     "/api/v1/farms/{farm_id}": {
       "get": {
-        "summary": "Get an active farm scoped by current-user membership.",
+        "summary": "Get an active farm owned by current user or active organization owner.",
         "security": [
           {
             "accessCookie": []
@@ -1493,8 +1558,8 @@
           }
         ],
         "x-required-role": "viewer",
-        "x-organization-scope": "farm lookup joins active membership before returning a row.",
-        "x-validation": "invalid UUID rejected; foreign or deleted farm returns 404.",
+        "x-organization-scope": "farm lookup joins active membership and farm owner scope before returning a row; organization owners can fetch any active farm in the organization.",
+        "x-validation": "invalid UUID rejected; non-owner or deleted farm returns 404.",
         "x-idempotency": "safe read-only operation.",
         "parameters": [
           {
@@ -1537,7 +1602,7 @@
         }
       },
       "patch": {
-        "summary": "Update an active farm scoped by current-user membership.",
+        "summary": "Update an active farm owned by current user or active organization owner.",
         "security": [
           {
             "accessCookie": [],
@@ -1549,8 +1614,8 @@
           }
         ],
         "x-required-role": "field_manager",
-        "x-organization-scope": "farm lookup joins active membership before mutation.",
-        "x-validation": "at least one supported field required; viewer role cannot update.",
+        "x-organization-scope": "farm lookup joins active membership and farm owner scope before mutation; organization owners can update any active farm in their organization.",
+        "x-validation": "at least one supported field required; viewer role cannot update; non-owner farm not visible.",
         "x-rate-limit": "trusted-client-IP 300 and authenticated subject 60 per configured window.",
         "x-idempotency": "not idempotent, but repeated identical requests produce the same farm representation.",
         "parameters": [
@@ -1617,7 +1682,7 @@
         }
       },
       "delete": {
-        "summary": "Soft delete an active farm scoped by current-user membership.",
+        "summary": "Soft delete an active farm owned by current user or active organization owner.",
         "security": [
           {
             "accessCookie": [],
@@ -1629,8 +1694,8 @@
           }
         ],
         "x-required-role": "field_manager",
-        "x-organization-scope": "farm lookup joins active membership before mutation.",
-        "x-validation": "viewer role cannot delete; deleted farm is omitted from reads.",
+        "x-organization-scope": "farm lookup joins active membership and farm owner scope before mutation; organization owners can delete any active farm in their organization.",
+        "x-validation": "viewer role cannot delete; non-owner farm not visible; deleted farm is omitted from reads.",
         "x-rate-limit": "trusted-client-IP 300 and authenticated subject 60 per configured window.",
         "x-idempotency": "effectively idempotent once deleted.",
         "parameters": [
@@ -1682,7 +1747,7 @@
     },
     "/api/v1/farms/{farm_id}/fields": {
       "post": {
-        "summary": "Create a field polygon in an active farm.",
+        "summary": "Create a field polygon in an active farm owned by current user or active organization owner.",
         "security": [
           {
             "accessCookie": [],
@@ -1694,8 +1759,8 @@
           }
         ],
         "x-required-role": "field_manager",
-        "x-organization-scope": "farm and field are scoped by active current-user membership.",
-        "x-validation": "GeoJSON Polygon only; closed ring; no self-intersection; backend calculates area.",
+        "x-organization-scope": "farm and field are scoped by active membership and farm owner; organization owners can create fields in any active farm in their organization.",
+        "x-validation": "GeoJSON Polygon only; closed ring; no self-intersection; every position must stay within the inclusive approximate Thailand service bounds (WGS84 longitude 97.34..105.64, latitude 5.61..20.47); backend calculates area.",
         "x-rate-limit": "trusted-client-IP 300 and authenticated subject 60 per configured window.",
         "x-idempotency": "not idempotent.",
         "parameters": [
@@ -1765,8 +1830,8 @@
           }
         ],
         "x-required-role": "viewer",
-        "x-organization-scope": "farm lookup joins active membership before listing fields.",
-        "x-validation": "foreign or deleted farm returns 404.",
+        "x-organization-scope": "farm lookup joins active membership and farm owner scope before listing fields; organization owners can list fields from any active farm in their organization.",
+        "x-validation": "foreign, non-owned, or deleted farm returns 404.",
         "x-idempotency": "safe read-only operation.",
         "parameters": [
           {
@@ -1807,7 +1872,7 @@
     },
     "/api/v1/fields/{field_id}": {
       "get": {
-        "summary": "Get an active field scoped by current-user membership.",
+        "summary": "Get an active field owned by current user or active organization owner.",
         "security": [
           {
             "accessCookie": []
@@ -1817,8 +1882,8 @@
           }
         ],
         "x-required-role": "viewer",
-        "x-organization-scope": "field lookup joins active membership before returning a row.",
-        "x-validation": "foreign or deleted field returns 404.",
+        "x-organization-scope": "field lookup joins active membership and farm owner scope before returning a row; organization owners can fetch any active field in their organization.",
+        "x-validation": "foreign, non-owner, or deleted field returns 404.",
         "x-idempotency": "safe read-only operation.",
         "parameters": [
           {
@@ -1861,7 +1926,7 @@
         }
       },
       "patch": {
-        "summary": "Update an active field polygon or name.",
+        "summary": "Update an active field owned by current user or active organization owner.",
         "security": [
           {
             "accessCookie": [],
@@ -1873,8 +1938,8 @@
           }
         ],
         "x-required-role": "field_manager",
-        "x-organization-scope": "field lookup joins active membership before mutation.",
-        "x-validation": "at least one supported field required; geometry is validated and area recalculated.",
+        "x-organization-scope": "field lookup joins active membership and farm owner scope before mutation; organization owners can update fields in any active farm in their organization.",
+        "x-validation": "at least one supported field required; non-owner fields are not visible; geometry positions must stay within the inclusive approximate Thailand service bounds (WGS84 longitude 97.34..105.64, latitude 5.61..20.47); geometry is validated and area recalculated.",
         "x-rate-limit": "trusted-client-IP 300 and authenticated subject 60 per configured window.",
         "x-idempotency": "not idempotent, but repeated identical requests produce the same field representation.",
         "parameters": [
@@ -1934,7 +1999,7 @@
         }
       },
       "delete": {
-        "summary": "Soft delete an active field scoped by current-user membership.",
+        "summary": "Soft delete an active field owned by current user or active organization owner.",
         "security": [
           {
             "accessCookie": [],
@@ -1946,8 +2011,8 @@
           }
         ],
         "x-required-role": "field_manager",
-        "x-organization-scope": "field lookup joins active membership before mutation.",
-        "x-validation": "viewer role cannot delete; deleted field is omitted from reads.",
+        "x-organization-scope": "field lookup joins active membership and farm owner scope before mutation; organization owners can delete fields in any active farm in their organization.",
+        "x-validation": "viewer role cannot delete; non-owner field not visible; deleted field is omitted from reads.",
         "x-rate-limit": "trusted-client-IP 300 and authenticated subject 60 per configured window.",
         "x-idempotency": "effectively idempotent once deleted.",
         "parameters": [
@@ -2004,8 +2069,8 @@
           }
         ],
         "x-required-role": "viewer",
-        "x-organization-scope": "field lookup joins active membership before provider request.",
-        "x-validation": "persisted field geometry only; browser geometry is ignored; deleted or foreign fields return 404.",
+        "x-organization-scope": "field lookup joins active membership and farm owner scope before any provider request or rate-limit gate.",
+        "x-validation": "persisted field geometry only; browser geometry is ignored; deleted, non-owner, or foreign fields return 404.",
         "x-timeout": "provider timeout returns status temporarily_unavailable without stack traces.",
         "x-rate-limit": "authenticated subject 20 and subject plus HMAC(field ID) 10 per configured window.",
         "x-idempotency": "repeated searches reuse field/provider/item acquisition records.",
@@ -2075,8 +2140,8 @@
           }
         ],
         "x-required-role": "viewer",
-        "x-organization-scope": "field lookup joins active membership before acquisition read.",
-        "x-validation": "deleted or foreign fields return 404.",
+        "x-organization-scope": "field lookup joins active membership and farm owner scope before acquisition read.",
+        "x-validation": "deleted, non-owner, or foreign fields return 404.",
         "x-timeout": "no provider request is made.",
         "x-idempotency": "safe read-only operation.",
         "parameters": [
@@ -2116,6 +2181,225 @@
           },
           "404": {
             "description": "Field not found or not visible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/fields/{field_id}/satellite/preview": {
+      "get": {
+        "summary": "Return an on-demand field-clipped Sentinel-2 L2A true-color PNG.",
+        "security": [
+          {
+            "accessCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-required-role": "viewer",
+        "x-organization-scope": "field lookup joins active membership and farm owner scope before acquisition, rate-limit, OAuth, or Process API work.",
+        "x-validation": "uses only persisted field geometry and the UTC day of the latest acquisition; fixed agriscope-true-color-v1 evalscript and 768px PNG; foreign fields return 404; zero or insufficient valid pixels return no image.",
+        "x-timeout": "bounded OAuth and Process timeouts return a safe temporary-unavailable error.",
+        "x-rate-limit": "authenticated subject 20 and subject plus HMAC(field ID) 10 per configured window.",
+        "x-idempotency": "safe read-only operation initiated explicitly by the user; no automatic preview request.",
+        "parameters": [
+          {
+            "name": "field_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Field-clipped true-color image with sufficient valid coverage.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "private, no-store"
+                }
+              },
+              "X-Content-Type-Options": {
+                "schema": {
+                  "type": "string",
+                  "const": "nosniff"
+                }
+              }
+            },
+            "content": {
+              "image/png": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Field not found or not visible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "No persisted acquisition exists; search metadata first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid path or no/insufficient valid preview pixels.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitedError"
+          },
+          "503": {
+            "description": "OAuth or Process API is temporarily unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/fields/{field_id}/satellite/ndvi-summary": {
+      "get": {
+        "summary": "Return an on-demand NDVI statistical summary for the latest saved acquisition.",
+        "security": [
+          {
+            "accessCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-required-role": "viewer",
+        "x-organization-scope": "field lookup joins active membership and farm owner scope before acquisition, rate-limit, OAuth, or Statistical API work.",
+        "x-validation": "uses only persisted field geometry in CRS84 and the UTC day of the latest persisted acquisition; fixed 0.00009 degree sampling, a maximum 262144-cell bounding grid enforced before OAuth, and agriscope-ndvi-summary-v1 evalscript; foreign and non-owner fields return 404; an oversized grid or zero/insufficient valid samples returns no summary.",
+        "x-timeout": "bounded OAuth and Statistical API timeouts return a safe temporary-unavailable error.",
+        "x-rate-limit": "authenticated subject 20 and subject plus HMAC(field ID) 10 per configured window.",
+        "x-idempotency": "safe read-only operation initiated explicitly by the user; no automatic summary request.",
+        "parameters": [
+          {
+            "name": "field_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Field-clipped NDVI summary with sufficient valid coverage.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "private, no-store"
+                }
+              },
+              "X-Content-Type-Options": {
+                "schema": {
+                  "type": "string",
+                  "const": "nosniff"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SatelliteNdviSummary"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Field not found or not visible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "No persisted acquisition exists; search metadata first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid path, oversized Statistical grid, or no/insufficient valid NDVI samples.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitedError"
+          },
+          "503": {
+            "description": "OAuth or Statistical API is temporarily unavailable.",
             "content": {
               "application/json": {
                 "schema": {

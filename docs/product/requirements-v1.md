@@ -12,6 +12,17 @@ Build a Thai-first SaaS platform that helps farmers, farm owners, agricultural c
 
 The product must never diagnose crop disease, specific pests, fertilizer deficiency, or prescribe chemicals from satellite imagery alone.
 
+## Farm ownership privacy
+
+- Every farm has one immutable owner user; its fields, acquisitions, and analysis
+  data inherit that ownership.
+- An active `organization_owner` may inspect every farm in their organization.
+- Other active roles may read or operate only on farms they own, subject to their
+  existing role permissions. Non-owned identifiers are indistinguishable from
+  missing or cross-organization resources.
+- Shared farms, delegated access, and ownership transfer require separate product
+  contracts and are not implicit in organization membership.
+
 ## Phase order
 
 1. Architecture
