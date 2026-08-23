@@ -20,7 +20,7 @@ export default defineConfig({
     },
     {
       command:
-        "CDSE_STAC_URL=http://127.0.0.1:8765/search .venv/bin/uvicorn apps.api.agriscope_api.main:app --host 127.0.0.1 --port 8000",
+        "CDSE_STAC_URL=http://127.0.0.1:8765/search CDSE_CLIENT_ID=e2e-client CDSE_CLIENT_SECRET=e2e-secret CDSE_TOKEN_URL=http://127.0.0.1:8765/token CDSE_PROCESS_URL=http://127.0.0.1:8765/process CDSE_STATISTICAL_URL=http://127.0.0.1:8765/statistics .venv/bin/uvicorn apps.api.agriscope_api.main:app --host 127.0.0.1 --port 8000",
       url: "http://127.0.0.1:8000/health/live",
       reuseExistingServer: true,
       cwd: "../..",

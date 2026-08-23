@@ -6,6 +6,10 @@ from dataclasses import dataclass
 from typing import Any
 
 RAI_PER_SQM = 1 / 1600
+THAILAND_WEST = 97.34
+THAILAND_SOUTH = 5.61
+THAILAND_EAST = 105.64
+THAILAND_NORTH = 20.47
 
 
 @dataclass(frozen=True)
@@ -51,6 +55,11 @@ def validate_field_polygon(geometry: dict[str, Any]) -> GeometryValidationResult
                 raise ValueError("longitude is out of range")
             if not -90 <= float(latitude) <= 90:
                 raise ValueError("latitude is out of range")
+            if not (
+                THAILAND_WEST <= float(longitude) <= THAILAND_EAST
+                and THAILAND_SOUTH <= float(latitude) <= THAILAND_NORTH
+            ):
+                raise ValueError("coordinates must stay within the approximate Thailand service bounds")
 
     if shape is not None:
         polygon = shape(geometry)

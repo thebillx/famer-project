@@ -37,7 +37,9 @@ class CdseStacClientTests(unittest.IsolatedAsyncioTestCase):
 
     def test_payload_uses_sentinel_2_collection_persisted_geometry_and_datetime_window(self):
         now = datetime(2026, 8, 1, 12, 0, tzinfo=UTC)
-        payload = self.client().build_search_payload(GEOMETRY, start=now.replace(month=5, day=3), end=now)
+        payload = self.client().build_search_payload(
+            GEOMETRY, start=now.replace(month=5, day=3), end=now
+        )
 
         self.assertEqual(payload["collections"], [SENTINEL_2_L2A_COLLECTION])
         self.assertEqual(payload["intersects"], GEOMETRY)
@@ -96,7 +98,15 @@ class CdseStacClientTests(unittest.IsolatedAsyncioTestCase):
 
     def test_missing_datetime_is_no_data_when_all_items_missing_datetime(self):
         selected = self.client().select_latest_valid_item(
-            {"features": [{"id": "missing-datetime", "collection": SENTINEL_2_L2A_COLLECTION, "properties": {}}]}
+            {
+                "features": [
+                    {
+                        "id": "missing-datetime",
+                        "collection": SENTINEL_2_L2A_COLLECTION,
+                        "properties": {},
+                    }
+                ]
+            }
         )
 
         self.assertIsNone(selected)

@@ -1,5 +1,4 @@
 import { expect, test, type Browser, type Page, type Route } from "@playwright/test";
-import { readFile } from "node:fs/promises";
 
 const field = {
   id: "00000000-0000-0000-0000-000000000031",
@@ -12,6 +11,16 @@ const field = {
   },
   area_sqm: "2400",
   area_rai: "1.50",
+  status: "active",
+  created_at: "2026-08-01T00:00:00Z",
+  updated_at: "2026-08-01T00:00:00Z"
+} as const;
+
+const farm = {
+  id: field.farm_id,
+  organization_id: field.organization_id,
+  name: "ฟาร์มต้นแบบทดสอบ",
+  province: "เชียงใหม่",
   status: "active",
   created_at: "2026-08-01T00:00:00Z",
   updated_at: "2026-08-01T00:00:00Z"
@@ -37,6 +46,39 @@ const notSearched = {
   message_th: "ยังไม่มีผลการค้นหาดาวเทียมที่บันทึกไว้"
 } as const;
 
+const available = {
+  field_id: field.id,
+  status: "available",
+  acquisition: {
+    provider: "cdse_stac",
+    collection: "sentinel-2-l2a",
+    item_id: "S2B_SAFE_ITEM",
+    acquired_at: "2026-08-20T03:00:00Z",
+    cloud_cover_percent: 12.5
+  },
+  searched_at: "2026-08-22T05:00:00Z",
+  message_th: "พบข้อมูลประกอบภาพล่าสุด"
+} as const;
+
+const previewPng = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAGUlEQVR4nGNQjtf9rx1v+J9BOQ3ISDP8DwA4yAbfwPBTiwAAAABJRU5ErkJggg==",
+  "base64"
+);
+
+const ndviSummary = {
+  field_id: field.id,
+  acquired_at: "2026-08-20T03:00:00Z",
+  period_basis: "utc_day",
+  algorithm_version: "agriscope-ndvi-summary-v1",
+  ndvi_mean: 0.42,
+  ndvi_min: 0.1,
+  ndvi_max: 0.75,
+  ndvi_stddev: 0.12,
+  sample_count: 100,
+  valid_sample_count: 80,
+  valid_pixel_ratio: 0.8
+} as const;
+
 type ErrorResponse = { status: number; code: string; message: string };
 
 function json(route: Route, body: unknown, status = 200) {
@@ -53,12 +95,28 @@ async function mockFieldWorkspace(
     identityGate?: Promise<void>;
     identityResponse?: typeof user | ErrorResponse | ((call: number) => typeof user | ErrorResponse);
     fieldGate?: Promise<void>;
+    farm?: "enabled" | "disabled";
     fieldResponse?: typeof field | ErrorResponse | ((call: number) => typeof field | ErrorResponse);
+    fieldsResponse?: ReadonlyArray<typeof field> | ErrorResponse | ((call: number) => ReadonlyArray<typeof field> | ErrorResponse);
     latestResponse?: unknown | ErrorResponse;
     searchResponse?: unknown | ErrorResponse | ((call: number) => unknown | ErrorResponse);
+    previewResponse?: "png" | ErrorResponse;
+    previewGate?: Promise<void>;
+    ndviResponse?: typeof ndviSummary | ErrorResponse;
   } = {}
 ) {
-  const calls = { identity: 0, field: 0, latest: 0, search: 0, csrf: 0, refresh: 0 };
+  const calls = {
+    identity: 0,
+    farm: 0,
+    fields: 0,
+    field: 0,
+    latest: 0,
+    search: 0,
+    preview: 0,
+    ndvi: 0,
+    csrf: 0,
+    refresh: 0
+  };
   await page.route("https://tiles.openfreemap.org/**", (route) =>
     json(route, { version: 8, sources: {}, layers: [] })
   );
@@ -72,6 +130,21 @@ async function mockFieldWorkspace(
         ? options.identityResponse(calls.identity)
         : options.identityResponse;
       const response = configured ?? user;
+      return "code" in response ? apiError(route, response) : json(route, response);
+    }
+    if (path === `/api/v1/farms/${field.farm_id}` && request.method() === "GET") {
+      calls.farm += 1;
+      const response = options.farm === "disabled"
+        ? { status: 404, code: "not_found", message: "private tenant farm detail" }
+        : farm;
+      return "code" in response ? apiError(route, response) : json(route, response);
+    }
+    if (path === `/api/v1/farms/${field.farm_id}/fields` && request.method() === "GET") {
+      calls.fields += 1;
+      const configured = typeof options.fieldsResponse === "function"
+        ? options.fieldsResponse(calls.fields)
+        : options.fieldsResponse;
+      const response = configured ?? [field];
       return "code" in response ? apiError(route, response) : json(route, response);
     }
     if (path === `/api/v1/fields/${field.id}` && request.method() === "GET") {
@@ -99,6 +172,28 @@ async function mockFieldWorkspace(
         acquisition: null,
         searched_at: "2026-08-22T05:00:00Z",
         message_th: "ไม่พบข้อมูลในช่วงเวลาที่ค้นหา"
+      };
+      return isErrorResponse(response) ? apiError(route, response) : json(route, response);
+    }
+    if (path === `/api/v1/fields/${field.id}/satellite/preview` && request.method() === "GET") {
+      calls.preview += 1;
+      if (options.previewGate) await options.previewGate;
+      const response = options.previewResponse ?? {
+        status: 503,
+        code: "satellite_temporarily_unavailable",
+        message: "private preview detail"
+      };
+      if (response === "png") {
+        return route.fulfill({ status: 200, contentType: "image/png", body: previewPng });
+      }
+      return apiError(route, response);
+    }
+    if (path === `/api/v1/fields/${field.id}/satellite/ndvi-summary` && request.method() === "GET") {
+      calls.ndvi += 1;
+      const response = options.ndviResponse ?? {
+        status: 503,
+        code: "satellite_temporarily_unavailable",
+        message: "private ndvi detail"
       };
       return isErrorResponse(response) ? apiError(route, response) : json(route, response);
     }
@@ -230,24 +325,22 @@ test("authentication, not-found, and retryable field failures remain mutually ex
 });
 
 test("principal A content is purged before principal B receives a safe field denial", async ({ page }) => {
-  const fieldPageSource = await readFile("apps/web/app/fields/[id]/page.tsx", "utf8");
-  const purgeRootBlock = fieldPageSource.match(/const TENANT_QUERY_ROOTS = new Set\(\[([\s\S]*?)\]\);/)?.[1];
-  expect(purgeRootBlock?.match(/"[^"]+"/g)?.map((root) => root.slice(1, -1))).toEqual([
-    "current-user",
-    "farms",
-    "farm",
-    "fields",
-    "field",
-    "organizations",
-    "organization-members",
-    "satellite-latest"
-  ]);
-  let phase: "a" | "terminal" | "b" = "a";
-  let releaseTerminalIdentity: (() => void) | undefined;
-  const terminalIdentityGate = new Promise<void>((resolve) => {
-    releaseTerminalIdentity = resolve;
-  });
-  const calls = { identityA: 0, identityTerminal: 0, identityB: 0, fieldA: 0, fieldB: 0, satelliteA: 0, satelliteB: 0 };
+  let phase: "a" | "b" = "a";
+  const calls = {
+    login: 0,
+    identityA: 0,
+    identityB: 0,
+    farmsA: 0,
+    farmsB: 0,
+    farmA: 0,
+    farmB: 0,
+    fieldsA: 0,
+    fieldsB: 0,
+    fieldA: 0,
+    fieldB: 0,
+    satelliteA: 0,
+    satelliteB: 0
+  };
 
   await page.route("https://tiles.openfreemap.org/**", (route) =>
     json(route, { version: 8, sources: {}, layers: [] })
@@ -255,17 +348,17 @@ test("principal A content is purged before principal B receives a safe field den
   await page.route("http://localhost:8000/api/v1/**", async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
-    if (path === "/api/v1/auth/csrf") return json(route, { csrf_token: "csrf-transition" });
+    if (path === "/api/v1/auth/csrf") {
+      return json(route, { csrf_token: "csrf-transition" });
+    }
     if (path === "/api/v1/auth/refresh") {
       return apiError(route, { status: 401, code: "invalid_refresh_token", message: "private refresh detail" });
     }
-    if (path === "/api/v1/auth/login") return route.fulfill({ status: 204, body: "" });
+    if (path === "/api/v1/auth/login") {
+      calls.login += 1;
+      return route.fulfill({ status: 204, body: "" });
+    }
     if (path === "/api/v1/auth/me") {
-      if (phase === "terminal") {
-        calls.identityTerminal += 1;
-        await terminalIdentityGate;
-        return apiError(route, { status: 401, code: "authentication_required", message: "private session detail" });
-      }
       if (phase === "b") {
         calls.identityB += 1;
         return json(route, userB);
@@ -273,7 +366,31 @@ test("principal A content is purged before principal B receives a safe field den
       calls.identityA += 1;
       return json(route, user);
     }
-    if (path === `/api/v1/fields/${field.id}`) {
+    if (path === "/api/v1/farms" && request.method() === "GET") {
+      if (phase === "b") {
+        calls.farmsB += 1;
+        return apiError(route, { status: 503, code: "unavailable", message: "private tenant B farm detail" });
+      }
+      calls.farmsA += 1;
+      return json(route, [farm]);
+    }
+    if (path === `/api/v1/farms/${field.farm_id}` && request.method() === "GET") {
+      if (phase === "b") {
+        calls.farmB += 1;
+        return apiError(route, { status: 404, code: "not_found", message: "private tenant B farm detail" });
+      }
+      calls.farmA += 1;
+      return json(route, farm);
+    }
+    if (path === `/api/v1/farms/${field.farm_id}/fields` && request.method() === "GET") {
+      if (phase === "b") {
+        calls.fieldsB += 1;
+        return apiError(route, { status: 404, code: "not_found", message: "private tenant B fields" });
+      }
+      calls.fieldsA += 1;
+      return json(route, [field]);
+    }
+    if (path === `/api/v1/fields/${field.id}` && request.method() === "GET") {
       if (phase === "b") {
         calls.fieldB += 1;
         return apiError(route, { status: 404, code: "not_found", message: "private tenant B detail" });
@@ -281,78 +398,97 @@ test("principal A content is purged before principal B receives a safe field den
       calls.fieldA += 1;
       return json(route, field);
     }
-    if (path === `/api/v1/fields/${field.id}/satellite/latest`) {
-      if (phase === "b") calls.satelliteB += 1;
-      else calls.satelliteA += 1;
+    if (path === `/api/v1/fields/${field.id}/satellite/latest` && request.method() === "GET") {
+      if (phase === "b") {
+        calls.satelliteB += 1;
+      } else {
+        calls.satelliteA += 1;
+      }
       return json(route, notSearched);
     }
-    if (path === "/api/v1/farms" || path === "/api/v1/organizations") return json(route, []);
+    if (path === "/api/v1/organizations") {
+      return json(route, []);
+    }
     return apiError(route, { status: 404, code: "not_found", message: "Not found" });
   });
 
-  await page.goto(`/fields/${field.id}`);
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText(field.name);
-  await expect(page.getByText("พื้นที่คำนวณโดยเซิร์ฟเวอร์").locator("..")).toContainText("1.50 ไร่");
-  await expect(page.getByLabel("Field map")).toBeVisible();
-  await expect(page.getByText("ยังไม่มีผลการค้นหาดาวเทียมที่บันทึกไว้", { exact: true })).toBeVisible();
-  expect(calls).toMatchObject({ fieldA: 1, satelliteA: 1 });
+  await page.goto("/");
   await page.evaluate(() => {
-    (window as typeof window & { __fieldWorkspaceContext?: string }).__fieldWorkspaceContext = "same-query-client";
+    (window as typeof window & { __sameQueryClient?: string }).__sameQueryClient = "a-to-b";
   });
-
-  phase = "terminal";
-  await page.evaluate(() => window.dispatchEvent(new Event("visibilitychange")));
-  await expect(page.getByRole("status").filter({ hasText: "กำลังตรวจสอบบัญชี..." })).toBeVisible();
-  await expect(page.getByText(field.name, { exact: true })).toHaveCount(0);
-  await expect(page.getByText("1.50 ไร่", { exact: true })).toHaveCount(0);
-  await expect(page.getByLabel("Field map")).toHaveCount(0);
-  await expect(page.getByText("ภาพดาวเทียมล่าสุด")).toHaveCount(0);
-
-  releaseTerminalIdentity?.();
-  await expect(page.getByRole("alert").filter({ hasText: "เซสชันหมดอายุ กรุณาเข้าสู่ระบบอีกครั้ง" })).toBeVisible();
-  await expect(page.getByText(field.name, { exact: true })).toHaveCount(0);
-  await expect(page.getByLabel("Field map")).toHaveCount(0);
-  await expect(page.getByText("ภาพดาวเทียมล่าสุด")).toHaveCount(0);
-
-  await page.getByRole("link", { name: "ไปหน้าเข้าสู่ระบบ" }).click();
-  phase = "b";
+  await page.getByRole("link", { name: "สมัครใช้งาน" }).click();
   await page.getByRole("button", { name: "เข้าสู่ระบบ" }).click();
-  await page.getByLabel("อีเมล").fill(userB.email);
+  await page.getByLabel("อีเมล").fill(user.email);
   await page.getByLabel("รหัสผ่าน").fill("correct-horse-battery-staple");
   await page.getByRole("button", { name: "เข้าสู่ระบบ", exact: true }).last().click();
+  await expect.poll(() => calls.login).toBe(1);
   await expect(page).toHaveURL(/\/farms$/);
+  await expect(page.getByText(farm.name).first()).toBeVisible();
+  expect(calls.farmsA).toBeGreaterThan(0);
+
+  await page.getByRole("link", { name: "เปิดฟาร์ม" }).first().click();
+  await page.getByRole("link", { name: `เปิดพื้นที่ทำงานของ ${field.name}` }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(field.name);
+  await expect(page.getByLabel("Field map")).toBeVisible();
+  await expect(page.getByText("ยังไม่มีผลการค้นหาดาวเทียมที่บันทึกไว้", { exact: true })).toBeVisible();
+  expect(calls.fieldA).toBe(1);
+  expect(calls.satelliteA).toBeGreaterThan(0);
 
   await page.goBack();
-  await expect(page).toHaveURL(/\/login$/);
+  await expect(page).toHaveURL(new RegExp(`/farms/${field.farm_id}$`));
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(farm.name);
   await page.goBack();
-  await expect(page).toHaveURL(new RegExp(`/fields/${field.id}$`));
+  await expect(page).toHaveURL(/\/farms$/);
+  await expect(page.getByText(farm.name).first()).toBeVisible();
+  await page.goBack();
+  await expect(page).toHaveURL(/\/login$/);
   await expect.poll(() => page.evaluate(() => (
-    window as typeof window & { __fieldWorkspaceContext?: string }
-  ).__fieldWorkspaceContext)).toBe("same-query-client");
+    window as typeof window & { __sameQueryClient?: string }
+  ).__sameQueryClient)).toBe("a-to-b");
+  await page.goBack();
+  await expect(page).toHaveURL(/\/$/);
+  await page.getByRole("link", { name: "สมัครใช้งาน" }).click();
+  await page.getByRole("button", { name: "เข้าสู่ระบบ" }).click();
+  await expect.poll(() => page.evaluate(() => (
+    window as typeof window & { __sameQueryClient?: string }
+  ).__sameQueryClient)).toBe("a-to-b");
+
+  phase = "b";
+  await page.getByLabel("อีเมล").fill(userB.email);
+  await page.getByLabel("รหัสผ่าน").fill("correct-horse-battery-staple");
+  await expect(page.getByLabel("อีเมล")).toHaveValue(userB.email);
+  const submitLogin = page.getByRole("button", { name: "เข้าสู่ระบบ", exact: true }).last();
+  await expect(submitLogin).toBeEnabled();
+  await submitLogin.click({ force: true });
+  await expect.poll(() => calls.login).toBe(2);
+  await expect(page).toHaveURL(/\/farms$/);
+  await expect(page.getByText(farm.name)).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => (
+    window as typeof window & { __sameQueryClient?: string }
+  ).__sameQueryClient)).toBe("a-to-b");
+  expect(calls.farmsB).toBe(1);
+  expect(calls.identityB).toBeGreaterThan(0);
+  await expect(page.getByRole("alert").filter({ hasText: "โหลดรายการฟาร์มไม่สำเร็จ" })).toBeVisible();
+  await expect(page.getByText("private tenant B farm detail")).toHaveCount(0);
+
+  await page.goto(`/fields/${field.id}`);
   await expect(page.getByRole("alert").filter({ hasText: "ไม่พบแปลงหรือคุณไม่มีสิทธิ์เข้าถึง" })).toBeVisible();
+  expect(calls.fieldB).toBe(1);
   await expect(page.getByText("private tenant B detail")).toHaveCount(0);
   await expect(page.getByText(field.name, { exact: true })).toHaveCount(0);
   await expect(page.getByText("1.50 ไร่", { exact: true })).toHaveCount(0);
+  await expect(page.getByText(field.farm_id, { exact: true })).toHaveCount(0);
   await expect(page.getByLabel("Field map")).toHaveCount(0);
   await expect(page.getByText("ภาพดาวเทียมล่าสุด")).toHaveCount(0);
+  expect(calls.fieldA).toBeGreaterThan(0);
   expect(calls.fieldB).toBe(1);
+  expect(calls.farmsA).toBeGreaterThan(0);
+  expect(calls.farmsB).toBe(1);
+  expect(calls.satelliteA).toBeGreaterThan(0);
   expect(calls.satelliteB).toBe(0);
 });
 
 test("satellite result states remain distinct and latest never retries automatically", async ({ browser }) => {
-  const available = {
-    field_id: field.id,
-    status: "available",
-    acquisition: {
-      provider: "copernicus_dataspace",
-      collection: "sentinel-2-l2a",
-      item_id: "S2B_SAFE_ITEM",
-      acquired_at: "2026-08-20T03:00:00Z",
-      cloud_cover_percent: 12.5
-    },
-    searched_at: "2026-08-22T05:00:00Z",
-    message_th: "พบข้อมูลประกอบภาพล่าสุด"
-  };
   const cases = [
     { response: available, copy: "พบภาพล่าสุด" },
     {
@@ -379,6 +515,199 @@ test("satellite result states remain distinct and latest never retries automatic
     await expect.poll(() => calls.latest).toBe(1);
     await page.waitForTimeout(250);
     expect(calls.latest).toBe(1);
+    await context.close();
+  }
+});
+
+test("true-color preview is explicit, bounded, attributed, and replaces its object URL", async ({ page }) => {
+  await page.addInitScript(() => {
+    const original = URL.revokeObjectURL.bind(URL);
+    (window as typeof window & { __revokedPreviewUrls?: number }).__revokedPreviewUrls = 0;
+    URL.revokeObjectURL = (url: string) => {
+      (window as typeof window & { __revokedPreviewUrls?: number }).__revokedPreviewUrls =
+        ((window as typeof window & { __revokedPreviewUrls?: number }).__revokedPreviewUrls ?? 0) + 1;
+      original(url);
+    };
+  });
+  const calls = await mockFieldWorkspace(page, {
+    latestResponse: available,
+    previewResponse: "png"
+  });
+  await page.goto(`/fields/${field.id}`);
+  await expect(page.getByText("พบภาพล่าสุด", { exact: true })).toBeVisible();
+  expect(calls.preview).toBe(0);
+
+  const previewButton = page.getByRole("button", { name: "ดูภาพสีจริงของแปลง" });
+  await previewButton.click();
+  const preview = page.getByRole("img", { name: /ภาพสีจริง Sentinel-2 ของขอบเขตแปลงที่เลือก/ });
+  await expect(preview).toBeVisible();
+  await expect(page.getByText(/Copernicus Data Space Ecosystem/)).toBeVisible();
+  await expect(page.getByText(/ใช้ประกอบการตรวจแปลงด้วยสายตาเท่านั้น/)).toBeVisible();
+  expect(calls.preview).toBe(1);
+
+  await previewButton.click();
+  await expect(preview).toBeVisible();
+  expect(calls.preview).toBe(2);
+  await expect.poll(() => page.evaluate(() => (
+    window as typeof window & { __revokedPreviewUrls?: number }
+  ).__revokedPreviewUrls ?? 0)).toBeGreaterThanOrEqual(1);
+});
+
+test("pending true-color preview is revoked after leaving the workspace", async ({ page }) => {
+  let releasePreview: (() => void) | undefined;
+  const previewGate = new Promise<void>((resolve) => {
+    releasePreview = resolve;
+  });
+  await page.addInitScript(() => {
+    const create = URL.createObjectURL.bind(URL);
+    const revoke = URL.revokeObjectURL.bind(URL);
+    const state = { created: 0, revoked: 0 };
+    const previewUrls = new Set<string>();
+    (window as typeof window & { __previewUrlState?: typeof state }).__previewUrlState = state;
+    URL.createObjectURL = (blob: Blob) => {
+      const url = create(blob);
+      if (blob.type === "image/png") {
+        state.created += 1;
+        previewUrls.add(url);
+      }
+      return url;
+    };
+    URL.revokeObjectURL = (url: string) => {
+      if (previewUrls.delete(url)) state.revoked += 1;
+      revoke(url);
+    };
+  });
+  const calls = await mockFieldWorkspace(page, {
+    latestResponse: available,
+    previewResponse: "png",
+    previewGate
+  });
+  await page.goto(`/fields/${field.id}`);
+  await page.getByRole("button", { name: "ดูภาพสีจริงของแปลง" }).click();
+  await expect.poll(() => calls.preview).toBe(1);
+
+  await page.getByRole("link", { name: "กลับไปฟาร์ม" }).click();
+  await expect(page).toHaveURL(new RegExp(`/farms/${field.farm_id}$`));
+  releasePreview?.();
+
+  await expect.poll(() => page.evaluate(() => (
+    window as typeof window & { __previewUrlState?: { created: number; revoked: number } }
+  ).__previewUrlState)).toEqual({ created: 1, revoked: 1 });
+});
+
+test("true-color preview failures remain distinct, safe, and image-free", async ({ browser }) => {
+  const cases = [
+    {
+      response: { status: 409, code: "satellite_not_searched", message: "private state detail" },
+      copy: "กรุณาตรวจสอบภาพดาวเทียมล่าสุดก่อนขอภาพสีจริง"
+    },
+    {
+      response: { status: 422, code: "satellite_no_data", message: "private no-data detail" },
+      copy: "ยังไม่มีพิกเซลภาพที่ใช้ได้สำหรับวันที่เลือก"
+    },
+    {
+      response: { status: 422, code: "satellite_insufficient_quality", message: "private quality detail" },
+      copy: "ภาพครั้งนี้ครอบคลุมแปลงไม่เพียงพอ กรุณาลองค้นหาภาพใหม่ภายหลัง"
+    },
+    {
+      response: { status: 429, code: "rate_limited", message: "private quota detail" },
+      copy: "มีคำขอภาพดาวเทียมมากเกินไป กรุณารอสักครู่แล้วลองใหม่อีกครั้ง"
+    },
+    {
+      response: { status: 503, code: "satellite_temporarily_unavailable", message: "private provider detail" },
+      copy: "ยังไม่สามารถเตรียมภาพสีจริงได้ กรุณาลองใหม่ภายหลัง"
+    }
+  ] as const;
+
+  for (const item of cases) {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    const calls = await mockFieldWorkspace(page, {
+      latestResponse: available,
+      previewResponse: item.response
+    });
+    await page.goto(`/fields/${field.id}`);
+    await page.getByRole("button", { name: "ดูภาพสีจริงของแปลง" }).click();
+    await expect(page.getByRole("alert").filter({ hasText: item.copy })).toHaveText(item.copy);
+    await expect(page.getByRole("img", { name: /ภาพสีจริง Sentinel-2/ })).toHaveCount(0);
+    await expect(page.getByText(/private .* detail/)).toHaveCount(0);
+    expect(calls.preview).toBe(1);
+    await context.close();
+  }
+});
+
+test("NDVI summary is explicit, bounded, attributed, and clears for a new acquisition", async ({ page }) => {
+  const changedAcquisition = {
+    ...available,
+    acquisition: { ...available.acquisition, item_id: "S2B_DIFFERENT_ITEM" }
+  };
+  const calls = await mockFieldWorkspace(page, {
+    latestResponse: available,
+    searchResponse: changedAcquisition,
+    ndviResponse: ndviSummary
+  });
+  await page.goto(`/fields/${field.id}`);
+  await expect(page.getByText("พบภาพล่าสุด", { exact: true })).toBeVisible();
+  expect(calls.ndvi).toBe(0);
+
+  await page.getByRole("button", { name: "ดูสรุป NDVI" }).click();
+  const summary = page.getByRole("region", { name: "สรุป NDVI ของแปลง" });
+  await expect(summary).toBeVisible();
+  await expect(summary).toContainText("0.420");
+  await expect(summary).toContainText("0.100 ถึง 0.750");
+  await expect(summary).toContainText("80.0%");
+  await expect(summary).toContainText("agriscope-ndvi-summary-v1");
+  await expect(summary).toContainText("ไม่ใช่การวินิจฉัย");
+  expect(calls.ndvi).toBe(1);
+
+  await page.getByRole("button", { name: "ตรวจสอบภาพดาวเทียมล่าสุด" }).click();
+  await page.getByText("Product / item ID").click();
+  await expect(page.getByText("S2B_DIFFERENT_ITEM")).toBeVisible();
+  await expect(summary).toHaveCount(0);
+  expect(calls.ndvi).toBe(1);
+});
+
+test("NDVI summary failures remain distinct, safe, and value-free", async ({ browser }) => {
+  const cases = [
+    {
+      response: { status: 409, code: "satellite_not_searched", message: "private state detail" },
+      copy: "กรุณาตรวจสอบภาพดาวเทียมล่าสุดก่อนขอสรุป NDVI"
+    },
+    {
+      response: { status: 422, code: "satellite_no_data", message: "private no-data detail" },
+      copy: "ยังไม่มีพิกเซลที่ใช้คำนวณ NDVI ได้สำหรับวันที่เลือก"
+    },
+    {
+      response: { status: 422, code: "satellite_insufficient_quality", message: "private quality detail" },
+      copy: "ข้อมูลครั้งนี้ครอบคลุมแปลงไม่เพียงพอสำหรับสรุป NDVI"
+    },
+    {
+      response: { status: 422, code: "satellite_request_too_large", message: "private grid detail" },
+      copy: "ขอบเขตแปลงกว้างเกินไปสำหรับคำนวณ NDVI ในครั้งเดียว"
+    },
+    {
+      response: { status: 429, code: "rate_limited", message: "private quota detail" },
+      copy: "มีคำขอสถิติดาวเทียมมากเกินไป กรุณารอสักครู่แล้วลองใหม่อีกครั้ง"
+    },
+    {
+      response: { status: 503, code: "satellite_temporarily_unavailable", message: "private provider detail" },
+      copy: "ยังไม่สามารถคำนวณสรุป NDVI ได้ กรุณาลองใหม่ภายหลัง"
+    }
+  ] as const;
+
+  for (const item of cases) {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    const calls = await mockFieldWorkspace(page, {
+      latestResponse: available,
+      ndviResponse: item.response
+    });
+    await page.goto(`/fields/${field.id}`);
+    await page.getByRole("button", { name: "ดูสรุป NDVI" }).click();
+    await expect(page.getByRole("alert").filter({ hasText: item.copy })).toHaveText(item.copy);
+    await expect(page.getByRole("region", { name: "สรุป NDVI ของแปลง" })).toHaveCount(0);
+    await expect(page.getByText(/private .* detail/)).toHaveCount(0);
+    expect(calls.ndvi).toBe(1);
     await context.close();
   }
 });

@@ -58,6 +58,8 @@ FIELD-001 adds executable Alembic migration `apps/api/migrations/versions/202608
 
 `farms.organization_id` is required and indexed. Reads and mutations are scoped through active user membership before returning records. `farms` also has `UNIQUE (id, organization_id)` so child rows can enforce tenant consistency at the database layer.
 
+`farms.owner_user_id` is required and indexed. It is constrained with the composite foreign key `(organization_id, owner_user_id) REFERENCES memberships (organization_id, user_id) ON DELETE RESTRICT`, so a farm owner must be a member of the same organization. New farms take the authenticated creator as owner; ownership is immutable. Organization owners can oversee all active farms in their organization, while other active members can access only farms they own. Fields and satellite records inherit this boundary through their farm relationship. Farm responses do not expose `owner_user_id`.
+
 `fields.geometry` is stored as PostGIS `geometry(Polygon, 4326)`. The backend validates GeoJSON Polygon input before persistence and calculates:
 
 - `area_sqm` with `ST_Area(geometry::geography)`.

@@ -80,3 +80,17 @@ export type SatelliteEmptySearch = {
 
 export type SatelliteLatest = SatelliteAvailable | SatelliteNotSearched | SatelliteEmptySearch;
 export type SatelliteSearch = SatelliteAvailable | SatelliteEmptySearch;
+
+export type SatelliteNdviSummary = {
+  field_id: string;
+  acquired_at: string;
+  period_basis: "utc_day";
+  algorithm_version: "agriscope-ndvi-summary-v1";
+  ndvi_mean: number;
+  ndvi_min: number;
+  ndvi_max: number;
+  ndvi_stddev: number;
+  sample_count: number;
+  valid_sample_count: number;
+  valid_pixel_ratio: number;
+};

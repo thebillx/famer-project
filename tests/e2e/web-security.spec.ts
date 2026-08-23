@@ -460,7 +460,10 @@ test("browser source exposes no token storage and satellite types/card keep a vi
   expect(typeSource).toContain("searched_at: null");
   expect(cardSource).toContain('result?.status === "not_searched"');
   expect(cardSource).toContain("ยังไม่มีผลการค้นหาดาวเทียมที่บันทึกไว้");
-  expect(cardSource).not.toMatch(/วินิจฉัย|ความเสี่ยง|แจ้งเตือน|คำแนะนำ|ปลอดภัย|ปกติดี/);
+  expect(cardSource).toContain("ไม่ใช่การวินิจฉัย");
+  expect(cardSource).not.toMatch(
+    /โรคพืช|ศัตรูพืช|ขาดธาตุ|น้ำท่วม|ความเสี่ยง|แจ้งเตือน|คำแนะนำสารเคมี|ปลอดภัย|ปกติดี/
+  );
 });
 
 test("satellite card visibly renders the neutral not_searched state atomically", async ({ page }) => {

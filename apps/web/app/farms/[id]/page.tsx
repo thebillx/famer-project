@@ -116,8 +116,8 @@ export default function FarmDetailPage() {
                   />
                   <MetricCard
                     label="ข้อมูลดาวเทียม"
-                    value="ตรวจสอบเมื่อพร้อม"
-                    detail="ค้นหาเฉพาะข้อมูลประกอบภาพล่าสุด"
+                    value="ค้นหาแล้วดูภาพสีจริง"
+                    detail="เรียกภาพเมื่อกดและใช้ประกอบการตรวจด้วยสายตา"
                     tone="satellite"
                   />
                 </div>

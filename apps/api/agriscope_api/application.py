@@ -4,7 +4,11 @@ from __future__ import annotations
 
 from apps.api.agriscope_api.core.config import load_settings
 from apps.api.agriscope_api.core.errors import ApiError, ApiException
-from apps.api.agriscope_api.core.middleware import REQUEST_ID_HEADER, SECURITY_HEADERS, get_or_create_request_id
+from apps.api.agriscope_api.core.middleware import (
+    REQUEST_ID_HEADER,
+    SECURITY_HEADERS,
+    get_or_create_request_id,
+)
 from apps.api.agriscope_api.core.rate_limit import FixedWindowRateLimiter
 
 _PUBLIC_VALIDATION_LOCATIONS = frozenset({"body", "cookie", "header", "path", "query"})
@@ -63,6 +67,17 @@ def create_app():
         window_seconds=settings.rate_limit_window_seconds,
         max_entries=settings.rate_limit_max_entries,
     )
+    from apps.api.agriscope_api.providers.cdse_process import CdseProcessClient
+
+    app.state.cdse_process_provider = CdseProcessClient(
+        client_id=settings.cdse_client_id,
+        client_secret=settings.cdse_client_secret,
+        token_url=settings.cdse_token_url,
+        process_url=settings.cdse_process_url,
+        statistics_url=settings.cdse_statistical_url,
+        timeout_seconds=settings.satellite_search_timeout_seconds,
+        max_cloud_cover_percent=settings.satellite_max_cloud_cover_percent,
+    )
 
     from fastapi.middleware.cors import CORSMiddleware
 
@@ -100,7 +115,9 @@ def create_app():
         headers = None
         if exc.code == "rate_limited":
             headers = {"Retry-After": str(exc.details["retry_after"])}
-        return JSONResponse(status_code=exc.status_code, content=error.to_response(), headers=headers)
+        return JSONResponse(
+            status_code=exc.status_code, content=error.to_response(), headers=headers
+        )
 
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(request: Request, exc: RequestValidationError):

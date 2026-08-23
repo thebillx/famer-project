@@ -74,12 +74,17 @@ class FarmRepository(TenantScopedRepository):
         result = await self.session.execute(
             text(
                 """
-                INSERT INTO farms (organization_id, name, province, status)
-                VALUES (:organization_id, :name, :province, 'active')
+                INSERT INTO farms (organization_id, owner_user_id, name, province, status)
+                VALUES (:organization_id, :user_id, :name, :province, 'active')
                 RETURNING id, organization_id, name, province, status, created_at, updated_at
                 """
             ),
-            {"organization_id": self.scope.organization_id, "name": name, "province": province},
+            {
+                "organization_id": self.scope.organization_id,
+                "user_id": self.scope.user_id,
+                "name": name,
+                "province": province,
+            },
         )
         return _farm(result.mappings().one())
 
@@ -98,6 +103,7 @@ class FarmRepository(TenantScopedRepository):
                 WHERE m.user_id = :user_id
                   AND m.status = 'active'
                   AND f.status = 'active'
+                  AND (m.role = 'organization_owner' OR f.owner_user_id = :user_id)
                   {organization_filter}
                 ORDER BY f.created_at DESC
                 """
@@ -117,6 +123,7 @@ class FarmRepository(TenantScopedRepository):
                   AND m.user_id = :user_id
                   AND m.status = 'active'
                   AND f.status = 'active'
+                  AND (m.role = 'organization_owner' OR f.owner_user_id = :user_id)
                 """
             ),
             {"farm_id": farm_id, "user_id": self.scope.user_id},
@@ -140,6 +147,7 @@ class FarmRepository(TenantScopedRepository):
                   AND m.user_id = :user_id
                   AND m.status = 'active'
                   AND f.status = 'active'
+                  AND (m.role = 'organization_owner' OR f.owner_user_id = :user_id)
                 RETURNING f.id, f.organization_id, f.name, f.province, f.status, f.created_at, f.updated_at
                 """
             ),
@@ -166,13 +174,16 @@ class FarmRepository(TenantScopedRepository):
                   AND m.user_id = :user_id
                   AND m.status = 'active'
                   AND f.status = 'active'
+                  AND (m.role = 'organization_owner' OR f.owner_user_id = :user_id)
                 """
             ),
             {"farm_id": farm_id, "user_id": self.scope.user_id},
         )
         return result.rowcount == 1
 
-    async def create_field(self, *, farm_id: UUID, name: str, geometry: dict[str, Any]) -> FieldRecord | None:
+    async def create_field(
+        self, *, farm_id: UUID, name: str, geometry: dict[str, Any]
+    ) -> FieldRecord | None:
         geometry_json = json.dumps(geometry, separators=(",", ":"))
         result = await self.session.execute(
             text(
@@ -185,6 +196,7 @@ class FarmRepository(TenantScopedRepository):
                       AND m.user_id = :user_id
                       AND m.status = 'active'
                       AND f.status = 'active'
+                      AND (m.role = 'organization_owner' OR f.owner_user_id = :user_id)
                 ),
                 prepared AS (
                     SELECT
@@ -207,7 +219,12 @@ class FarmRepository(TenantScopedRepository):
                           area_sqm, area_rai, status, created_at, updated_at
                 """
             ),
-            {"farm_id": farm_id, "user_id": self.scope.user_id, "name": name, "geometry_json": geometry_json},
+            {
+                "farm_id": farm_id,
+                "user_id": self.scope.user_id,
+                "name": name,
+                "geometry_json": geometry_json,
+            },
         )
         row = result.mappings().one_or_none()
         return _field(row) if row else None
@@ -240,11 +257,16 @@ class FarmRepository(TenantScopedRepository):
                        ST_AsGeoJSON(field.geometry)::json AS geometry,
                        field.area_sqm, field.area_rai, field.status, field.created_at, field.updated_at
                 FROM fields field
+                JOIN farms f
+                  ON f.id = field.farm_id
+                 AND f.organization_id = field.organization_id
                 JOIN memberships m ON m.organization_id = field.organization_id
                 WHERE field.id = :field_id
                   AND m.user_id = :user_id
                   AND m.status = 'active'
                   AND field.status = 'active'
+                  AND f.status = 'active'
+                  AND (m.role = 'organization_owner' OR f.owner_user_id = :user_id)
                 """
             ),
             {"field_id": field_id, "user_id": self.scope.user_id},
@@ -262,12 +284,16 @@ class FarmRepository(TenantScopedRepository):
                     UPDATE fields field
                     SET name = COALESCE(:name, field.name),
                         updated_at = now()
-                    FROM memberships m
+                    FROM memberships m, farms f
                     WHERE field.id = :field_id
                       AND m.organization_id = field.organization_id
+                      AND f.id = field.farm_id
+                      AND f.organization_id = field.organization_id
                       AND m.user_id = :user_id
                       AND m.status = 'active'
                       AND field.status = 'active'
+                      AND f.status = 'active'
+                      AND (m.role = 'organization_owner' OR f.owner_user_id = :user_id)
                     RETURNING field.id, field.farm_id, field.organization_id, field.name,
                               ST_AsGeoJSON(field.geometry)::json AS geometry,
                               field.area_sqm, field.area_rai, field.status, field.created_at, field.updated_at
@@ -285,11 +311,16 @@ class FarmRepository(TenantScopedRepository):
                 WITH scoped_field AS (
                     SELECT field.id
                     FROM fields field
+                    JOIN farms f
+                      ON f.id = field.farm_id
+                     AND f.organization_id = field.organization_id
                     JOIN memberships m ON m.organization_id = field.organization_id
                     WHERE field.id = :field_id
                       AND m.user_id = :user_id
                       AND m.status = 'active'
                       AND field.status = 'active'
+                      AND f.status = 'active'
+                      AND (m.role = 'organization_owner' OR f.owner_user_id = :user_id)
                 ),
                 prepared AS (
                     SELECT
@@ -308,7 +339,12 @@ class FarmRepository(TenantScopedRepository):
                           field.area_sqm, field.area_rai, field.status, field.created_at, field.updated_at
                 """
             ),
-            {"field_id": field_id, "user_id": self.scope.user_id, "name": name, "geometry_json": geometry_json},
+            {
+                "field_id": field_id,
+                "user_id": self.scope.user_id,
+                "name": name,
+                "geometry_json": geometry_json,
+            },
         )
         row = result.mappings().one_or_none()
         return _field(row) if row else None
@@ -319,12 +355,16 @@ class FarmRepository(TenantScopedRepository):
                 """
                 UPDATE fields field
                 SET status = 'deleted', updated_at = now()
-                FROM memberships m
+                FROM memberships m, farms f
                 WHERE field.id = :field_id
                   AND m.organization_id = field.organization_id
+                  AND f.id = field.farm_id
+                  AND f.organization_id = field.organization_id
                   AND m.user_id = :user_id
                   AND m.status = 'active'
                   AND field.status = 'active'
+                  AND f.status = 'active'
+                  AND (m.role = 'organization_owner' OR f.owner_user_id = :user_id)
                 """
             ),
             {"field_id": field_id, "user_id": self.scope.user_id},
