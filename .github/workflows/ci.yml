@@ -46,6 +46,11 @@ jobs:
       - name: Web production build
         run: npm -w apps/web run build
 
+      - name: Install pinned Python dependencies
+        run: |
+          python -m pip install --disable-pip-version-check --no-input pip==25.0.1
+          python -m pip install --disable-pip-version-check --no-input -e '.[dev]'
+
       - name: Unit tests
         run: python3 -m unittest discover -s tests/unit
 

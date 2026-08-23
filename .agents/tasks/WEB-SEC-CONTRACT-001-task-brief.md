@@ -46,7 +46,7 @@ PostgreSQL/PostGIS rather than the development database.
 
 ## Out of scope
 
-- Product source/API/schema/migration/dependency changes.
+- Product source/API/schema/migration/dependency-version changes.
 - Development or production database access.
 - Live Copernicus calls, Redis, MinIO, raster processing, alerts, reports, worker
   deployment, distributed rate limiting, or production deployment.
@@ -62,8 +62,11 @@ PostgreSQL/PostGIS rather than the development database.
 - Implementation:
   - `tests/integration/test_foundation_api.py`
   - `.github/workflows/ci.yml`
-- All application, migration, OpenAPI, package, lock, unit, contract, and E2E files
-  are read-only.
+- CI packaging correction:
+  - `pyproject.toml`
+- All application, migration, OpenAPI, lock, unit, contract, and E2E files are
+  read-only. `pyproject.toml` is owned only for explicit package discovery and the
+  pinned build backend; dependency versions remain unchanged.
 
 ## Integration isolation contract
 
@@ -128,11 +131,17 @@ PostgreSQL/PostGIS rather than the development database.
 - Current PostgreSQL integration suite: 45/45 PASS on the disposable database at
   migration `0004`. The complete guard table is 11/11 PASS and blocks
   development/non-loopback/invalid URLs before any DB call in validation.
-- Python unit suite: 61/61 PASS; contract suite: 13/13 PASS.
+- Fresh Linux/Python 3.12 package validation: exact discovery, editable install,
+  non-editable wheel build/content, and editable/wheel import smoke PASS.
+- Python 3.12.13 unit suite: 87/87 PASS; contract suite: 18/18 PASS.
+- Package discovery is explicitly limited to the Python API and geospatial roots;
+  non-Python web, generated, test-result, and shared-schema trees are excluded.
 - Focused browser-security Playwright: 16/16 PASS.
 - Web typecheck and production build: PASS.
 - CI workflow parses with distinct `validation` and `integration` jobs; exact remote
   execution remains the PR gate.
+- Validation step now pins `pip==25.0.1` and installs `-e '.[dev]'`, so unit/contract
+  stages run in a reproducible environment with required dependencies.
 - Local demonstration stack is healthy on Web `localhost:3000`, API
   `127.0.0.1:8000`, and a local STAC mock; this is test evidence, not production.
 
