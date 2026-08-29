@@ -108,12 +108,14 @@ export function useOrganizationPermission(organizationId?: string) {
   const currentUser = useQuery({
     queryKey: ["current-user"],
     queryFn: () => apiFetch<User>("/api/v1/auth/me"),
-    enabled: Boolean(organizationId)
+    enabled: Boolean(organizationId),
+    retry: false
   });
   const members = useQuery({
     queryKey: ["organization-members", organizationId],
     queryFn: () => apiFetch<Member[]>(`/api/v1/organizations/${organizationId}/members`),
-    enabled: Boolean(organizationId && currentUser.data)
+    enabled: Boolean(organizationId && currentUser.data),
+    retry: false
   });
   const membership = members.data?.find(
     (member) => member.user_id === currentUser.data?.id && member.status === "active"
