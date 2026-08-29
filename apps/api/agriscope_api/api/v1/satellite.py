@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Annotated, Literal, TypeAlias
+from typing import Annotated, Any, Literal, TypeAlias
 
 try:
     from fastapi import APIRouter, Depends, Request, Response
@@ -67,6 +67,59 @@ class SatelliteNdviSummaryResponse(BaseModel):
     valid_pixel_ratio: float
 
 
+class ObservationResponse(BaseModel):
+    observation_id: str
+    field_id: str
+    acquired_at: datetime
+    cloud_percent: float | None
+    source: str
+    status: Literal["USABLE", "POOR_QUALITY", "UNAVAILABLE"]
+    imagery_available: bool
+    ndvi_available: bool
+
+
+class ObservationNdviSummaryResponse(BaseModel):
+    observation_id: str
+    field_id: str
+    acquired_at: datetime
+    algorithm_version: str
+    ndvi_mean: float
+    ndvi_min: float
+    ndvi_max: float
+    ndvi_stddev: float
+    sample_count: int
+    valid_sample_count: int
+    valid_pixel_ratio: float
+
+
+class ObservationRasterResponse(BaseModel):
+    observation_id: str
+    acquired_at: datetime
+    crs: str
+    bounds: list[float]
+    width: int
+    height: int
+    nodata: float
+    value_min: float
+    value_max: float
+    valid_pixel_ratio: float
+    image_url: str
+
+
+class ChangeResponse(BaseModel):
+    field_id: str
+    before_observation_id: str
+    after_observation_id: str
+    before_ndvi: float
+    after_ndvi: float
+    ndvi_delta: float
+    changed_area_sqm: float
+    changed_area_rai: float
+    threshold: float
+    status: Literal["USABLE"]
+    geometry: dict[str, Any]
+
+
 SatelliteLatestResponse: TypeAlias = Annotated[
     SatelliteAvailableResponse | SatelliteNotSearchedResponse | SatelliteEmptySearchResponse,
     Field(discriminator="status"),
@@ -88,6 +141,74 @@ if router:
     from apps.api.agriscope_api.dependencies.auth import get_current_user
     from apps.api.agriscope_api.dependencies.runtime import get_db_session, get_settings
     from apps.api.agriscope_api.services.satellite import SatelliteService, cloud_decimal_to_float
+
+    def _satellite_limits(request: Request, user_id, field_id, settings) -> None:
+        enforce_rate_limit(request, [
+            RateLimitBucket("satellite-subject", str(user_id), settings.rate_limit_satellite_subject),
+            RateLimitBucket("satellite-field", f"{user_id}:{field_id}", settings.rate_limit_satellite_field),
+        ])
+
+    @router.get("/{field_id}/observations", response_model=list[ObservationResponse])
+    async def list_observations(field_id: UUID, request: Request,
+        session=Depends(get_db_session), settings=Depends(get_settings)) -> list[ObservationResponse]:
+        user = await get_current_user(request, session)
+        rows = await SatelliteService(session, settings).list_observations(user_id=user.id, field_id=field_id)
+        return [ObservationResponse(**{**row.__dict__, "observation_id": str(row.observation_id), "field_id": str(row.field_id)}) for row in rows]
+
+    @router.get("/{field_id}/observations/{observation_id}/preview", response_class=Response,
+        responses={200: {"content": {"image/png": {}}}})
+    async def get_observation_preview(field_id: UUID, observation_id: UUID, request: Request,
+        session=Depends(get_db_session), settings=Depends(get_settings)) -> Response:
+        user = await get_current_user(request, session)
+        service = SatelliteService(session, settings, process_provider=getattr(request.app.state, "cdse_process_provider", None))
+        field = await service.get_authorized_field(user_id=user.id, field_id=field_id)
+        _satellite_limits(request, user.id, field.id, settings)
+        value = await service.get_observation_preview(user_id=user.id, field_id=field_id, observation_id=observation_id, authorized_field=field)
+        return Response(content=value.image_png, media_type="image/png", headers={"Cache-Control": "private, no-store", "Content-Disposition": 'inline; filename="observation-preview.png"', "X-Content-Type-Options": "nosniff"})
+
+    @router.get("/{field_id}/observations/{observation_id}/ndvi-summary", response_model=ObservationNdviSummaryResponse)
+    async def get_observation_ndvi(field_id: UUID, observation_id: UUID, request: Request,
+        response: Response, session=Depends(get_db_session), settings=Depends(get_settings)) -> ObservationNdviSummaryResponse:
+        user = await get_current_user(request, session)
+        service = SatelliteService(session, settings, process_provider=getattr(request.app.state, "cdse_process_provider", None))
+        field = await service.get_authorized_field(user_id=user.id, field_id=field_id)
+        _satellite_limits(request, user.id, field.id, settings)
+        value = await service.get_observation_analysis(user_id=user.id, field_id=field_id, observation_id=observation_id, authorized_field=field)
+        response.headers.update({"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"})
+        return ObservationNdviSummaryResponse(observation_id=str(value.observation_id), field_id=str(value.field_id), acquired_at=value.acquired_at, algorithm_version=value.algorithm_version, ndvi_mean=float(value.ndvi_mean), ndvi_min=float(value.ndvi_min), ndvi_max=float(value.ndvi_max), ndvi_stddev=float(value.ndvi_stddev), sample_count=value.sample_count, valid_sample_count=value.valid_sample_count, valid_pixel_ratio=float(value.valid_pixel_ratio))
+
+    @router.get("/{field_id}/observations/{observation_id}/ndvi-raster", response_model=ObservationRasterResponse)
+    async def get_observation_raster(field_id: UUID, observation_id: UUID, request: Request,
+        response: Response, session=Depends(get_db_session), settings=Depends(get_settings)) -> ObservationRasterResponse:
+        user = await get_current_user(request, session)
+        service = SatelliteService(session, settings, process_provider=getattr(request.app.state, "cdse_process_provider", None))
+        field = await service.get_authorized_field(user_id=user.id, field_id=field_id)
+        _satellite_limits(request, user.id, field.id, settings)
+        value = await service.get_observation_raster(user_id=user.id, field_id=field_id, observation_id=observation_id, authorized_field=field)
+        response.headers.update({"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"})
+        return ObservationRasterResponse(**{key: value.__dict__[key] for key in ("acquired_at", "crs", "bounds", "width", "height", "nodata", "value_min", "value_max", "valid_pixel_ratio")}, observation_id=str(value.observation_id), image_url=f"/api/v1/fields/{field_id}/observations/{observation_id}/ndvi-raster/image")
+
+    @router.get("/{field_id}/observations/{observation_id}/ndvi-raster/image", response_class=Response,
+        responses={200: {"content": {"image/png": {}}}})
+    async def get_observation_raster_image(field_id: UUID, observation_id: UUID, request: Request,
+        session=Depends(get_db_session), settings=Depends(get_settings)) -> Response:
+        user = await get_current_user(request, session)
+        service = SatelliteService(session, settings, process_provider=getattr(request.app.state, "cdse_process_provider", None))
+        field = await service.get_authorized_field(user_id=user.id, field_id=field_id)
+        _satellite_limits(request, user.id, field.id, settings)
+        value = await service.get_observation_raster(user_id=user.id, field_id=field_id, observation_id=observation_id, authorized_field=field)
+        return Response(content=value.image_png, media_type="image/png", headers={"Cache-Control": "private, no-store", "Content-Disposition": 'inline; filename="ndvi-raster.png"', "X-Content-Type-Options": "nosniff"})
+
+    @router.get("/{field_id}/change", response_model=ChangeResponse)
+    async def get_change(field_id: UUID, before: UUID, after: UUID, request: Request,
+        response: Response, session=Depends(get_db_session), settings=Depends(get_settings)) -> ChangeResponse:
+        user = await get_current_user(request, session)
+        service = SatelliteService(session, settings, process_provider=getattr(request.app.state, "cdse_process_provider", None))
+        field = await service.get_authorized_field(user_id=user.id, field_id=field_id)
+        _satellite_limits(request, user.id, field.id, settings)
+        value = await service.compare(user_id=user.id, field_id=field_id, before=before, after=after)
+        response.headers.update({"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"})
+        return ChangeResponse(**{**value.__dict__, "field_id": str(value.field_id), "before_observation_id": str(value.before_observation_id), "after_observation_id": str(value.after_observation_id)})
 
     def _response(result) -> SatelliteLatestResponse:
         field_id = str(result.field_id)

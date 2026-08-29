@@ -30,6 +30,10 @@ EXPECTED_SCHEMAS = {
     "SatelliteNdviSummary",
     "SatelliteNotSearchedResponse",
     "SatelliteSearchResponse",
+    "Observation",
+    "ObservationNdviSummary",
+    "ObservationRaster",
+    "FieldChange",
     "User",
 }
 
@@ -54,6 +58,12 @@ EXPECTED_METHODS = {
     "/api/v1/fields/{field_id}/satellite/latest": {"get"},
     "/api/v1/fields/{field_id}/satellite/preview": {"get"},
     "/api/v1/fields/{field_id}/satellite/ndvi-summary": {"get"},
+    "/api/v1/fields/{field_id}/observations": {"get"},
+    "/api/v1/fields/{field_id}/observations/{observation_id}/preview": {"get"},
+    "/api/v1/fields/{field_id}/observations/{observation_id}/ndvi-summary": {"get"},
+    "/api/v1/fields/{field_id}/observations/{observation_id}/ndvi-raster": {"get"},
+    "/api/v1/fields/{field_id}/observations/{observation_id}/ndvi-raster/image": {"get"},
+    "/api/v1/fields/{field_id}/change": {"get"},
 }
 
 EXPECTED_RESPONSES = {
@@ -112,6 +122,12 @@ EXPECTED_RESPONSES = {
         "429",
         "503",
     },
+    ("/api/v1/fields/{field_id}/observations", "get"): {"200", "401", "404", "422"},
+    ("/api/v1/fields/{field_id}/observations/{observation_id}/preview", "get"): {"200", "401", "404", "422", "429", "503"},
+    ("/api/v1/fields/{field_id}/observations/{observation_id}/ndvi-summary", "get"): {"200", "401", "404", "422", "429", "503"},
+    ("/api/v1/fields/{field_id}/observations/{observation_id}/ndvi-raster", "get"): {"200", "401", "404", "422", "429", "503"},
+    ("/api/v1/fields/{field_id}/observations/{observation_id}/ndvi-raster/image", "get"): {"200", "401", "404", "422", "429", "503"},
+    ("/api/v1/fields/{field_id}/change", "get"): {"200", "401", "404", "422", "429", "503"},
 }
 
 EXPECTED_RATE_LIMITS = {
@@ -153,6 +169,21 @@ EXPECTED_RATE_LIMITS = {
         "authenticated subject 20 and subject plus HMAC(field ID) 10 per configured window."
     ),
     ("/api/v1/fields/{field_id}/satellite/ndvi-summary", "get"): (
+        "authenticated subject 20 and subject plus HMAC(field ID) 10 per configured window."
+    ),
+    ("/api/v1/fields/{field_id}/observations/{observation_id}/preview", "get"): (
+        "authenticated subject 20 and subject plus HMAC(field ID) 10 per configured window."
+    ),
+    ("/api/v1/fields/{field_id}/observations/{observation_id}/ndvi-summary", "get"): (
+        "authenticated subject 20 and subject plus HMAC(field ID) 10 per configured window."
+    ),
+    ("/api/v1/fields/{field_id}/observations/{observation_id}/ndvi-raster", "get"): (
+        "authenticated subject 20 and subject plus HMAC(field ID) 10 per configured window."
+    ),
+    ("/api/v1/fields/{field_id}/observations/{observation_id}/ndvi-raster/image", "get"): (
+        "authenticated subject 20 and subject plus HMAC(field ID) 10 per configured window."
+    ),
+    ("/api/v1/fields/{field_id}/change", "get"): (
         "authenticated subject 20 and subject plus HMAC(field ID) 10 per configured window."
     ),
 }

@@ -91,3 +91,29 @@ The table stores only selected Sentinel-2 Level-2A catalogue metadata needed by 
 `field_acquisitions` enforces `UNIQUE (field_id, provider, provider_item_id)` so repeated latest-image searches are idempotent. It also enforces `FOREIGN KEY (field_id, organization_id) REFERENCES fields (id, organization_id) ON DELETE RESTRICT`, preventing an acquisition row from being attached to a field in another organization.
 
 Complete raw STAC provider responses, raster assets, NDVI values, overlays, and analysis outputs are intentionally not stored in SATELLITE-001.
+
+## WAVE-2A observation analysis cache
+
+Migration `20260830_0005_observation_analysis.py` makes the existing
+`field_acquisitions.id` the stable public `observation_id` and adds:
+
+- `field_observation_analyses`
+
+Each row is one quality-approved, versioned analysis for one observation. A
+composite foreign key binds `observation_id`, `field_id`, and `organization_id` to
+the same acquisition, and `UNIQUE (observation_id, algorithm_version)` makes lazy
+provider processing idempotent.
+
+The cache stores scalar NDVI statistics plus one compressed float32 GeoTIFF clipped
+to the field. The raster is EPSG:4326, uses nodata `-9999`, targets Sentinel-2's
+10 m analytical scale, and is bounded to 512×512 pixels. A quantitative PNG overlay
+and thresholded change mask are derived from this numeric source; PNG colors are not
+the data contract. Change area is calculated after projecting the derived geometry
+to the relevant WGS 84 UTM zone and is reported in square metres and rai.
+
+Cache records inherit the farm-owner boundary through the field. The API authorizes
+the field before acquisition or cache lookup, while the database composite key
+prevents cross-field and cross-organization attachment. This first bounded slice
+stores raster bytes in PostgreSQL because no application object-storage service yet
+exists; future object-storage migration must preserve the API contract and define
+retention and signed-access policy in a separate ADR.

@@ -32,6 +32,7 @@ from apps.api.agriscope_api.providers.cdse_stac import (
 )
 from apps.api.agriscope_api.providers.cdse_process import (
     CdseNdviSummary,
+    CdseNdviRaster,
     CdseTrueColorPreview,
 )
 from apps.api.agriscope_api.services.satellite import SatelliteResponse
@@ -165,7 +166,7 @@ def _truncate_application_tables() -> None:
     with _connect() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "TRUNCATE field_acquisitions, fields, farms, refresh_sessions, memberships, organizations, users"
+                "TRUNCATE field_observation_analyses, field_acquisitions, fields, farms, refresh_sessions, memberships, organizations, users"
             )
 
 
@@ -853,12 +854,13 @@ class FakeProcessProvider:
     def __init__(self) -> None:
         self.render_calls: list[tuple[dict, datetime]] = []
         self.summary_calls: list[tuple[dict, datetime]] = []
+        self.raster_calls: list[tuple[dict, datetime]] = []
 
-    async def render_true_color(self, geometry, *, acquired_at):
+    async def render_true_color(self, geometry, *, acquired_at, exact_observation=False):
         self.render_calls.append((geometry, acquired_at))
         return CdseTrueColorPreview(image_png=b"\x89PNG\x0d\x0a\x1a\x0a", valid_pixel_ratio=0.8)
 
-    async def summarize_ndvi(self, geometry, *, acquired_at):
+    async def summarize_ndvi(self, geometry, *, acquired_at, exact_observation=False):
         self.summary_calls.append((geometry, acquired_at))
         return CdseNdviSummary(
             mean=0.5,
@@ -869,6 +871,29 @@ class FakeProcessProvider:
             valid_sample_count=80,
             valid_pixel_ratio=0.8,
         )
+
+    async def render_ndvi_raster(self, geometry, *, acquired_at):
+        import numpy as np
+        from rasterio.io import MemoryFile
+        from rasterio.transform import from_bounds
+
+        self.raster_calls.append((geometry, acquired_at))
+        before = acquired_at.day < 20
+        values = np.full((4, 4), 0.75 if before else 0.70, dtype=np.float32)
+        if not before:
+            values[1:3, 1:3] = 0.45
+        valid = np.ones((4, 4), dtype=np.float32)
+        ring = geometry["coordinates"][0]
+        west, east = min(point[0] for point in ring), max(point[0] for point in ring)
+        south, north = min(point[1] for point in ring), max(point[1] for point in ring)
+        with MemoryFile() as memory:
+            with memory.open(driver="GTiff", width=4, height=4, count=2, dtype="float32",
+                crs="EPSG:4326", transform=from_bounds(west, south, east, north, 4, 4),
+                compress="deflate") as dataset:
+                dataset.write(values, 1)
+                dataset.write(valid, 2)
+            body = memory.read()
+        return CdseNdviRaster(body, 4, 4, (west, south, east, north), "EPSG:4326", 1.0)
 
 
 class FakeUnavailableProvider:
@@ -1494,3 +1519,120 @@ def test_satellite_response_models_reject_impossible_discriminator_shapes():
                 message_th="initial state is GET-only",
             )
         )
+
+
+def test_observation_history_raster_and_change_end_to_end(client: TestClient):
+    registered = _register(client, "wave2a-owner@example.com")
+    farm = _create_farm(client, registered["organization"]["id"])
+    field = _create_field(client, farm["id"], "A02")
+    before_at = datetime(2026, 8, 17, 3, tzinfo=UTC)
+    after_at = datetime(2026, 8, 22, 3, tzinfo=UTC)
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            observation_ids = []
+            for suffix, acquired_at, cloud in (("BEFORE", before_at, 2.0), ("AFTER", after_at, 6.0)):
+                cur.execute("""
+                    INSERT INTO field_acquisitions
+                      (field_id, organization_id, provider, collection, provider_item_id,
+                       acquired_at, cloud_cover_percent, search_status, searched_at, provider_metadata)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,'available',now(),'{}'::jsonb)
+                    RETURNING id
+                """, (field["id"], field["organization_id"], CDSE_STAC_PROVIDER,
+                    SENTINEL_2_L2A_COLLECTION, f"S2_{suffix}", acquired_at, cloud))
+                observation_ids.append(str(cur.fetchone()[0]))
+
+    class TemporalProvider(FakeProcessProvider):
+        async def summarize_ndvi(self, geometry, *, acquired_at, exact_observation=False):
+            self.summary_calls.append((geometry, acquired_at))
+            mean = 0.75 if acquired_at.day < 20 else 0.62
+            return CdseNdviSummary(mean=mean, minimum=0.4, maximum=0.85,
+                standard_deviation=0.08, sample_count=100, valid_sample_count=90,
+                valid_pixel_ratio=0.9)
+
+    provider = TemporalProvider()
+    client.app.state.cdse_process_provider = provider
+    history = client.get(f"/api/v1/fields/{field['id']}/observations")
+    assert history.status_code == 200
+    assert [item["observation_id"] for item in history.json()] == observation_ids[::-1]
+    assert [item["cloud_percent"] for item in history.json()] == [6.0, 2.0]
+
+    for observation_id, expected in zip(observation_ids, (0.75, 0.62), strict=True):
+        preview = client.get(f"/api/v1/fields/{field['id']}/observations/{observation_id}/preview")
+        assert preview.status_code == 200
+        summary = client.get(f"/api/v1/fields/{field['id']}/observations/{observation_id}/ndvi-summary")
+        assert summary.status_code == 200, summary.text
+        assert summary.json()["ndvi_mean"] == expected
+        raster = client.get(f"/api/v1/fields/{field['id']}/observations/{observation_id}/ndvi-raster")
+        assert raster.status_code == 200
+        assert raster.json()["crs"] == "EPSG:4326"
+        image = client.get(raster.json()["image_url"])
+        assert image.status_code == 200 and image.content.startswith(b"\x89PNG")
+
+    params = {"before": observation_ids[0], "after": observation_ids[1]}
+    change = client.get(f"/api/v1/fields/{field['id']}/change", params=params)
+    assert change.status_code == 200, change.text
+    assert change.json()["ndvi_delta"] == pytest.approx(-0.13)
+    assert change.json()["changed_area_rai"] > 0
+    assert change.json()["geometry"]["type"] == "MultiPolygon"
+    assert len(provider.summary_calls) == 2
+    assert len(provider.raster_calls) == 2
+    assert client.get(f"/api/v1/fields/{field['id']}/change", params=params).status_code == 200
+    assert len(provider.summary_calls) == 2 and len(provider.raster_calls) == 2
+    client.app.state.rate_limiter = TrackingLimiter()
+    reversed_params = {"before": observation_ids[1], "after": observation_ids[0]}
+    assert client.get(f"/api/v1/fields/{field['id']}/change", params=reversed_params).status_code == 422
+    same_params = {"before": observation_ids[0], "after": observation_ids[0]}
+    assert client.get(f"/api/v1/fields/{field['id']}/change", params=same_params).status_code == 422
+
+    other_field = _create_field(client, farm["id"], "B01")
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO field_acquisitions
+                  (field_id, organization_id, provider, collection, provider_item_id,
+                   acquired_at, cloud_cover_percent, search_status, searched_at, provider_metadata)
+                VALUES (%s,%s,%s,%s,'S2_OTHER',%s,3,'available',now(),'{}'::jsonb)
+                RETURNING id
+            """, (other_field["id"], other_field["organization_id"], CDSE_STAC_PROVIDER,
+                SENTINEL_2_L2A_COLLECTION, before_at))
+            other_observation_id = str(cur.fetchone()[0])
+            cur.execute("""
+                INSERT INTO field_acquisitions
+                  (field_id, organization_id, provider, collection, provider_item_id,
+                   acquired_at, cloud_cover_percent, search_status, searched_at, provider_metadata)
+                VALUES (%s,%s,%s,%s,'S2_CLOUD',%s,84,'available',now(),'{}'::jsonb)
+                RETURNING id
+            """, (field["id"], field["organization_id"], CDSE_STAC_PROVIDER,
+                SENTINEL_2_L2A_COLLECTION, after_at + timedelta(days=5)))
+            cloudy_observation_id = str(cur.fetchone()[0])
+            cur.execute("""
+                INSERT INTO field_acquisitions
+                  (field_id, organization_id, provider, collection, provider_item_id,
+                   acquired_at, cloud_cover_percent, search_status, searched_at, provider_metadata)
+                VALUES (%s,%s,%s,%s,'S2_UNAVAILABLE',%s,5,'unavailable',now(),'{}'::jsonb)
+                RETURNING id
+            """, (field["id"], field["organization_id"], CDSE_STAC_PROVIDER,
+                SENTINEL_2_L2A_COLLECTION, after_at + timedelta(days=10)))
+            unavailable_observation_id = str(cur.fetchone()[0])
+    client.app.state.rate_limiter = TrackingLimiter()
+    cross_field = {"before": other_observation_id, "after": observation_ids[1]}
+    assert client.get(f"/api/v1/fields/{field['id']}/change", params=cross_field).status_code == 404
+    calls_before_cloud = (len(provider.render_calls), len(provider.summary_calls), len(provider.raster_calls))
+    cloudy = client.get(f"/api/v1/fields/{field['id']}/observations/{cloudy_observation_id}/ndvi-summary")
+    assert cloudy.status_code == 422
+    assert cloudy.json()["error"]["code"] == "satellite_insufficient_quality"
+    assert (len(provider.render_calls), len(provider.summary_calls), len(provider.raster_calls)) == calls_before_cloud
+    unavailable = client.get(f"/api/v1/fields/{field['id']}/observations/{unavailable_observation_id}/preview")
+    assert unavailable.status_code == 422
+    assert unavailable.json()["error"]["code"] == "observation_unavailable"
+    assert (len(provider.render_calls), len(provider.summary_calls), len(provider.raster_calls)) == calls_before_cloud
+
+    anonymous = TestClient(client.app)
+    assert anonymous.get(f"/api/v1/fields/{field['id']}/observations").status_code == 401
+    assert anonymous.get(f"/api/v1/fields/{field['id']}/observations/{observation_ids[0]}/preview").status_code == 401
+    assert (len(provider.render_calls), len(provider.summary_calls), len(provider.raster_calls)) == calls_before_cloud
+
+    foreign = TestClient(client.app)
+    _register(foreign, "wave2a-foreign@example.com")
+    assert foreign.get(f"/api/v1/fields/{field['id']}/observations").status_code == 404
+    assert foreign.get(f"/api/v1/fields/{field['id']}/observations/{observation_ids[0]}/ndvi-raster").status_code == 404
