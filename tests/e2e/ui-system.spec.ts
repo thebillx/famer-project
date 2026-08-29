@@ -483,6 +483,7 @@ test("field and satellite failures remain errors rather than empty states", asyn
   });
 
   await page.reload();
+  await page.getByRole("button", { name: /Review Field/ }).click();
   await expect(page.getByRole("alert").filter({ hasText: "ยังไม่สามารถตรวจสอบข้อมูลดาวเทียมได้ กรุณาลองใหม่ภายหลัง" })).toBeVisible({ timeout: 20_000 });
   await expect(page.getByText("Satellite unavailable")).toHaveCount(0);
   await expect(page.getByText("ยังไม่มีการตรวจสอบภาพดาวเทียมล่าสุด")).toHaveCount(0);
