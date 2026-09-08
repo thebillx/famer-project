@@ -291,7 +291,6 @@ test("terminal auth from farm imagery hides protected farm geometry", async ({ p
   await page.setViewportSize({ width: 1440, height: 900 });
   await mockWorkspace(page, { latestTerminal: true });
   await page.goto(`/farms/${farm.id}`);
-  await page.getByRole("button", { name: /A02/ }).click();
 
   await expect(page.getByRole("heading", { name: "เซสชันหมดอายุ กรุณาเข้าสู่ระบบอีกครั้ง" })).toBeVisible();
   await expect(page.getByRole("status", { name: "บัญชีที่กำลังใช้งาน บัญชีของฉัน" })).toBeVisible();

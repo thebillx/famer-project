@@ -19,12 +19,14 @@ from apps.api.agriscope_api.providers.cdse_process import (
 )
 from apps.api.agriscope_api.repositories.farms import FieldRecord
 from apps.api.agriscope_api.services.satellite import SatelliteService
+from packages.geospatial.agriscope_geospatial.field_geometry import geometry_fingerprint
 
 
 USER_ID = UUID("00000000-0000-0000-0000-000000000001")
 ORG_ID = UUID("00000000-0000-0000-0000-000000000010")
 FARM_ID = UUID("00000000-0000-0000-0000-000000000020")
 FIELD_ID = UUID("00000000-0000-0000-0000-000000000030")
+ACQUISITION_ID = UUID("00000000-0000-0000-0000-000000000040")
 ACQUIRED_AT = datetime(2026, 7, 30, 3, 45, 41, tzinfo=UTC)
 GEOMETRY = {
     "type": "Polygon",
@@ -41,6 +43,14 @@ FIELD = FieldRecord(
     status="active",
     created_at=ACQUIRED_AT,
     updated_at=ACQUIRED_AT,
+)
+SUMMARY_ACQUISITION = SimpleNamespace(
+    id=ACQUISITION_ID,
+    field_id=FIELD_ID,
+    organization_id=ORG_ID,
+    acquired_at=ACQUIRED_AT,
+    cloud_cover_percent=None,
+    provider_metadata={"geometry_hash": geometry_fingerprint(GEOMETRY)},
 )
 
 
@@ -86,10 +96,27 @@ class SatellitePreviewServiceTests(unittest.IsolatedAsyncioTestCase):
     async def call_summary(
         self,
         *,
-        acquisition=SimpleNamespace(acquired_at=ACQUIRED_AT),
+        acquisition=SUMMARY_ACQUISITION,
         provider,
     ):
-        repository = SimpleNamespace(get_latest_acquisition=AsyncMock(return_value=acquisition))
+        snapshot = SimpleNamespace(
+            acquired_at=ACQUIRED_AT,
+            algorithm_version="agriscope-ndvi-summary-v1",
+            ndvi_mean=Decimal("0.42"),
+            ndvi_min=Decimal("0.1"),
+            ndvi_max=Decimal("0.75"),
+            ndvi_stddev=Decimal("0.12"),
+            sample_count=100,
+            valid_sample_count=80,
+            valid_pixel_ratio=Decimal("0.8"),
+        )
+        repository = SimpleNamespace(
+            get_latest_acquisition=AsyncMock(return_value=acquisition),
+            get_ndvi_snapshot=AsyncMock(return_value=None),
+            lock_observation_for_analysis=AsyncMock(),
+            get_previous_ndvi_snapshot=AsyncMock(return_value=None),
+            upsert_ndvi_snapshot=AsyncMock(return_value=snapshot),
+        )
         with patch(
             "apps.api.agriscope_api.services.satellite.SatelliteRepository",
             return_value=repository,
@@ -177,6 +204,47 @@ class SatellitePreviewServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.valid_sample_count, 80)
         self.assertEqual(result.algorithm_version, "agriscope-ndvi-summary-v1")
         self.assertEqual(provider.calls, [(GEOMETRY, ACQUIRED_AT)])
+
+    async def test_ndvi_summary_rechecks_cache_after_acquisition_lock(self):
+        cached = SimpleNamespace(
+            acquired_at=ACQUIRED_AT,
+            algorithm_version="agriscope-ndvi-summary-v1",
+            ndvi_mean=Decimal("0.42"),
+            ndvi_min=Decimal("0.1"),
+            ndvi_max=Decimal("0.75"),
+            ndvi_stddev=Decimal("0.12"),
+            sample_count=100,
+            valid_sample_count=80,
+            valid_pixel_ratio=Decimal("0.8"),
+        )
+        repository = SimpleNamespace(
+            get_latest_acquisition=AsyncMock(return_value=SUMMARY_ACQUISITION),
+            get_ndvi_snapshot=AsyncMock(side_effect=[None, cached]),
+            lock_observation_for_analysis=AsyncMock(),
+            get_previous_ndvi_snapshot=AsyncMock(return_value=None),
+            upsert_ndvi_snapshot=AsyncMock(),
+        )
+        provider = FakeProcessProvider()
+        with patch(
+            "apps.api.agriscope_api.services.satellite.SatelliteRepository",
+            return_value=repository,
+        ):
+            result = await SatelliteService(
+                object(),
+                self.settings(),
+                process_provider=provider,
+            ).get_ndvi_summary(
+                user_id=USER_ID,
+                field_id=FIELD_ID,
+                authorized_field=FIELD,
+            )
+
+        self.assertEqual(result.ndvi_mean, 0.42)
+        repository.lock_observation_for_analysis.assert_awaited_once_with(
+            ACQUISITION_ID, FIELD_ID
+        )
+        self.assertEqual(repository.get_ndvi_snapshot.await_count, 2)
+        self.assertEqual(provider.calls, [])
 
     async def test_ndvi_summary_missing_or_insufficient_data_returns_no_values(self):
         provider = FakeProcessProvider(

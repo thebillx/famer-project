@@ -834,7 +834,10 @@
           "source",
           "status",
           "imagery_available",
-          "ndvi_available"
+          "geometry_hash",
+          "analysis_eligible",
+          "analysis_ready",
+          "comparison_eligible"
         ],
         "properties": {
           "observation_id": {
@@ -872,8 +875,25 @@
           "imagery_available": {
             "type": "boolean"
           },
-          "ndvi_available": {
-            "type": "boolean"
+          "geometry_hash": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 64,
+            "maxLength": 64
+          },
+          "analysis_eligible": {
+            "type": "boolean",
+            "description": "The observation has verified provenance, usable quality, and can be computed now."
+          },
+          "analysis_ready": {
+            "type": "boolean",
+            "description": "A geometry-matched computed analysis cache exists."
+          },
+          "comparison_eligible": {
+            "type": "boolean",
+            "description": "The observation can participate in a comparison after its analysis is computed."
           }
         }
       },
@@ -884,6 +904,10 @@
           "field_id",
           "acquired_at",
           "algorithm_version",
+          "geometry_hash",
+          "analysis_eligible",
+          "analysis_ready",
+          "assessable",
           "ndvi_mean",
           "ndvi_min",
           "ndvi_max",
@@ -907,6 +931,20 @@
           },
           "algorithm_version": {
             "type": "string"
+          },
+          "geometry_hash": {
+            "type": "string",
+            "minLength": 64,
+            "maxLength": 64
+          },
+          "analysis_eligible": {
+            "const": true
+          },
+          "analysis_ready": {
+            "const": true
+          },
+          "assessable": {
+            "const": true
           },
           "ndvi_mean": {
             "type": "number",
@@ -991,15 +1029,17 @@
           },
           "nodata": {
             "type": "number",
-            "const": -9999
+            "description": "Raster nodata marker; the current provider contract uses -9999."
           },
           "value_min": {
             "type": "number",
-            "const": -1
+            "minimum": -1,
+            "maximum": 1
           },
           "value_max": {
             "type": "number",
-            "const": 1
+            "minimum": -1,
+            "maximum": 1
           },
           "valid_pixel_ratio": {
             "type": "number",
@@ -1040,26 +1080,41 @@
             "format": "uuid"
           },
           "before_ndvi": {
-            "type": "number",
+            "type": [
+              "number",
+              "null"
+            ],
             "minimum": -1,
             "maximum": 1
           },
           "after_ndvi": {
-            "type": "number",
+            "type": [
+              "number",
+              "null"
+            ],
             "minimum": -1,
             "maximum": 1
           },
           "ndvi_delta": {
-            "type": "number",
+            "type": [
+              "number",
+              "null"
+            ],
             "minimum": -2,
             "maximum": 2
           },
           "changed_area_sqm": {
-            "type": "number",
+            "type": [
+              "number",
+              "null"
+            ],
             "minimum": 0
           },
           "changed_area_rai": {
-            "type": "number",
+            "type": [
+              "number",
+              "null"
+            ],
             "minimum": 0
           },
           "threshold": {
@@ -1067,11 +1122,51 @@
             "const": -0.1
           },
           "status": {
-            "const": "USABLE"
+            "type": "string",
+            "enum": [
+              "USABLE",
+              "NOT_ASSESSABLE"
+            ]
           },
           "geometry": {
-            "type": "object",
+            "type": [
+              "object",
+              "null"
+            ],
             "description": "GeoJSON MultiPolygon derived from aligned numeric NDVI rasters."
+          }
+        }
+      },
+      "SatelliteNdviComparison": {
+        "type": "object",
+        "required": [
+          "previous_acquired_at",
+          "previous_ndvi_mean",
+          "ndvi_mean_delta",
+          "direction"
+        ],
+        "properties": {
+          "previous_acquired_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "previous_ndvi_mean": {
+            "type": "number",
+            "minimum": -1,
+            "maximum": 1
+          },
+          "ndvi_mean_delta": {
+            "type": "number",
+            "minimum": -2,
+            "maximum": 2
+          },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "increased",
+              "decreased",
+              "unchanged"
+            ]
           }
         }
       },
@@ -1088,7 +1183,8 @@
           "ndvi_stddev",
           "sample_count",
           "valid_sample_count",
-          "valid_pixel_ratio"
+          "valid_pixel_ratio",
+          "comparison"
         ],
         "properties": {
           "field_id": {
@@ -1137,6 +1233,16 @@
             "type": "number",
             "exclusiveMinimum": 0,
             "maximum": 1
+          },
+          "comparison": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SatelliteNdviComparison"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         }
       }

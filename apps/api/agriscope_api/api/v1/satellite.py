@@ -65,6 +65,14 @@ class SatelliteNdviSummaryResponse(BaseModel):
     sample_count: int
     valid_sample_count: int
     valid_pixel_ratio: float
+    comparison: "SatelliteNdviComparisonResponse | None"
+
+
+class SatelliteNdviComparisonResponse(BaseModel):
+    previous_acquired_at: datetime
+    previous_ndvi_mean: float
+    ndvi_mean_delta: float
+    direction: Literal["increased", "decreased", "unchanged"]
 
 
 class ObservationResponse(BaseModel):
@@ -75,7 +83,10 @@ class ObservationResponse(BaseModel):
     source: str
     status: Literal["USABLE", "POOR_QUALITY", "UNAVAILABLE"]
     imagery_available: bool
-    ndvi_available: bool
+    geometry_hash: str | None
+    analysis_eligible: bool
+    analysis_ready: bool
+    comparison_eligible: bool
 
 
 class ObservationNdviSummaryResponse(BaseModel):
@@ -83,6 +94,10 @@ class ObservationNdviSummaryResponse(BaseModel):
     field_id: str
     acquired_at: datetime
     algorithm_version: str
+    geometry_hash: str
+    analysis_eligible: bool
+    analysis_ready: bool
+    assessable: bool
     ndvi_mean: float
     ndvi_min: float
     ndvi_max: float
@@ -110,14 +125,14 @@ class ChangeResponse(BaseModel):
     field_id: str
     before_observation_id: str
     after_observation_id: str
-    before_ndvi: float
-    after_ndvi: float
-    ndvi_delta: float
-    changed_area_sqm: float
-    changed_area_rai: float
+    before_ndvi: float | None
+    after_ndvi: float | None
+    ndvi_delta: float | None
+    changed_area_sqm: float | None
+    changed_area_rai: float | None
     threshold: float
-    status: Literal["USABLE"]
-    geometry: dict[str, Any]
+    status: Literal["USABLE", "NOT_ASSESSABLE"]
+    geometry: dict[str, Any] | None
 
 
 SatelliteLatestResponse: TypeAlias = Annotated[
@@ -175,7 +190,23 @@ if router:
         _satellite_limits(request, user.id, field.id, settings)
         value = await service.get_observation_analysis(user_id=user.id, field_id=field_id, observation_id=observation_id, authorized_field=field)
         response.headers.update({"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"})
-        return ObservationNdviSummaryResponse(observation_id=str(value.observation_id), field_id=str(value.field_id), acquired_at=value.acquired_at, algorithm_version=value.algorithm_version, ndvi_mean=float(value.ndvi_mean), ndvi_min=float(value.ndvi_min), ndvi_max=float(value.ndvi_max), ndvi_stddev=float(value.ndvi_stddev), sample_count=value.sample_count, valid_sample_count=value.valid_sample_count, valid_pixel_ratio=float(value.valid_pixel_ratio))
+        return ObservationNdviSummaryResponse(
+            observation_id=str(value.observation_id),
+            field_id=str(value.field_id),
+            acquired_at=value.acquired_at,
+            algorithm_version=value.algorithm_version,
+            geometry_hash=value.geometry_hash or "",
+            analysis_eligible=True,
+            analysis_ready=True,
+            assessable=True,
+            ndvi_mean=float(value.ndvi_mean),
+            ndvi_min=float(value.ndvi_min),
+            ndvi_max=float(value.ndvi_max),
+            ndvi_stddev=float(value.ndvi_stddev),
+            sample_count=value.sample_count,
+            valid_sample_count=value.valid_sample_count,
+            valid_pixel_ratio=float(value.valid_pixel_ratio),
+        )
 
     @router.get("/{field_id}/observations/{observation_id}/ndvi-raster", response_model=ObservationRasterResponse)
     async def get_observation_raster(field_id: UUID, observation_id: UUID, request: Request,
@@ -403,4 +434,9 @@ if router:
             sample_count=summary.sample_count,
             valid_sample_count=summary.valid_sample_count,
             valid_pixel_ratio=summary.valid_pixel_ratio,
+            comparison=(
+                SatelliteNdviComparisonResponse(**summary.comparison.__dict__)
+                if summary.comparison is not None
+                else None
+            ),
         )

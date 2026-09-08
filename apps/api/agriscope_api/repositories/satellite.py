@@ -31,12 +31,33 @@ class AcquisitionRecord:
 
 
 @dataclass(frozen=True)
+class NdviSnapshotRecord:
+    id: UUID
+    field_id: UUID
+    organization_id: UUID
+    acquisition_id: UUID
+    acquired_at: datetime
+    algorithm_version: str
+    geometry_hash: str | None
+    ndvi_mean: Decimal
+    ndvi_min: Decimal
+    ndvi_max: Decimal
+    ndvi_stddev: Decimal
+    sample_count: int
+    valid_sample_count: int
+    valid_pixel_ratio: Decimal
+    created_at: datetime
+    updated_at: datetime
+
+
+@dataclass(frozen=True)
 class ObservationAnalysisRecord:
     observation_id: UUID
     field_id: UUID
     organization_id: UUID
     acquired_at: datetime
     algorithm_version: str
+    geometry_hash: str | None
     ndvi_mean: Decimal
     ndvi_min: Decimal
     ndvi_max: Decimal
@@ -64,6 +85,27 @@ def _acquisition(row: Any) -> AcquisitionRecord:
         search_status=row["search_status"],
         searched_at=row["searched_at"],
         provider_metadata=row["provider_metadata"],
+        created_at=row["created_at"],
+        updated_at=row["updated_at"],
+    )
+
+
+def _ndvi_snapshot(row: Any) -> NdviSnapshotRecord:
+    return NdviSnapshotRecord(
+        id=row["id"],
+        field_id=row["field_id"],
+        organization_id=row["organization_id"],
+        acquisition_id=row["acquisition_id"],
+        acquired_at=row["acquired_at"],
+        algorithm_version=row["algorithm_version"],
+        geometry_hash=row["geometry_hash"],
+        ndvi_mean=row["ndvi_mean"],
+        ndvi_min=row["ndvi_min"],
+        ndvi_max=row["ndvi_max"],
+        ndvi_stddev=row["ndvi_stddev"],
+        sample_count=row["sample_count"],
+        valid_sample_count=row["valid_sample_count"],
+        valid_pixel_ratio=row["valid_pixel_ratio"],
         created_at=row["created_at"],
         updated_at=row["updated_at"],
     )
@@ -112,7 +154,9 @@ class SatelliteRepository(TenantScopedRepository):
         row = result.mappings().one_or_none()
         return _acquisition(row) if row else None
 
-    async def list_cached_observation_ids(self, field_id: UUID, algorithm_version: str) -> set[UUID]:
+    async def list_cached_observation_ids(
+        self, field_id: UUID, algorithm_version: str, geometry_hash: str
+    ) -> set[UUID]:
         result = await self.session.execute(text("""
             SELECT analysis.observation_id
             FROM field_observation_analyses analysis
@@ -124,16 +168,21 @@ class SatelliteRepository(TenantScopedRepository):
              AND m.user_id=:user_id AND m.status='active'
             WHERE analysis.field_id=:field_id AND analysis.organization_id=:organization_id
               AND analysis.algorithm_version=:algorithm_version
+              AND analysis.geometry_hash=:geometry_hash
               AND f.status='active' AND farm.status='active'
               AND (m.role='organization_owner' OR farm.owner_user_id=:user_id)
         """), {"field_id": field_id, "organization_id": self.scope.organization_id,
-            "algorithm_version": algorithm_version, "user_id": self.scope.user_id})
+            "algorithm_version": algorithm_version, "geometry_hash": geometry_hash,
+            "user_id": self.scope.user_id})
         return {row[0] for row in result.all()}
 
-    async def get_analysis(self, observation_id: UUID, algorithm_version: str) -> ObservationAnalysisRecord | None:
+    async def get_analysis(
+        self, observation_id: UUID, algorithm_version: str, geometry_hash: str
+    ) -> ObservationAnalysisRecord | None:
         result = await self.session.execute(text("""
             SELECT analysis.observation_id, analysis.field_id, analysis.organization_id,
                    analysis.acquired_at, analysis.algorithm_version, analysis.ndvi_mean,
+                   analysis.geometry_hash,
                    analysis.ndvi_min, analysis.ndvi_max, analysis.ndvi_stddev,
                    analysis.sample_count, analysis.valid_sample_count,
                    analysis.valid_pixel_ratio, analysis.raster_tiff, analysis.raster_crs,
@@ -148,28 +197,53 @@ class SatelliteRepository(TenantScopedRepository):
             WHERE analysis.observation_id=:observation_id
               AND analysis.organization_id=:organization_id
               AND analysis.algorithm_version=:algorithm_version
+              AND analysis.geometry_hash=:geometry_hash
               AND f.status='active' AND farm.status='active'
               AND (m.role='organization_owner' OR farm.owner_user_id=:user_id)
-        """), {"observation_id": observation_id, "organization_id": self.scope.organization_id, "algorithm_version": algorithm_version, "user_id": self.scope.user_id})
+        """), {"observation_id": observation_id, "organization_id": self.scope.organization_id,
+            "algorithm_version": algorithm_version, "geometry_hash": geometry_hash,
+            "user_id": self.scope.user_id})
         row = result.mappings().one_or_none()
         return _analysis(row) if row else None
 
+    async def lock_observation_for_analysis(
+        self, observation_id: UUID, field_id: UUID
+    ) -> None:
+        await self.session.execute(
+            text(
+                """
+                SELECT id
+                FROM field_acquisitions
+                WHERE id = :observation_id
+                  AND field_id = :field_id
+                  AND organization_id = :organization_id
+                FOR UPDATE
+                """
+            ),
+            {
+                "observation_id": observation_id,
+                "field_id": field_id,
+                "organization_id": self.scope.organization_id,
+            },
+        )
+
     async def upsert_analysis(self, *, observation: AcquisitionRecord, algorithm_version: str,
+        geometry_hash: str,
         ndvi_mean: float, ndvi_min: float, ndvi_max: float, ndvi_stddev: float,
         sample_count: int, valid_sample_count: int, valid_pixel_ratio: float,
         raster_tiff: bytes, raster_crs: str, raster_bounds: list[float],
         raster_width: int, raster_height: int) -> ObservationAnalysisRecord:
         result = await self.session.execute(text("""
             INSERT INTO field_observation_analyses (
-              observation_id, field_id, organization_id, acquired_at, algorithm_version,
+              observation_id, field_id, organization_id, acquired_at, algorithm_version, geometry_hash,
               ndvi_mean, ndvi_min, ndvi_max, ndvi_stddev, sample_count,
               valid_sample_count, valid_pixel_ratio, raster_tiff, raster_crs,
               raster_bounds, raster_width, raster_height)
-            VALUES (:observation_id,:field_id,:organization_id,:acquired_at,:algorithm_version,
+            VALUES (:observation_id,:field_id,:organization_id,:acquired_at,:algorithm_version,:geometry_hash,
               :ndvi_mean,:ndvi_min,:ndvi_max,:ndvi_stddev,:sample_count,
               :valid_sample_count,:valid_pixel_ratio,:raster_tiff,:raster_crs,
               CAST(:raster_bounds AS jsonb),:raster_width,:raster_height)
-            ON CONFLICT (observation_id, algorithm_version) DO UPDATE SET
+            ON CONFLICT (observation_id, algorithm_version, geometry_hash) DO UPDATE SET
               ndvi_mean=EXCLUDED.ndvi_mean, ndvi_min=EXCLUDED.ndvi_min,
               ndvi_max=EXCLUDED.ndvi_max, ndvi_stddev=EXCLUDED.ndvi_stddev,
               sample_count=EXCLUDED.sample_count, valid_sample_count=EXCLUDED.valid_sample_count,
@@ -177,12 +251,13 @@ class SatelliteRepository(TenantScopedRepository):
               raster_crs=EXCLUDED.raster_crs, raster_bounds=EXCLUDED.raster_bounds,
               raster_width=EXCLUDED.raster_width, raster_height=EXCLUDED.raster_height,
               updated_at=now()
-            RETURNING observation_id,field_id,organization_id,acquired_at,algorithm_version,
+            RETURNING observation_id,field_id,organization_id,acquired_at,algorithm_version,geometry_hash,
               ndvi_mean,ndvi_min,ndvi_max,ndvi_stddev,sample_count,valid_sample_count,
               valid_pixel_ratio,raster_tiff,raster_crs,raster_bounds,raster_width,raster_height
         """), {"observation_id": observation.id, "field_id": observation.field_id,
             "organization_id": observation.organization_id, "acquired_at": observation.acquired_at,
-            "algorithm_version": algorithm_version, "ndvi_mean": ndvi_mean, "ndvi_min": ndvi_min,
+            "algorithm_version": algorithm_version, "geometry_hash": geometry_hash,
+            "ndvi_mean": ndvi_mean, "ndvi_min": ndvi_min,
             "ndvi_max": ndvi_max, "ndvi_stddev": ndvi_stddev, "sample_count": sample_count,
             "valid_sample_count": valid_sample_count, "valid_pixel_ratio": valid_pixel_ratio,
             "raster_tiff": raster_tiff, "raster_crs": raster_crs,
@@ -199,6 +274,7 @@ class SatelliteRepository(TenantScopedRepository):
         acquired_at: datetime,
         cloud_cover_percent: float | None,
         searched_at: datetime,
+        geometry_hash: str | None = None,
     ) -> AcquisitionRecord:
         result = await self.session.execute(
             text(
@@ -225,13 +301,17 @@ class SatelliteRepository(TenantScopedRepository):
                   :cloud_cover_percent,
                   'available',
                   :searched_at,
-                  jsonb_build_object('provider_item_id', CAST(:metadata_provider_item_id AS text))
+                  jsonb_build_object(
+                    'provider_item_id', CAST(:metadata_provider_item_id AS text),
+                    'geometry_hash', CAST(:geometry_hash AS text)
+                  )
                 )
                 ON CONFLICT (field_id, provider, provider_item_id)
                 DO UPDATE SET
                   cloud_cover_percent = EXCLUDED.cloud_cover_percent,
                   searched_at = EXCLUDED.searched_at,
                   search_status = 'available',
+                  provider_metadata = EXCLUDED.provider_metadata,
                   updated_at = now()
                 RETURNING id, field_id, organization_id, provider, collection, provider_item_id,
                           acquired_at, cloud_cover_percent, search_status, searched_at,
@@ -245,6 +325,7 @@ class SatelliteRepository(TenantScopedRepository):
                 "collection": collection,
                 "provider_item_id": provider_item_id,
                 "metadata_provider_item_id": provider_item_id,
+                "geometry_hash": geometry_hash,
                 "acquired_at": acquired_at,
                 "cloud_cover_percent": cloud_cover_percent,
                 "searched_at": searched_at,
@@ -265,13 +346,18 @@ class SatelliteRepository(TenantScopedRepository):
                 JOIN fields field
                   ON field.id = acquisition.field_id
                  AND field.organization_id = acquisition.organization_id
+                JOIN farms farm
+                  ON farm.id = field.farm_id
+                 AND farm.organization_id = field.organization_id
                 JOIN memberships m
                   ON m.organization_id = acquisition.organization_id
                 WHERE acquisition.field_id = :field_id
                   AND acquisition.organization_id = :organization_id
                   AND field.status = 'active'
+                  AND farm.status = 'active'
                   AND m.user_id = :user_id
                   AND m.status = 'active'
+                  AND (m.role = 'organization_owner' OR farm.owner_user_id = :user_id)
                 ORDER BY acquisition.acquired_at DESC, acquisition.searched_at DESC
                 LIMIT 1
                 """
@@ -284,3 +370,165 @@ class SatelliteRepository(TenantScopedRepository):
         )
         row = result.mappings().one_or_none()
         return _acquisition(row) if row else None
+
+    async def get_ndvi_snapshot(
+        self,
+        *,
+        field_id: UUID,
+        acquisition_id: UUID,
+        algorithm_version: str,
+        geometry_hash: str,
+    ) -> NdviSnapshotRecord | None:
+        result = await self.session.execute(
+            text(
+                """
+                SELECT snapshot.id, snapshot.field_id, snapshot.organization_id,
+                       snapshot.acquisition_id, snapshot.acquired_at,
+                       snapshot.algorithm_version, snapshot.geometry_hash,
+                       snapshot.ndvi_mean, snapshot.ndvi_min, snapshot.ndvi_max,
+                       snapshot.ndvi_stddev, snapshot.sample_count,
+                       snapshot.valid_sample_count, snapshot.valid_pixel_ratio,
+                       snapshot.created_at, snapshot.updated_at
+                FROM field_ndvi_snapshots snapshot
+                JOIN fields field
+                  ON field.id = snapshot.field_id
+                 AND field.organization_id = snapshot.organization_id
+                JOIN farms farm
+                  ON farm.id = field.farm_id
+                 AND farm.organization_id = field.organization_id
+                JOIN memberships membership
+                  ON membership.organization_id = field.organization_id
+                 AND membership.user_id = :user_id
+                 AND membership.status = 'active'
+                WHERE snapshot.field_id = :field_id
+                  AND snapshot.acquisition_id = :acquisition_id
+                  AND snapshot.organization_id = :organization_id
+                  AND snapshot.algorithm_version = :algorithm_version
+                  AND snapshot.geometry_hash = :geometry_hash
+                  AND field.status = 'active' AND farm.status = 'active'
+                  AND (membership.role = 'organization_owner' OR farm.owner_user_id = :user_id)
+                """
+            ),
+            {
+                "field_id": field_id,
+                "acquisition_id": acquisition_id,
+                "organization_id": self.scope.organization_id,
+                "user_id": self.scope.user_id,
+                "algorithm_version": algorithm_version,
+                "geometry_hash": geometry_hash,
+            },
+        )
+        row = result.mappings().one_or_none()
+        return _ndvi_snapshot(row) if row else None
+
+    async def upsert_ndvi_snapshot(
+        self,
+        *,
+        field_id: UUID,
+        acquisition_id: UUID,
+        acquired_at: datetime,
+        algorithm_version: str,
+        geometry_hash: str,
+        ndvi_mean: float,
+        ndvi_min: float,
+        ndvi_max: float,
+        ndvi_stddev: float,
+        sample_count: int,
+        valid_sample_count: int,
+        valid_pixel_ratio: float,
+    ) -> NdviSnapshotRecord:
+        result = await self.session.execute(
+            text(
+                """
+                INSERT INTO field_ndvi_snapshots (
+                  field_id, organization_id, acquisition_id, acquired_at,
+                  algorithm_version, geometry_hash, ndvi_mean, ndvi_min, ndvi_max,
+                  ndvi_stddev, sample_count, valid_sample_count, valid_pixel_ratio
+                )
+                VALUES (
+                  :field_id, :organization_id, :acquisition_id, :acquired_at,
+                  :algorithm_version, :geometry_hash, :ndvi_mean, :ndvi_min, :ndvi_max,
+                  :ndvi_stddev, :sample_count, :valid_sample_count,
+                  :valid_pixel_ratio
+                )
+                ON CONFLICT (field_id, acquisition_id, algorithm_version, geometry_hash)
+                DO UPDATE SET
+                  ndvi_mean = EXCLUDED.ndvi_mean,
+                  ndvi_min = EXCLUDED.ndvi_min,
+                  ndvi_max = EXCLUDED.ndvi_max,
+                  ndvi_stddev = EXCLUDED.ndvi_stddev,
+                  sample_count = EXCLUDED.sample_count,
+                  valid_sample_count = EXCLUDED.valid_sample_count,
+                  valid_pixel_ratio = EXCLUDED.valid_pixel_ratio,
+                  updated_at = now()
+                RETURNING id, field_id, organization_id, acquisition_id, acquired_at,
+                          algorithm_version, geometry_hash, ndvi_mean, ndvi_min,
+                          ndvi_max, ndvi_stddev, sample_count, valid_sample_count,
+                          valid_pixel_ratio, created_at, updated_at
+                """
+            ),
+            {
+                "field_id": field_id,
+                "organization_id": self.scope.organization_id,
+                "acquisition_id": acquisition_id,
+                "acquired_at": acquired_at,
+                "algorithm_version": algorithm_version,
+                "geometry_hash": geometry_hash,
+                "ndvi_mean": ndvi_mean,
+                "ndvi_min": ndvi_min,
+                "ndvi_max": ndvi_max,
+                "ndvi_stddev": ndvi_stddev,
+                "sample_count": sample_count,
+                "valid_sample_count": valid_sample_count,
+                "valid_pixel_ratio": valid_pixel_ratio,
+            },
+        )
+        return _ndvi_snapshot(result.mappings().one())
+
+    async def get_previous_ndvi_snapshot(
+        self,
+        *,
+        field_id: UUID,
+        acquired_before: datetime,
+        algorithm_version: str,
+        geometry_hash: str,
+    ) -> NdviSnapshotRecord | None:
+        result = await self.session.execute(
+            text(
+                """
+                SELECT snapshot.id, snapshot.field_id, snapshot.organization_id,
+                       snapshot.acquisition_id, snapshot.acquired_at,
+                       snapshot.algorithm_version, snapshot.geometry_hash,
+                       snapshot.ndvi_mean, snapshot.ndvi_min, snapshot.ndvi_max,
+                       snapshot.ndvi_stddev, snapshot.sample_count,
+                       snapshot.valid_sample_count, snapshot.valid_pixel_ratio,
+                       snapshot.created_at, snapshot.updated_at
+                FROM field_ndvi_snapshots snapshot
+                JOIN fields field ON field.id = snapshot.field_id
+                  AND field.organization_id = snapshot.organization_id
+                JOIN farms farm ON farm.id = field.farm_id
+                  AND farm.organization_id = field.organization_id
+                JOIN memberships membership ON membership.organization_id = field.organization_id
+                  AND membership.user_id = :user_id AND membership.status = 'active'
+                WHERE snapshot.field_id = :field_id
+                  AND snapshot.organization_id = :organization_id
+                  AND snapshot.algorithm_version = :algorithm_version
+                  AND snapshot.geometry_hash = :geometry_hash
+                  AND snapshot.acquired_at < :acquired_before
+                  AND field.status = 'active' AND farm.status = 'active'
+                  AND (membership.role = 'organization_owner' OR farm.owner_user_id = :user_id)
+                ORDER BY snapshot.acquired_at DESC, snapshot.created_at DESC
+                LIMIT 1
+                """
+            ),
+            {
+                "field_id": field_id,
+                "organization_id": self.scope.organization_id,
+                "user_id": self.scope.user_id,
+                "algorithm_version": algorithm_version,
+                "geometry_hash": geometry_hash,
+                "acquired_before": acquired_before,
+            },
+        )
+        row = result.mappings().one_or_none()
+        return _ndvi_snapshot(row) if row else None

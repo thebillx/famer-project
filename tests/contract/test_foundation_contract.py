@@ -28,6 +28,7 @@ EXPECTED_SCHEMAS = {
     "SatelliteEmptySearchResponse",
     "SatelliteLatestResponse",
     "SatelliteNdviSummary",
+    "SatelliteNdviComparison",
     "SatelliteNotSearchedResponse",
     "SatelliteSearchResponse",
     "Observation",
@@ -419,6 +420,23 @@ class FoundationContractTests(unittest.TestCase):
         self.assertIn("persisted field geometry", summary["x-validation"])
         self.assertIn("UTC day", summary["x-validation"])
         self.assertIn("no automatic summary request", summary["x-idempotency"])
+
+    def test_observation_contract_separates_eligibility_cache_and_not_assessable(self):
+        observation = self.document["components"]["schemas"]["Observation"]
+        self.assertIn("analysis_eligible", observation["required"])
+        self.assertIn("analysis_ready", observation["required"])
+        self.assertIn("comparison_eligible", observation["required"])
+        self.assertIn("geometry_hash", observation["required"])
+        self.assertEqual(observation["properties"]["geometry_hash"]["type"], ["string", "null"])
+
+        raster = self.document["components"]["schemas"]["ObservationRaster"]
+        self.assertNotIn("const", raster["properties"]["value_min"])
+        self.assertNotIn("const", raster["properties"]["value_max"])
+
+        change = self.document["components"]["schemas"]["FieldChange"]
+        self.assertEqual(change["properties"]["status"]["enum"], ["USABLE", "NOT_ASSESSABLE"])
+        self.assertEqual(change["properties"]["ndvi_delta"]["type"], ["number", "null"])
+        self.assertEqual(change["properties"]["geometry"]["type"], ["object", "null"])
 
     def test_standard_error_schema_is_structural(self):
         error_response = self.document["components"]["schemas"]["ErrorResponse"]

@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 import json
 from decimal import Decimal
 import os
+import threading
 from urllib.parse import unquote, urlsplit
 from uuid import UUID, uuid4
 
@@ -36,6 +37,7 @@ from apps.api.agriscope_api.providers.cdse_process import (
     CdseTrueColorPreview,
 )
 from apps.api.agriscope_api.services.satellite import SatelliteResponse
+from packages.geospatial.agriscope_geospatial.field_geometry import geometry_fingerprint
 
 
 TEST_DATABASE_ENV = "AGRISCOPE_TEST_DATABASE_URL"
@@ -166,7 +168,7 @@ def _truncate_application_tables() -> None:
     with _connect() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "TRUNCATE field_observation_analyses, field_acquisitions, fields, farms, refresh_sessions, memberships, organizations, users"
+                "TRUNCATE field_ndvi_snapshots, field_observation_analyses, field_acquisitions, fields, farms, refresh_sessions, memberships, organizations, users"
             )
 
 
@@ -896,6 +898,32 @@ class FakeProcessProvider:
         return CdseNdviRaster(body, 4, 4, (west, south, east, north), "EPSG:4326", 1.0)
 
 
+class SingleFlightProcessProvider(FakeProcessProvider):
+    def __init__(self) -> None:
+        super().__init__()
+        self._calls_lock = threading.Lock()
+        self.summary_started = threading.Event()
+        self.release_summary = threading.Event()
+
+    async def summarize_ndvi(self, geometry, *, acquired_at, exact_observation=False):
+        with self._calls_lock:
+            self.summary_calls.append((geometry, acquired_at))
+        self.summary_started.set()
+        assert self.release_summary.wait(timeout=5)
+        return CdseNdviSummary(
+            mean=0.5,
+            minimum=0.1,
+            maximum=0.9,
+            standard_deviation=0.05,
+            sample_count=100,
+            valid_sample_count=80,
+            valid_pixel_ratio=0.8,
+        )
+
+    async def render_ndvi_raster(self, geometry, *, acquired_at):
+        return await super().render_ndvi_raster(geometry, acquired_at=acquired_at)
+
+
 class FakeUnavailableProvider:
     def __init__(self) -> None:
         self.calls = 0
@@ -1535,10 +1563,11 @@ def test_observation_history_raster_and_change_end_to_end(client: TestClient):
                     INSERT INTO field_acquisitions
                       (field_id, organization_id, provider, collection, provider_item_id,
                        acquired_at, cloud_cover_percent, search_status, searched_at, provider_metadata)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,'available',now(),'{}'::jsonb)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,'available',now(),%s::jsonb)
                     RETURNING id
                 """, (field["id"], field["organization_id"], CDSE_STAC_PROVIDER,
-                    SENTINEL_2_L2A_COLLECTION, f"S2_{suffix}", acquired_at, cloud))
+                    SENTINEL_2_L2A_COLLECTION, f"S2_{suffix}", acquired_at, cloud,
+                    json.dumps({"geometry_hash": geometry_fingerprint(field["geometry"])})))
                 observation_ids.append(str(cur.fetchone()[0]))
 
     class TemporalProvider(FakeProcessProvider):
@@ -1555,6 +1584,9 @@ def test_observation_history_raster_and_change_end_to_end(client: TestClient):
     assert history.status_code == 200
     assert [item["observation_id"] for item in history.json()] == observation_ids[::-1]
     assert [item["cloud_percent"] for item in history.json()] == [6.0, 2.0]
+    assert all(item["analysis_eligible"] is True for item in history.json())
+    assert all(item["analysis_ready"] is False for item in history.json())
+    assert all(item["comparison_eligible"] is True for item in history.json())
 
     for observation_id, expected in zip(observation_ids, (0.75, 0.62), strict=True):
         preview = client.get(f"/api/v1/fields/{field['id']}/observations/{observation_id}/preview")
@@ -1565,6 +1597,8 @@ def test_observation_history_raster_and_change_end_to_end(client: TestClient):
         raster = client.get(f"/api/v1/fields/{field['id']}/observations/{observation_id}/ndvi-raster")
         assert raster.status_code == 200
         assert raster.json()["crs"] == "EPSG:4326"
+        assert raster.json()["value_min"] == pytest.approx(0.45 if expected == 0.62 else 0.75)
+        assert raster.json()["value_max"] == pytest.approx(0.70 if expected == 0.62 else 0.75)
         image = client.get(raster.json()["image_url"])
         assert image.status_code == 200 and image.content.startswith(b"\x89PNG")
 
@@ -1576,6 +1610,9 @@ def test_observation_history_raster_and_change_end_to_end(client: TestClient):
     assert change.json()["geometry"]["type"] == "MultiPolygon"
     assert len(provider.summary_calls) == 2
     assert len(provider.raster_calls) == 2
+    ready_history = client.get(f"/api/v1/fields/{field['id']}/observations")
+    assert ready_history.status_code == 200
+    assert all(item["analysis_ready"] is True for item in ready_history.json())
     assert client.get(f"/api/v1/fields/{field['id']}/change", params=params).status_code == 200
     assert len(provider.summary_calls) == 2 and len(provider.raster_calls) == 2
     client.app.state.rate_limiter = TrackingLimiter()
@@ -1636,3 +1673,230 @@ def test_observation_history_raster_and_change_end_to_end(client: TestClient):
     _register(foreign, "wave2a-foreign@example.com")
     assert foreign.get(f"/api/v1/fields/{field['id']}/observations").status_code == 404
     assert foreign.get(f"/api/v1/fields/{field['id']}/observations/{observation_ids[0]}/ndvi-raster").status_code == 404
+
+
+def test_concurrent_cold_cache_analysis_computes_provider_products_once(client: TestClient):
+    registered = _register(client, "single-flight-owner@example.com")
+    farm = _create_farm(client, registered["organization"]["id"])
+    field = _create_field(client, farm["id"], "SINGLE-FLIGHT")
+    acquired_at = datetime(2026, 8, 20, 3, tzinfo=UTC)
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO field_acquisitions
+                  (field_id, organization_id, provider, collection, provider_item_id,
+                   acquired_at, cloud_cover_percent, search_status, searched_at, provider_metadata)
+                VALUES (%s,%s,%s,%s,'SINGLE_FLIGHT_ITEM',%s,5,'available',now(),%s::jsonb)
+                RETURNING id
+                """,
+                (
+                    field["id"],
+                    field["organization_id"],
+                    CDSE_STAC_PROVIDER,
+                    SENTINEL_2_L2A_COLLECTION,
+                    acquired_at,
+                    json.dumps({"geometry_hash": geometry_fingerprint(field["geometry"])}),
+                ),
+            )
+            observation_id = str(cur.fetchone()[0])
+
+    provider = SingleFlightProcessProvider()
+    client.app.state.cdse_process_provider = provider
+    access_token = client.cookies["agriscope_access"]
+
+    def request_summary() -> int:
+        worker = TestClient(client.app)
+        worker.cookies.set("agriscope_access", access_token, path="/")
+        return worker.get(
+            f"/api/v1/fields/{field['id']}/observations/{observation_id}/ndvi-summary"
+        ).status_code
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        first = executor.submit(request_summary)
+        assert provider.summary_started.wait(timeout=5)
+        second = executor.submit(request_summary)
+        provider.release_summary.set()
+        statuses = sorted((first.result(timeout=10), second.result(timeout=10)))
+
+    assert statuses == [200, 200]
+    assert len(provider.summary_calls) == 1
+    assert len(provider.raster_calls) == 1
+
+
+def test_concurrent_legacy_ndvi_summary_computes_provider_once(client: TestClient):
+    registered = _register(client, "legacy-single-flight-owner@example.com")
+    farm = _create_farm(client, registered["organization"]["id"])
+    field = _create_field(client, farm["id"], "LEGACY-SINGLE-FLIGHT")
+    acquired_at = datetime(2026, 8, 20, 3, tzinfo=UTC)
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO field_acquisitions
+                  (field_id, organization_id, provider, collection, provider_item_id,
+                   acquired_at, cloud_cover_percent, search_status, searched_at, provider_metadata)
+                VALUES (%s,%s,%s,%s,'LEGACY_SINGLE_FLIGHT_ITEM',%s,5,'available',now(),%s::jsonb)
+                """,
+                (
+                    field["id"],
+                    field["organization_id"],
+                    CDSE_STAC_PROVIDER,
+                    SENTINEL_2_L2A_COLLECTION,
+                    acquired_at,
+                    json.dumps({"geometry_hash": geometry_fingerprint(field["geometry"])}),
+                ),
+            )
+
+    provider = SingleFlightProcessProvider()
+    client.app.state.cdse_process_provider = provider
+    access_token = client.cookies["agriscope_access"]
+
+    def request_summary() -> int:
+        worker = TestClient(client.app)
+        worker.cookies.set("agriscope_access", access_token, path="/")
+        return worker.get(
+            f"/api/v1/fields/{field['id']}/satellite/ndvi-summary"
+        ).status_code
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        first = executor.submit(request_summary)
+        assert provider.summary_started.wait(timeout=5)
+        second = executor.submit(request_summary)
+        provider.release_summary.set()
+        statuses = sorted((first.result(timeout=10), second.result(timeout=10)))
+
+    assert statuses == [200, 200]
+    assert len(provider.summary_calls) == 1
+
+
+def test_legacy_observation_keeps_preview_but_reports_unverified_analysis(client: TestClient):
+    registered = _register(client, "legacy-observation-owner@example.com")
+    farm = _create_farm(client, registered["organization"]["id"])
+    field = _create_field(client, farm["id"], "LEGACY")
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO field_acquisitions
+                  (field_id, organization_id, provider, collection, provider_item_id,
+                   acquired_at, cloud_cover_percent, search_status, searched_at, provider_metadata)
+                VALUES (%s,%s,%s,%s,'LEGACY_ITEM',%s,5,'available',now(),'{}'::jsonb)
+                RETURNING id
+                """,
+                (field["id"], field["organization_id"], CDSE_STAC_PROVIDER,
+                 SENTINEL_2_L2A_COLLECTION, datetime(2026, 8, 20, 3, tzinfo=UTC)),
+            )
+            observation_id = str(cur.fetchone()[0])
+
+    provider = FakeProcessProvider()
+    client.app.state.cdse_process_provider = provider
+    history = client.get(f"/api/v1/fields/{field['id']}/observations")
+    assert history.status_code == 200
+    assert history.json()[0]["imagery_available"] is True
+    assert history.json()[0]["analysis_eligible"] is False
+    assert history.json()[0]["analysis_ready"] is False
+    preview = client.get(f"/api/v1/fields/{field['id']}/observations/{observation_id}/preview")
+    assert preview.status_code == 200
+    summary = client.get(f"/api/v1/fields/{field['id']}/observations/{observation_id}/ndvi-summary")
+    assert summary.status_code == 422
+    assert summary.json()["error"]["code"] == "observation_provenance_unavailable"
+    assert provider.summary_calls == []
+
+
+def test_geometry_edit_changes_analysis_identity_without_overwriting_history(client: TestClient):
+    registered = _register(client, "geometry-lineage-owner@example.com")
+    farm = _create_farm(client, registered["organization"]["id"])
+    field = _create_field(client, farm["id"], "LINEAGE")
+    original_geometry = field["geometry"]
+    original_hash = geometry_fingerprint(original_geometry)
+    acquired_at = datetime(2026, 8, 20, 3, tzinfo=UTC)
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO field_acquisitions
+                  (field_id, organization_id, provider, collection, provider_item_id,
+                   acquired_at, cloud_cover_percent, search_status, searched_at, provider_metadata)
+                VALUES (%s,%s,%s,%s,'LINEAGE_ITEM',%s,5,'available',now(),%s::jsonb)
+                RETURNING id
+                """,
+                (
+                    field["id"],
+                    field["organization_id"],
+                    CDSE_STAC_PROVIDER,
+                    SENTINEL_2_L2A_COLLECTION,
+                    acquired_at,
+                    json.dumps({"geometry_hash": original_hash}),
+                ),
+            )
+            observation_id = str(cur.fetchone()[0])
+
+    provider = FakeProcessProvider()
+    client.app.state.cdse_process_provider = provider
+    first_summary = client.get(
+        f"/api/v1/fields/{field['id']}/observations/{observation_id}/ndvi-summary"
+    )
+    assert first_summary.status_code == 200
+    assert len(provider.summary_calls) == 1
+
+    renamed = client.patch(
+        f"/api/v1/fields/{field['id']}", json={"name": "LINEAGE RENAMED"}
+    )
+    assert renamed.status_code == 200
+    renamed_history = client.get(f"/api/v1/fields/{field['id']}/observations")
+    assert renamed_history.status_code == 200
+    renamed_observation = renamed_history.json()[0]
+    assert renamed_observation["geometry_hash"] == original_hash
+    assert renamed_observation["analysis_eligible"] is True
+    assert renamed_observation["analysis_ready"] is True
+    reused_summary = client.get(
+        f"/api/v1/fields/{field['id']}/observations/{observation_id}/ndvi-summary"
+    )
+    assert reused_summary.status_code == 200
+    assert len(provider.summary_calls) == 1
+
+    moved_geometry = {
+        "type": "Polygon",
+        "coordinates": [
+            [
+                [98.9802, 18.7901],
+                [98.9812, 18.7901],
+                [98.9812, 18.7911],
+                [98.9802, 18.7911],
+                [98.9802, 18.7901],
+            ]
+        ],
+    }
+    moved = client.patch(
+        f"/api/v1/fields/{field['id']}",
+        json={"geometry": moved_geometry},
+    )
+    assert moved.status_code == 200
+    moved_history = client.get(f"/api/v1/fields/{field['id']}/observations")
+    assert moved_history.status_code == 200
+    moved_observation = moved_history.json()[0]
+    assert moved_observation["geometry_hash"] == original_hash
+    assert moved_observation["analysis_eligible"] is False
+    assert moved_observation["analysis_ready"] is False
+    assert moved_observation["comparison_eligible"] is False
+    blocked_summary = client.get(
+        f"/api/v1/fields/{field['id']}/observations/{observation_id}/ndvi-summary"
+    )
+    assert blocked_summary.status_code == 422
+    assert blocked_summary.json()["error"]["code"] == "observation_provenance_unavailable"
+    assert len(provider.summary_calls) == 1
+
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT count(*), array_agg(geometry_hash)
+                FROM field_observation_analyses
+                WHERE observation_id = %s
+                """,
+                (observation_id,),
+            )
+            count, hashes = cur.fetchone()
+            assert count == 1
+            assert hashes == [original_hash]

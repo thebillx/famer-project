@@ -93,4 +93,74 @@ export type SatelliteNdviSummary = {
   sample_count: number;
   valid_sample_count: number;
   valid_pixel_ratio: number;
+  comparison: SatelliteNdviComparison | null;
+};
+
+export type SatelliteNdviComparison = {
+  previous_acquired_at: string;
+  previous_ndvi_mean: number;
+  ndvi_mean_delta: number;
+  direction: "increased" | "decreased" | "unchanged";
+};
+
+export type Observation = {
+  observation_id: string;
+  field_id: string;
+  acquired_at: string;
+  cloud_percent: number | null;
+  source: "Sentinel-2";
+  status: "USABLE" | "POOR_QUALITY" | "UNAVAILABLE";
+  imagery_available: boolean;
+  geometry_hash: string | null;
+  analysis_eligible: boolean;
+  analysis_ready: boolean;
+  comparison_eligible: boolean;
+};
+
+export type ObservationNdviSummary = {
+  observation_id: string;
+  field_id: string;
+  acquired_at: string;
+  algorithm_version: string;
+  geometry_hash: string;
+  analysis_eligible: true;
+  analysis_ready: true;
+  assessable: true;
+  ndvi_mean: number;
+  ndvi_min: number;
+  ndvi_max: number;
+  ndvi_stddev: number;
+  sample_count: number;
+  valid_sample_count: number;
+  valid_pixel_ratio: number;
+};
+
+export type ObservationRaster = {
+  observation_id: string;
+  acquired_at: string;
+  crs: "EPSG:4326";
+  bounds: [number, number, number, number];
+  width: number;
+  height: number;
+  nodata: number;
+  value_min: number;
+  value_max: number;
+  valid_pixel_ratio: number;
+  image_url: string;
+};
+
+export type GeoJsonMultiPolygon = { type: "MultiPolygon"; coordinates: number[][][][] };
+
+export type FieldChange = {
+  field_id: string;
+  before_observation_id: string;
+  after_observation_id: string;
+  before_ndvi: number | null;
+  after_ndvi: number | null;
+  ndvi_delta: number | null;
+  changed_area_sqm: number | null;
+  changed_area_rai: number | null;
+  threshold: -0.1;
+  status: "USABLE" | "NOT_ASSESSABLE";
+  geometry: GeoJsonMultiPolygon | null;
 };

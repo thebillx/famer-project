@@ -39,6 +39,11 @@ export default defineConfig({
     {
       name: "chromium",
       use: { ...devices["Desktop Chrome"] }
+    },
+    {
+      name: "mobile-observation",
+      testMatch: /field-workspace-001\.spec\.ts/,
+      use: { ...devices["Pixel 5"] }
     }
   ]
 });

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
+import json
 from typing import Any
 
 RAI_PER_SQM = 1 / 1600
@@ -19,6 +21,18 @@ class GeometryValidationResult:
 
 def sqm_to_rai(area_sqm: float) -> float:
     return round(float(area_sqm) * RAI_PER_SQM, 4)
+
+
+def geometry_fingerprint(geometry: dict[str, Any]) -> str:
+    """Return a stable identity for the exact persisted GeoJSON geometry."""
+    canonical = json.dumps(
+        geometry,
+        ensure_ascii=False,
+        allow_nan=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 def validate_field_polygon(geometry: dict[str, Any]) -> GeometryValidationResult:

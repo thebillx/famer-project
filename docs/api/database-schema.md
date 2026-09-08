@@ -88,7 +88,7 @@ The table stores only selected Sentinel-2 Level-2A catalogue metadata needed by 
 - `searched_at`
 - limited non-sensitive `provider_metadata`
 
-`field_acquisitions` enforces `UNIQUE (field_id, provider, provider_item_id)` so repeated latest-image searches are idempotent. It also enforces `FOREIGN KEY (field_id, organization_id) REFERENCES fields (id, organization_id) ON DELETE RESTRICT`, preventing an acquisition row from being attached to a field in another organization.
+`field_acquisitions` enforces `UNIQUE (field_id, provider, provider_item_id)` so repeated latest-image searches are idempotent. It also enforces `FOREIGN KEY (field_id, organization_id) REFERENCES fields (id, organization_id) ON DELETE RESTRICT`, preventing an acquisition row from being attached to a field in another organization. New searches record a SHA-256 `geometry_hash` in `provider_metadata`; older rows may not have that provenance and are preview-only.
 
 Complete raw STAC provider responses, raster assets, NDVI values, overlays, and analysis outputs are intentionally not stored in SATELLITE-001.
 
@@ -101,8 +101,10 @@ Migration `20260830_0005_observation_analysis.py` makes the existing
 
 Each row is one quality-approved, versioned analysis for one observation. A
 composite foreign key binds `observation_id`, `field_id`, and `organization_id` to
-the same acquisition, and `UNIQUE (observation_id, algorithm_version)` makes lazy
-provider processing idempotent.
+the same acquisition, and `UNIQUE (observation_id, algorithm_version,
+geometry_hash)` makes lazy provider processing idempotent for the exact persisted
+field geometry. A geometry edit therefore gets a new analysis identity; renaming a
+field does not.
 
 The cache stores scalar NDVI statistics plus one compressed float32 GeoTIFF clipped
 to the field. The raster is EPSG:4326, uses nodata `-9999`, targets Sentinel-2's
@@ -117,3 +119,16 @@ prevents cross-field and cross-organization attachment. This first bounded slice
 stores raster bytes in PostgreSQL because no application object-storage service yet
 exists; future object-storage migration must preserve the API contract and define
 retention and signed-access policy in a separate ADR.
+
+## Migration convergence
+
+The portable NDVI-history candidate `20260824_0005` and the real
+`20260830_0005` observation-analysis revision both descended from
+`20260823_0004` and both attempted to create the same acquisition identity
+constraint. The candidate revision was not present in the verified repository
+history and is not retained as an executable revision. Its table definition is
+re-homed in forward-only `20260908_0006_ndvi_history.py`, after the real applied
+`20260830_0005` revision. The shared constraint is therefore created once by
+the applied revision; `20260908_0006` only creates/drops the NDVI-history table.
+`20260908_0007` adds geometry lineage to both cache tables and replaces their old
+uniqueness constraints. No applied revision is edited in place.

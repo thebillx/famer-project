@@ -3,15 +3,17 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { buttonClassName } from "../../../components/Button";
 import { FarmOverviewMap } from "../../../components/FarmOverviewMap";
 import { MapWorkspaceShell, mapWorkspaceStyles as styles } from "../../../components/MapWorkspaceShell";
+import { SatelliteStatusCard } from "../../../components/SatelliteStatusCard";
 import { ApiError, apiFetch } from "../../../lib/api";
 import { useOrganizationPermission } from "../../../lib/permissions";
 import type { Farm, FieldBoundary, SatelliteLatest, User } from "../../../lib/types";
 
 const AUTH_FAILURES = new Set(["authentication_required", "invalid_refresh_token"]);
+const DEFAULT_SELECTION_KEY = ["farm-default-selection-used"] as const;
 const TENANT_QUERY_ROOTS = new Set([
   "current-user",
   "farms",
@@ -20,7 +22,8 @@ const TENANT_QUERY_ROOTS = new Set([
   "field",
   "organizations",
   "organization-members",
-  "satellite-latest"
+  "satellite-latest",
+  "observations"
 ]);
 
 function isTerminalAuthError(error: unknown): error is ApiError {
@@ -30,6 +33,7 @@ export default function FarmDetailPage() {
   const params = useParams<{ id: string }>();
   const queryClient = useQueryClient();
   const [selectedFieldId, setSelectedFieldId] = useState<string | null>(null);
+  const [satelliteTerminalAuth, setSatelliteTerminalAuth] = useState(false);
   const [fieldSearch, setFieldSearch] = useState("");
   const fieldRowRefs = useRef<Record<string, HTMLLIElement | null>>({});
 
@@ -67,7 +71,7 @@ export default function FarmDetailPage() {
     enabled: identitySettled && Boolean(selectedField),
     retry: false
   });
-  const terminalAuth = [identity.error, farm.error, fields.error, permission.error, satelliteLatest.error].some(isTerminalAuthError);
+  const terminalAuth = satelliteTerminalAuth || [identity.error, farm.error, fields.error, permission.error, satelliteLatest.error].some(isTerminalAuthError);
   const accountLabel = identitySettled && !terminalAuth
     ? identity.data.display_name
     : "บัญชีของฉัน";
@@ -75,11 +79,19 @@ export default function FarmDetailPage() {
     if (fieldSearch.trim() && !visibleFields.some((field) => field.id === fieldId)) setFieldSearch("");
     setSelectedFieldId(fieldId);
   };
+  const handleSatelliteTerminalAuth = useCallback(() => setSatelliteTerminalAuth(true), []);
 
   useEffect(() => {
     setSelectedFieldId(null);
+    setSatelliteTerminalAuth(false);
     setFieldSearch("");
   }, [params.id]);
+
+  useEffect(() => {
+    if (queryClient.getQueryData<boolean>(DEFAULT_SELECTION_KEY) || !fields.isSuccess || !fields.data.length || fieldSearch.trim()) return;
+    queryClient.setQueryData(DEFAULT_SELECTION_KEY, true);
+    setSelectedFieldId((current) => current ?? fields.data[0].id);
+  }, [fieldSearch, fields.data, fields.isSuccess, queryClient]);
 
   useEffect(() => {
     if (selectedFieldId && !fields.isSuccess) {
@@ -193,6 +205,13 @@ export default function FarmDetailPage() {
                         <span className={styles.fieldName}>{field.name}</span>
                         <span className={styles.fieldState}>{field.area_rai} ไร่</span>
                       </button>
+                      <Link
+                        href={`/fields/${field.id}`}
+                        aria-label={`เปิดพื้นที่ทำงานของ ${field.name}`}
+                        className={styles.fieldOpenLink}
+                      >
+                        <span aria-hidden="true">→</span>
+                      </Link>
                     </li>
                   );
                 })}
@@ -207,6 +226,11 @@ export default function FarmDetailPage() {
             {permission.canManage ? (
               <Link href={`/farms/${farm.data.id}/fields/new`} aria-label="เพิ่มแปลง" className={styles.railAddLink}>
                 + เพิ่มแปลง
+              </Link>
+            ) : null}
+            {permission.canManage && !fields.isPending && !fields.isError && !fields.data?.length ? (
+              <Link href={`/farms/${farm.data.id}/fields/new`} aria-label="เพิ่มแปลงแรก" className={styles.railAddLink}>
+                + เพิ่มแปลงแรก
               </Link>
             ) : null}
             <Link href="/farms" className={styles.railBackLink}>← กลับรายการฟาร์ม</Link>
@@ -270,8 +294,7 @@ export default function FarmDetailPage() {
                 <div className={styles.metricRow}>
                   <dt>พื้นที่คำนวณโดยเซิร์ฟเวอร์</dt>
                   <dd>
-                    {selectedField.area_rai} ไร่
-                    <small>{selectedField.area_sqm} ตร.ม.</small>
+                    {selectedField.area_sqm} ตร.ม. / {selectedField.area_rai} ไร่
                   </dd>
                 </div>
                 <div className={styles.metricRow}>
@@ -281,25 +304,11 @@ export default function FarmDetailPage() {
               </dl>
               <div className={styles.rule} />
               <p className={styles.eyebrow}>ข้อมูลภาพ</p>
-              {satelliteLatest.isPending ? (
-                <p className={styles.meta} role="status">กำลังตรวจสอบข้อมูลภาพ...</p>
-              ) : satelliteLatest.isError ? (
-                <div className={styles.unavailable} role="alert">
-                  <strong>ตรวจสอบข้อมูลภาพไม่สำเร็จ</strong>
-                  <span>ยังไม่สามารถตรวจสอบข้อมูลดาวเทียมได้ กรุณาลองใหม่ภายหลัง</span>
-                </div>
-              ) : satelliteLatest.data?.status === "available" ? (
-                <dl className={styles.technicalList}>
-                  <div><dt>ภาพล่าสุด</dt><dd>{formatThaiDate(satelliteLatest.data.acquisition.acquired_at)}</dd></div>
-                  <div><dt>เมฆปกคลุม</dt><dd>{formatCloudCover(satelliteLatest.data.acquisition.cloud_cover_percent)}</dd></div>
-                  <div><dt>แหล่งข้อมูล</dt><dd>{sourceLabel(satelliteLatest.data.acquisition.collection)}</dd></div>
-                </dl>
-              ) : (
-                <div className={styles.unavailable} role="status">
-                  <strong>ข้อมูลยังไม่เพียงพอ</strong>
-                  <span>{unavailableCopy(satelliteLatest.data?.status)}</span>
-                </div>
-              )}
+              <SatelliteStatusCard
+                fieldId={selectedField.id}
+                identityId={identity.data.id}
+                onTerminalAuth={handleSatelliteTerminalAuth}
+              />
               <div className={styles.rule} />
               <p className={styles.meta}>
                 ระบบจะแสดงเฉพาะข้อมูลภาพและผลคำนวณที่ API ยืนยันแล้ว ภาพดาวเทียมเพียงอย่างเดียวยังระบุสาเหตุไม่ได้
@@ -332,27 +341,4 @@ function CenteredState({
       </section>
     </div>
   );
-}
-
-function formatThaiDate(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "ไม่พบวันที่";
-  return new Intl.DateTimeFormat("th-TH", {
-    dateStyle: "medium",
-    timeZone: "Asia/Bangkok"
-  }).format(date);
-}
-
-function formatCloudCover(value: number | null): string {
-  return typeof value === "number" && Number.isFinite(value) ? `${value}%` : "ไม่ระบุ";
-}
-
-function sourceLabel(collection: string): string {
-  return collection === "sentinel-2-l2a" ? "Sentinel-2 L2A" : "Sentinel-2";
-}
-
-function unavailableCopy(status: SatelliteLatest["status"] | undefined): string {
-  if (status === "no_data") return "ยังไม่มีภาพที่เหมาะสำหรับช่วงเวลานี้";
-  if (status === "temporarily_unavailable") return "ยังตรวจสอบข้อมูลภาพไม่ได้ในขณะนี้";
-  return "ยังไม่มีการตรวจสอบภาพดาวเทียมล่าสุด";
 }

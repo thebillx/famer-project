@@ -1,4 +1,5 @@
 import ast
+import hashlib
 import pathlib
 import unittest
 
@@ -10,6 +11,8 @@ SATELLITE_MIGRATION = pathlib.Path(
 )
 OWNER_MIGRATION = pathlib.Path("apps/api/migrations/versions/20260823_0004_farm_owner_scope.py")
 OBSERVATION_MIGRATION = pathlib.Path("apps/api/migrations/versions/20260830_0005_observation_analysis.py")
+MERGE_MIGRATION = pathlib.Path("apps/api/migrations/versions/20260908_0006_ndvi_history.py")
+LINEAGE_MIGRATION = pathlib.Path("apps/api/migrations/versions/20260908_0007_observation_geometry_lineage.py")
 
 
 class MigrationContractTests(unittest.TestCase):
@@ -59,16 +62,34 @@ class MigrationContractTests(unittest.TestCase):
 
     def test_observation_analysis_migration_is_bounded_and_tenant_bound(self):
         text = OBSERVATION_MIGRATION.read_text()
+        self.assertEqual(
+            hashlib.sha256(OBSERVATION_MIGRATION.read_bytes()).hexdigest(),
+            "17d6721e15e48e90e06f7ffe9eb6016a27820382bbcbf739c3d3c0cb4bf51832",
+        )
         self.assertIn('revision = "20260830_0005"', text)
         self.assertIn('down_revision = "20260823_0004"', text)
         self.assertIn("field_observation_analyses", text)
         self.assertIn("fk_observation_analysis_acquisition_field_org", text)
-        self.assertIn("uq_observation_analysis_algorithm", text)
+        self.assertIn("uq_field_acquisitions_id_field_organization", text)
         self.assertIn("raster_width > 0 AND raster_width <= 512", text)
         self.assertIn("valid_sample_count <= sample_count", text)
         self.assertIn("raster_crs = 'EPSG:4326'", text)
         self.assertIn("octet_length(raster_tiff) <= 8388608", text)
         self.assertIn("def downgrade()", text)
+
+    def test_observation_branches_converge_without_recreating_shared_constraint(self):
+        observation = OBSERVATION_MIGRATION.read_text()
+        history = MERGE_MIGRATION.read_text()
+        lineage = LINEAGE_MIGRATION.read_text()
+        self.assertIn('down_revision = "20260823_0004"', observation)
+        self.assertIn("uq_field_acquisitions_id_field_organization", observation)
+        self.assertIn('down_revision = "20260830_0005"', history)
+        self.assertIn("field_ndvi_snapshots", history)
+        self.assertNotIn("uq_field_acquisitions_id_field_organization", history)
+        self.assertIn('revision = "20260908_0007"', lineage)
+        self.assertIn("geometry_hash", lineage)
+        self.assertIn("uq_observation_analysis_analysis_identity", lineage)
+        self.assertIn("uq_field_ndvi_snapshot_analysis_identity", lineage)
 
 
 if __name__ == "__main__":

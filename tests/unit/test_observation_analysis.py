@@ -66,14 +66,27 @@ def test_change_geometry_uses_real_connected_mask_and_geodesic_area():
     before = np.full((4, 4), 0.75, dtype=np.float32)
     after = before.copy()
     after[1:3, 1:3] = 0.50
-    geometry, area_sqm = _change_geometry(_tiff(before), _tiff(after), FIELD)
+    geometry, area_sqm, assessable = _change_geometry(_tiff(before), _tiff(after), FIELD)
     assert geometry["type"] == "MultiPolygon"
     assert geometry["coordinates"]
     assert area_sqm > 0
+    assert assessable is True
 
 
 def test_change_geometry_returns_empty_mask_without_inventing_polygon():
     values = np.full((3, 3), 0.7, dtype=np.float32)
-    geometry, area_sqm = _change_geometry(_tiff(values), _tiff(values), FIELD)
+    geometry, area_sqm, assessable = _change_geometry(_tiff(values), _tiff(values), FIELD)
     assert geometry == {"type": "MultiPolygon", "coordinates": []}
     assert area_sqm == 0
+    assert assessable is True
+
+
+def test_change_geometry_returns_not_assessable_without_common_valid_support():
+    values = np.full((3, 3), 0.7, dtype=np.float32)
+    invalid = np.zeros((3, 3), dtype=np.float32)
+    geometry, area_sqm, assessable = _change_geometry(
+        _tiff(values, invalid), _tiff(values, invalid), FIELD
+    )
+    assert geometry == {"type": "MultiPolygon", "coordinates": []}
+    assert area_sqm is None
+    assert assessable is False
