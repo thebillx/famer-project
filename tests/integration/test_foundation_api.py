@@ -1605,9 +1605,23 @@ def test_observation_history_raster_and_change_end_to_end(client: TestClient):
     params = {"before": observation_ids[0], "after": observation_ids[1]}
     change = client.get(f"/api/v1/fields/{field['id']}/change", params=params)
     assert change.status_code == 200, change.text
-    assert change.json()["ndvi_delta"] == pytest.approx(-0.13)
-    assert change.json()["changed_area_rai"] > 0
-    assert change.json()["geometry"]["type"] == "MultiPolygon"
+    change_body = change.json()
+    assert change_body["before_observation_ndvi_mean"] == pytest.approx(0.75)
+    assert change_body["after_observation_ndvi_mean"] == pytest.approx(0.62)
+    assert change_body["before_ndvi"] == pytest.approx(0.75)
+    assert change_body["after_ndvi"] == pytest.approx(0.6375)
+    assert change_body["ndvi_delta"] == pytest.approx(-0.1125)
+    assert change_body["support"] == {
+        "common_valid_pixel_count": 16,
+        "field_grid_pixel_count": 16,
+        "common_support_ratio": 1.0,
+        "minimum_required_ratio": 0.4,
+        "policy_version": "common-field-grid-v1-provisional",
+        "denominator": "FIELD_GRID_PIXEL_CENTERS",
+        "reason": "SUFFICIENT_COMMON_SUPPORT",
+    }
+    assert change_body["changed_area_rai"] > 0
+    assert change_body["geometry"]["type"] == "MultiPolygon"
     assert len(provider.summary_calls) == 2
     assert len(provider.raster_calls) == 2
     ready_history = client.get(f"/api/v1/fields/{field['id']}/observations")

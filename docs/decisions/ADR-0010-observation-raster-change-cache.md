@@ -36,12 +36,57 @@ implemented application service.
   assets to object storage requires a later ADR with lifecycle and signed-access
   policy; API URLs remain stable enough to hide that future implementation change.
 
+## 2026-09-09 comparison-support correction
+
+The original decision required common valid support but did not define how much
+common support was enough, how its denominator was measured, or whether the scalar
+means used for a comparison were calculated over that same support. PR #10 review
+therefore found that independently measured observation means could produce a
+misleading comparison even while the spatial change mask used common pixels.
+
+The corrected comparison contract is:
+
+- Individual observation measurements remain observation-scoped and are preserved as
+  independent values. They are not reused as the derived before/after comparison
+  means.
+- Derived `before_ndvi`, `after_ndvi`, and `ndvi_delta` are calculated only from the
+  same `common_valid` pixels after raster alignment and field clipping.
+- The support denominator is the number of aligned raster-grid pixel centers inside
+  the authorized field boundary (`FIELD_GRID_PIXEL_CENTERS`). The numerator is the
+  subset of those field-grid pixels that are finite and valid in both observations.
+- Policy version `common-field-grid-v1-provisional` makes those semantics explicit in
+  every comparison response.
+- `SATELLITE_COMPARISON_MIN_COMMON_SUPPORT_RATIO` is independently configurable from
+  the single-observation quality gates. The initial value `0.40` is a provisional
+  development/pilot guardrail: it is intended to reject comparisons dominated by
+  non-overlapping evidence while the team gathers representative field-size,
+  season, cloud/shadow, and acquisition-pair data. It is not derived solely from the
+  single-observation threshold, has not been calibrated against production outcomes,
+  and must not be described as production-validated.
+- No common support, or support below that configured threshold, returns
+  `NOT_ASSESSABLE`; all derived comparison means, delta, changed area, and geometry
+  are null. Only a comparison that passes the support gate may return zero changed
+  area when no common pixel crosses the `-0.10` decrease threshold.
+- The highlighted geometry specifically means `NDVI_DECREASE_AT_OR_BELOW_THRESHOLD`;
+  it is not a generic map of every kind of change.
+- The legacy scalar `/satellite/ndvi-summary` history cannot reconstruct a common
+  raster support from scalar snapshots alone. It therefore preserves the current
+  single-observation summary but suppresses the derived previous-value comparison
+  and reports why common spatial support was not proven.
+
+This correction changes calculation and API semantics only. It does not require a
+schema or migration change and does not alter the bounded migration decision below.
+
 ## Consequences
 
 The slice adds bounded database storage and synchronous first-request processing,
 but no new technology or browser credential exposure. Provider cost is controlled by
 existing rate limits and idempotent cache reuse. A later worker may precompute the
 same products without changing observation contracts.
+
+The common-support policy now has a visible calibration obligation before production
+release. Pilot evidence should report the distribution of common-support ratios and
+assessment outcomes instead of silently tuning the threshold until tests pass.
 
 ## Security impact
 

@@ -1,28 +1,40 @@
 # Owner handoff capsule
 
 ```text
-MISSION: Integrate AgriScope Thailand baseline from real repository history and close R1–R8 within the bounded vertical slice
-PHASE: LOCAL_NATIVE delta approved; feature delivery pending
-STATUS: APPROVED_FOR_DELIVERY | PRIOR_REVIEW: CHANGES_REQUIRED | CORRECTION: v5
-SCOPE: observation history, geometry lineage, raster registration, comparison support, canonical API/UI contract, migration convergence, runtime regressions | BOUNDARY: base=2665a6477ffb71379fa03776ef77de11908eb8dc source=19396d1d3e48da25a922d2d35862fea1c9d2efa4 worktree=/Users/bill/final-project-baseline-integration branch=codex/agriscope-baseline-integration
-AGENTS: orchestrator + Ponytail code_review to follow; no source-worktree writers used
-CHECKED: AGENTS.md; .agents/workflows/delivery.md; docs/reviews/AGRISCOPE-BASELINE-INTEGRATION-2026-09-09.md; apps/api; apps/web; packages/geospatial; tests; primary and Wave2B git/worktree metadata
-CHANGED: see docs/reviews/AGRISCOPE-BASELINE-INTEGRATION-2026-09-09.md and git diff --name-only; no Primary/Wave2B paths changed
-IMPLEMENTATION: R1 PASS cold-cache path with shared DB single-flight in observation and legacy summary paths; R2 PASS backend/frontend lineage and raster wiring; R3 PASS canonical contract; R4 PASS runtime coverage; R5 PASS delayed-response identity; R6 PASS map/image lifecycle; R7 PASS real ancestry and owner preservation locally; R8 PASS bounded linear forward-only migration with immutable applied revision and lossless downgrade guard
-VALIDATION:
-- .venv/bin/ruff check apps/api packages tests | PASS | Python lint clean | /tmp/agriscope-baseline-ruff-final-v5.log
-- .venv/bin/pytest -q tests/unit tests/contract | PASS | 115 passed | /tmp/agriscope-baseline-unit-contract-final-v5.log
-- AGRISCOPE_TEST_DATABASE_URL=<disposable PostGIS 127.0.0.1:55432> pytest -q tests/integration/test_foundation_api.py | PASS | 50 passed, including legacy summary single-flight | /tmp/agriscope-baseline-postgres-integration-final-v5.log
-- DATABASE_URL=<disposable PostGIS 127.0.0.1:55432> npx playwright ... focused five-file suite --project=chromium --workers=1 | PASS | 49 passed against built app/runtime on disposable PostGIS 20260908_0007 | /tmp/agriscope-baseline-49-final-v5.log
-- DATABASE_URL=<disposable PostGIS 127.0.0.1:55432> MAP_VISUAL_ARTIFACT_DIR=/tmp/agriscope-baseline-screenshots-final-v5 npx playwright ... field-workspace-001.spec.ts --workers=1 | PASS | 16 passed across Chromium and Pixel 5 | /tmp/agriscope-baseline-observation-16-final-v5.log
-- Alembic disposable migration probe | PASS | 20260823_0004 and 20260830_0005 starting states converge; full downgrade to base and re-upgrade pass; final schema has both cache tables and shared constraint | /tmp/agriscope-baseline-migrations-branchpoint-8155.log; /tmp/agriscope-baseline-migrations-applied_observation-8155.log; /tmp/agriscope-baseline-migrations-full-8155.log
-- npm -w apps/web run typecheck; npm -w apps/web run build; git diff --check | PASS | build/typecheck clean; ESLint skipped because not installed | /tmp/agriscope-baseline-typecheck-final-v5.log; /tmp/agriscope-baseline-build-final-v5.log
-LOCAL_NATIVE: APPROVED | Ponytail/Poincare exact-current-diff receipt: REVIEW_DECISION: APPROVED (2026-09-09)
-EVIDENCE: /tmp/agriscope-baseline-screenshots-final-v5/*.png sha256 listed in docs/reviews/AGRISCOPE-BASELINE-INTEGRATION-2026-09-09.md retention=local tool evidence; raw logs remain in /tmp
-ASSUMPTIONS/RISKS: - ESLint is not installed, so build lint phase is not proven. - Local fixture-backed browser cases are not live CDSE proof. - Uninspected production/applied migration states and databases stamped with candidate 20260824_0005 remain unsupported.
-UNRESOLVED: Ponytail LOCAL_NATIVE delta terminal decision; push and Draft PR remain pending approval (gh authentication is available as `thebillx`)
-SENSITIVE DATA: NONE; only disposable local PostGIS and development fixtures used
-GIT: codex/agriscope-baseline-integration at real PR #9 commit 19396d1 plus uncommitted mission diff; applied 20260830_0005 byte-identical; Primary and Wave2B preserved
-GATE DECISION: approval received; stage only reviewed mission paths, commit, push feature branch, verify remote SHA, and create Draft PR
-NEXT: recheck docs-only delta, then stage only the reviewed mission paths for feature delivery
+MISSION: AGRISCOPE_PR10_RECOVER_REVIEW_FINDINGS_AND_DELIVER
+PHASE: bounded correction validated; delta review pending
+STATUS: CHANGES_REQUIRED_CORRECTION_READY_FOR_DELTA_REVIEW
+PROJECT: /Users/bill/final-project-baseline-integration
+BRANCH: codex/agriscope-baseline-integration
+START_HEAD_SHA: c724fd655ddcb5290cac0dd21057cf4a4cd4b874
+CURRENT_HEAD_SHA: c724fd655ddcb5290cac0dd21057cf4a4cd4b874
+CURRENT_GIT: 22 tracked modified paths + 2 untracked source files; staged 0
+SCOPE: C1-C4 observation analysis, canonical OpenAPI/backend/frontend contract, stale-state protection, readiness semantics, validation entrypoints/CI, and lifecycle records
+OWNER_BOUNDARY: all current modified and untracked paths are preserved owner work; no Primary, Wave2B, or IRIS files touched
+
+IMPLEMENTED_CORRECTION:
+- scripts/validate.sh separates Python, JavaScript, and browser dependency preflights; integration mode is Python-only and remains compatible with the CI job that installs no Node dependencies.
+- This capsule is the sole current handoff state. Earlier approval, IRIS capability, path-count, and NOT_RUN records are retained only as superseded history in the review document and do not authorize delivery.
+
+VALIDATION_ALREADY_PROVEN:
+- Native Python 3.12 environment: /Users/bill/final-project/.venv/bin/python3.12.
+- OpenAPI contract 14/14; focused C1 unit 10/10; unit+contract 119; PostGIS integration 50/50.
+- Browser: 49 desktop regression, 11 mocked Chromium, 1 API-backed Chromium, 11 Pixel 5; spatial repeat 5/5.
+- Evidence: test-results/agriscope-pr10-native/{aggregate-final.log,browser-final.log,integration-final.log,openapi-contract-final.log,spatial-repeat.log} and screenshots/.
+- ESLint is not installed and remains NOT_PROVEN; live CDSE/provider and production database evidence are not claimed.
+
+TARGETED_CORRECTION_VALIDATION:
+- Clean integration proof: `bash scripts/validate.sh integration` passed 50/50 in a temporary checkout with no `node_modules`; log: `test-results/agriscope-pr10-native/integration-clean-no-node.log`.
+
+REVIEW_RECOVERY:
+- REVIEW_JOB_ID: 01a08bfb-a73e-7621-a186-ab2fbec53267
+- INVOCATION_SESSION: /Users/bill/.codex/sessions/2026/09/10/rollout-2026-09-10T22-42-00-01a08bfb-a73e-7621-a186-ab2fbec53267.jsonl
+- COMPLETION: completed; raw response contains two actionable findings and terminal CHANGES_REQUIRED.
+- FINDING_1: VALIDATION_MODE_DEPENDENCY_COUPLING — integration preflight required Playwright although CI installs only Python; fixed by split preflights.
+- FINDING_2: APPEND_ONLY_LIFECYCLE_STATE_DRIFT — handoff/review records mixed superseded approval, stale path counts, and NOT_RUN/current claims; fixed by one authoritative capsule and explicit historical labels.
+- REVIEW_DECISION: CHANGES_REQUIRED before this bounded correction.
+
+DELIVERY: no commit, push, PR update, or new-SHA CI has occurred; PR #10 remains Draft. Commit/push require a fresh exact-tree REVIEW_DECISION: APPROVED.
+SENSITIVE_DATA: NONE; only disposable local PostGIS and development fixtures used
+REMAINING: obtain delta review covering the final tree fingerprint; commit/push/PR CI remain gated on APPROVED
 ```

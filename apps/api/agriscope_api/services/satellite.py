@@ -31,6 +31,9 @@ from packages.geospatial.agriscope_geospatial.field_geometry import geometry_fin
 
 OBSERVATION_ANALYSIS_VERSION = f"{NDVI_SUMMARY_EVALSCRIPT_VERSION}+{NDVI_RASTER_EVALSCRIPT_VERSION}"
 CHANGE_THRESHOLD = -0.10
+COMPARISON_SUPPORT_POLICY_VERSION = "common-field-grid-v1-provisional"
+COMPARISON_SUPPORT_DENOMINATOR = "FIELD_GRID_PIXEL_CENTERS"
+CHANGE_HIGHLIGHT_SEMANTICS = "NDVI_DECREASE_AT_OR_BELOW_THRESHOLD"
 
 
 @dataclass(frozen=True)
@@ -63,6 +66,10 @@ class SatelliteNdviSummaryResponse:
     valid_sample_count: int
     valid_pixel_ratio: float
     comparison: SatelliteNdviComparisonResponse | None = None
+    comparison_status: Literal["NOT_ASSESSABLE"] = "NOT_ASSESSABLE"
+    comparison_reason: Literal[
+        "NO_PREVIOUS_OBSERVATION", "COMMON_SPATIAL_SUPPORT_NOT_PROVEN"
+    ] = "NO_PREVIOUS_OBSERVATION"
 
 
 @dataclass(frozen=True)
@@ -91,7 +98,10 @@ class ObservationResponse:
 @dataclass(frozen=True)
 class ObservationRasterResponse:
     observation_id: UUID
+    field_id: UUID
     acquired_at: datetime
+    algorithm_version: str
+    geometry_hash: str
     crs: str
     bounds: list[float]
     width: int
@@ -104,17 +114,46 @@ class ObservationRasterResponse:
 
 
 @dataclass(frozen=True)
+class ComparisonSupportMetadata:
+    common_valid_pixel_count: int
+    field_grid_pixel_count: int
+    common_support_ratio: float
+    minimum_required_ratio: float
+    policy_version: str
+    denominator: Literal["FIELD_GRID_PIXEL_CENTERS"]
+    reason: Literal[
+        "SUFFICIENT_COMMON_SUPPORT", "NO_COMMON_SUPPORT", "BELOW_MINIMUM_COMMON_SUPPORT"
+    ]
+
+
+@dataclass(frozen=True)
+class ComparisonRasterResult:
+    before_mean: float | None
+    after_mean: float | None
+    geometry: dict[str, Any] | None
+    changed_area_sqm: float | None
+    assessable: bool
+    support: ComparisonSupportMetadata
+
+
+@dataclass(frozen=True)
 class ChangeResponse:
     field_id: UUID
     before_observation_id: UUID
     after_observation_id: UUID
+    algorithm_version: str
+    geometry_hash: str
+    before_observation_ndvi_mean: float
+    after_observation_ndvi_mean: float
     before_ndvi: float | None
     after_ndvi: float | None
     ndvi_delta: float | None
     changed_area_sqm: float | None
     changed_area_rai: float | None
     threshold: float
+    highlight_semantics: Literal["NDVI_DECREASE_AT_OR_BELOW_THRESHOLD"]
     status: Literal["USABLE", "NOT_ASSESSABLE"]
+    support: ComparisonSupportMetadata
     geometry: dict[str, Any] | None
 
 
@@ -231,10 +270,22 @@ class SatelliteService:
     async def get_observation_raster(self, **kwargs) -> ObservationRasterResponse:
         analysis = await self.get_observation_analysis(**kwargs)
         nodata, value_min, value_max = _raster_statistics(analysis.raster_tiff)
-        return ObservationRasterResponse(analysis.observation_id, analysis.acquired_at,
-            analysis.raster_crs, analysis.raster_bounds, analysis.raster_width,
-            analysis.raster_height, nodata, value_min, value_max,
-            float(analysis.valid_pixel_ratio), _render_ndvi_png(analysis.raster_tiff))
+        return ObservationRasterResponse(
+            analysis.observation_id,
+            analysis.field_id,
+            analysis.acquired_at,
+            analysis.algorithm_version,
+            analysis.geometry_hash or "",
+            analysis.raster_crs,
+            analysis.raster_bounds,
+            analysis.raster_width,
+            analysis.raster_height,
+            nodata,
+            value_min,
+            value_max,
+            float(analysis.valid_pixel_ratio),
+            _render_ndvi_png(analysis.raster_tiff),
+        )
 
     async def compare(self, *, user_id: UUID, field_id: UUID, before: UUID, after: UUID) -> ChangeResponse:
         if before == after:
@@ -245,40 +296,60 @@ class SatelliteService:
             raise ApiException("invalid_observation_order", "Before observation must be earlier than after observation", 422)
         before_analysis = await self.get_observation_analysis(user_id=user_id, field_id=field_id, observation_id=before, authorized_field=before_context[0])
         after_analysis = await self.get_observation_analysis(user_id=user_id, field_id=field_id, observation_id=after, authorized_field=before_context[0])
-        geometry, area_sqm, assessable = _change_geometry(
+        geometry_hash = geometry_fingerprint(before_context[0].geometry)
+        if before_analysis.algorithm_version != after_analysis.algorithm_version:
+            raise ApiException("incompatible_observations", "Observation algorithms are not aligned", 422)
+        if before_analysis.geometry_hash != geometry_hash or after_analysis.geometry_hash != geometry_hash:
+            raise ApiException("incompatible_observations", "Observation geometry lineage is not aligned", 422)
+        comparison = _change_geometry(
             before_analysis.raster_tiff,
             after_analysis.raster_tiff,
             before_context[0].geometry,
+            minimum_common_support_ratio=self.settings.satellite_comparison_min_common_support_ratio,
         )
-        before_ndvi = float(before_analysis.ndvi_mean)
-        after_ndvi = float(after_analysis.ndvi_mean)
-        if not assessable:
+        before_observation_mean = float(before_analysis.ndvi_mean)
+        after_observation_mean = float(after_analysis.ndvi_mean)
+        if not comparison.assessable:
             return ChangeResponse(
-                field_id,
-                before,
-                after,
-                before_ndvi,
-                after_ndvi,
-                None,
-                None,
-                None,
-                CHANGE_THRESHOLD,
-                "NOT_ASSESSABLE",
-                None,
+                field_id=field_id,
+                before_observation_id=before,
+                after_observation_id=after,
+                algorithm_version=before_analysis.algorithm_version,
+                geometry_hash=geometry_hash,
+                before_observation_ndvi_mean=before_observation_mean,
+                after_observation_ndvi_mean=after_observation_mean,
+                before_ndvi=None,
+                after_ndvi=None,
+                ndvi_delta=None,
+                changed_area_sqm=None,
+                changed_area_rai=None,
+                threshold=CHANGE_THRESHOLD,
+                highlight_semantics=CHANGE_HIGHLIGHT_SEMANTICS,
+                status="NOT_ASSESSABLE",
+                support=comparison.support,
+                geometry=None,
             )
-        assert area_sqm is not None
+        assert comparison.before_mean is not None
+        assert comparison.after_mean is not None
+        assert comparison.changed_area_sqm is not None
         return ChangeResponse(
-            field_id,
-            before,
-            after,
-            before_ndvi,
-            after_ndvi,
-            after_ndvi - before_ndvi,
-            area_sqm,
-            round(area_sqm / 1600, 4),
-            CHANGE_THRESHOLD,
-            "USABLE",
-            geometry,
+            field_id=field_id,
+            before_observation_id=before,
+            after_observation_id=after,
+            algorithm_version=before_analysis.algorithm_version,
+            geometry_hash=geometry_hash,
+            before_observation_ndvi_mean=before_observation_mean,
+            after_observation_ndvi_mean=after_observation_mean,
+            before_ndvi=comparison.before_mean,
+            after_ndvi=comparison.after_mean,
+            ndvi_delta=comparison.after_mean - comparison.before_mean,
+            changed_area_sqm=comparison.changed_area_sqm,
+            changed_area_rai=round(comparison.changed_area_sqm / 1600, 4),
+            threshold=CHANGE_THRESHOLD,
+            highlight_semantics=CHANGE_HIGHLIGHT_SEMANTICS,
+            status="USABLE",
+            support=comparison.support,
+            geometry=comparison.geometry,
         )
 
     async def _observation_context(self, user_id: UUID, field_id: UUID, observation_id: UUID,
@@ -494,9 +565,6 @@ class SatelliteService:
                     geometry_hash=geometry_hash,
                 ),
             )
-        # The acquisition row is the single-flight lock shared with the
-        # observation-analysis path.  Re-read the cache after waiting so a
-        # concurrent request can reuse the committed provider result.
         await repository.lock_observation_for_analysis(acquisition.id, field.id)
         snapshot = await repository.get_ndvi_snapshot(
             field_id=field.id,
@@ -617,22 +685,13 @@ class SatelliteService:
 
     @staticmethod
     def _ndvi_summary_response(*, field: FieldRecord, snapshot, previous):
-        comparison = None
-        if previous is not None:
-            delta = float(snapshot.ndvi_mean - previous.ndvi_mean)
-            direction: Literal["increased", "decreased", "unchanged"]
-            if delta > 0:
-                direction = "increased"
-            elif delta < 0:
-                direction = "decreased"
-            else:
-                direction = "unchanged"
-            comparison = SatelliteNdviComparisonResponse(
-                previous_acquired_at=previous.acquired_at,
-                previous_ndvi_mean=float(previous.ndvi_mean),
-                ndvi_mean_delta=delta,
-                direction=direction,
-            )
+        comparison_reason: Literal[
+            "NO_PREVIOUS_OBSERVATION", "COMMON_SPATIAL_SUPPORT_NOT_PROVEN"
+        ] = (
+            "COMMON_SPATIAL_SUPPORT_NOT_PROVEN"
+            if previous is not None
+            else "NO_PREVIOUS_OBSERVATION"
+        )
         return SatelliteNdviSummaryResponse(
             field_id=field.id,
             acquired_at=snapshot.acquired_at,
@@ -644,7 +703,9 @@ class SatelliteService:
             sample_count=snapshot.sample_count,
             valid_sample_count=snapshot.valid_sample_count,
             valid_pixel_ratio=float(snapshot.valid_pixel_ratio),
-            comparison=comparison,
+            comparison=None,
+            comparison_status="NOT_ASSESSABLE",
+            comparison_reason=comparison_reason,
         )
 
 
@@ -706,31 +767,144 @@ def _render_ndvi_png(tiff: bytes) -> bytes:
         return memory.read()
 
 
+def _as_multipolygon(value):
+    from shapely.geometry import MultiPolygon
+
+    if value.is_empty:
+        return MultiPolygon([])
+    if value.geom_type == "Polygon":
+        return MultiPolygon([value])
+    if value.geom_type == "MultiPolygon":
+        return value
+    polygons = []
+    for part in getattr(value, "geoms", ()):
+        if part.geom_type == "Polygon":
+            polygons.append(part)
+        elif part.geom_type == "MultiPolygon":
+            polygons.extend(part.geoms)
+    return MultiPolygon(polygons)
+
+
 def _change_geometry(
-    before_tiff: bytes, after_tiff: bytes, field_geojson: dict[str, Any]
-) -> tuple[dict[str, Any], float | None, bool]:
+    before_tiff: bytes,
+    after_tiff: bytes,
+    field_geojson: dict[str, Any],
+    *,
+    minimum_common_support_ratio: float,
+) -> ComparisonRasterResult:
     import numpy as np
-    from rasterio.features import shapes
+    from rasterio.features import geometry_mask, shapes
     from rasterio.warp import transform_geom
-    from shapely.geometry import GeometryCollection, MultiPolygon, mapping, shape
+    from shapely.geometry import GeometryCollection, mapping, shape
     from shapely.ops import unary_union
+
     before, before_valid, before_transform, before_crs = _read_ndvi(before_tiff)
     after, after_valid, after_transform, after_crs = _read_ndvi(after_tiff)
     if before.shape != after.shape or before_transform != after_transform or before_crs != after_crs:
         raise ApiException("incompatible_observations", "Observation rasters are not spatially aligned", 422)
-    common_valid = before_valid & after_valid & np.isfinite(before) & np.isfinite(after)
-    if not common_valid.any():
-        return {"type": "MultiPolygon", "coordinates": []}, None, False
-    mask = common_valid & ((after-before) <= CHANGE_THRESHOLD)
-    polygons = [shape(geometry) for geometry, value in shapes(mask.astype("uint8"), mask=mask, transform=after_transform) if value == 1]
-    changed = unary_union(polygons).intersection(shape(field_geojson)) if polygons else GeometryCollection()
-    if changed.is_empty:
-        geometry = {"type": "MultiPolygon", "coordinates": []}
-        return geometry, 0.0, True
-    if changed.geom_type == "Polygon":
-        changed = MultiPolygon([changed])
-    centroid_longitude = changed.centroid.x
+    if before_crs is None:
+        raise ApiException("incompatible_observations", "Observation raster CRS is missing", 422)
+
+    field_in_raster_crs = transform_geom(
+        "EPSG:4326", before_crs, field_geojson, precision=-1
+    )
+    field_grid_mask = geometry_mask(
+        [field_in_raster_crs],
+        out_shape=before.shape,
+        transform=before_transform,
+        invert=True,
+        all_touched=False,
+    )
+    denominator_count = int(field_grid_mask.sum())
+    common_valid = (
+        field_grid_mask
+        & before_valid
+        & after_valid
+        & np.isfinite(before)
+        & np.isfinite(after)
+    )
+    common_count = int(common_valid.sum())
+    support_ratio = common_count / denominator_count if denominator_count else 0.0
+    if common_count == 0:
+        reason: Literal[
+            "SUFFICIENT_COMMON_SUPPORT", "NO_COMMON_SUPPORT", "BELOW_MINIMUM_COMMON_SUPPORT"
+        ] = "NO_COMMON_SUPPORT"
+    elif support_ratio < minimum_common_support_ratio:
+        reason = "BELOW_MINIMUM_COMMON_SUPPORT"
+    else:
+        reason = "SUFFICIENT_COMMON_SUPPORT"
+    support = ComparisonSupportMetadata(
+        common_valid_pixel_count=common_count,
+        field_grid_pixel_count=denominator_count,
+        common_support_ratio=float(support_ratio),
+        minimum_required_ratio=float(minimum_common_support_ratio),
+        policy_version=COMPARISON_SUPPORT_POLICY_VERSION,
+        denominator=COMPARISON_SUPPORT_DENOMINATOR,
+        reason=reason,
+    )
+    if reason != "SUFFICIENT_COMMON_SUPPORT":
+        return ComparisonRasterResult(
+            before_mean=None,
+            after_mean=None,
+            geometry=None,
+            changed_area_sqm=None,
+            assessable=False,
+            support=support,
+        )
+
+    before_mean = float(before[common_valid].mean())
+    after_mean = float(after[common_valid].mean())
+    changed_mask = common_valid & ((after - before) <= CHANGE_THRESHOLD)
+    if not changed_mask.any():
+        return ComparisonRasterResult(
+            before_mean=before_mean,
+            after_mean=after_mean,
+            geometry={"type": "MultiPolygon", "coordinates": []},
+            changed_area_sqm=0.0,
+            assessable=True,
+            support=support,
+        )
+
+    polygons = [
+        shape(geometry)
+        for geometry, value in shapes(
+            changed_mask.astype("uint8"), mask=changed_mask, transform=after_transform
+        )
+        if value == 1
+    ]
+    field_shape = shape(field_in_raster_crs)
+    changed_raster = _as_multipolygon(
+        unary_union(polygons).intersection(field_shape) if polygons else GeometryCollection()
+    )
+    if changed_raster.is_empty:
+        return ComparisonRasterResult(
+            before_mean=before_mean,
+            after_mean=after_mean,
+            geometry={"type": "MultiPolygon", "coordinates": []},
+            changed_area_sqm=0.0,
+            assessable=True,
+            support=support,
+        )
+
+    changed_wgs84 = shape(
+        transform_geom(before_crs, "EPSG:4326", mapping(changed_raster), precision=-1)
+    )
+    changed_wgs84 = _as_multipolygon(changed_wgs84)
+    centroid_longitude = changed_wgs84.centroid.x
     utm_zone = max(1, min(60, int((centroid_longitude + 180) // 6) + 1))
-    projected = shape(transform_geom("EPSG:4326", f"EPSG:326{utm_zone:02d}", mapping(changed), precision=-1))
-    area_sqm = float(projected.area)
-    return mapping(changed), area_sqm, True
+    projected = shape(
+        transform_geom(
+            "EPSG:4326",
+            f"EPSG:326{utm_zone:02d}",
+            mapping(changed_wgs84),
+            precision=-1,
+        )
+    )
+    return ComparisonRasterResult(
+        before_mean=before_mean,
+        after_mean=after_mean,
+        geometry=mapping(changed_wgs84),
+        changed_area_sqm=float(projected.area),
+        assessable=True,
+        support=support,
+    )

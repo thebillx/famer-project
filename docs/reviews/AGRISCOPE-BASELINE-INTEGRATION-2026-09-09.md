@@ -4,7 +4,29 @@ Date: 2026-09-09
 Scope: baseline integration from real repository history and bounded R1–R8
 corrections. This is a feature-delivery review, not a production security review.
 
-## Boundary and contribution record
+## Current authoritative state — 2026-09-10
+
+This block is the only current lifecycle state. Every section below is explicitly
+superseded historical evidence retained for audit; no approval, path inventory,
+validation result, or delivery instruction below authorizes the current tree.
+
+- Project: `/Users/bill/final-project-baseline-integration`
+- Branch: `codex/agriscope-baseline-integration`
+- Current HEAD: `c724fd655ddcb5290cac0dd21057cf4a4cd4b874`
+- Current boundary: 22 tracked modified paths, 2 untracked source files, staged 0.
+- Current state: bounded correction applied for review findings; clean integration
+  validation passed and delta LOCAL_NATIVE review is pending.
+- Recovered review: job `01a08bfb-a73e-7621-a186-ab2fbec53267`, raw session
+  `/Users/bill/.codex/sessions/2026/09/10/rollout-2026-09-10T22-42-00-01a08bfb-a73e-7621-a186-ab2fbec53267.jsonl`.
+  It completed with `REVIEW_DECISION: CHANGES_REQUIRED` and two findings:
+  dependency-preflight coupling and append-only lifecycle-state drift.
+- Delivery has not started. No commit, push, PR update, merge, deployment, or
+  new-SHA CI run exists. PR #10 remains Draft.
+- Targeted correction proof: `scripts/validate.sh integration` passed 50/50 in a
+  temporary checkout with no `node_modules`; log:
+  `test-results/agriscope-pr10-native/integration-clean-no-node.log`.
+
+## [SUPERSEDED HISTORICAL] Boundary and contribution record — 2026-09-09
 
 Correction revision: v5 after the first LOCAL_NATIVE review returned
 `CHANGES_REQUIRED` for legacy-summary single-flight and applied-migration
@@ -32,7 +54,7 @@ push, Draft PR creation, and remote SHA verification.
   remote contribution. It was removed from this branch before delivery so the
   application diff rests on the real `19396d1` history.
 
-## R1–R8 disposition
+## [SUPERSEDED HISTORICAL] R1–R8 disposition
 
 | Finding | Status | Implemented behavior and evidence |
 | --- | --- | --- |
@@ -45,7 +67,7 @@ push, Draft PR creation, and remote SHA verification.
 | R7 Delivery integrity | PASS (local) | Branch is based on verified `origin/main`, PR #9 is represented by its real commit, and no source worktree was changed. Push/remote SHA verification remains a delivery step after approval. Evidence: `git log --graph` and worktree/status inspection; remote SHA/PR are intentionally outside this pre-delivery review. |
 | R8 Migration integration | PASS (bounded) | The applied `20260830_0005` revision is byte-identical to PR #9. The untracked candidate `20260824_0005` was not in verified repository history; its table definition is re-homed in linear `20260908_0006_ndvi_history`, so the shared acquisition constraint is created once by `20260830_0005`. `20260908_0007` adds geometry lineage. Disposable PostGIS proved `20260823_0004` → head, `20260830_0005` → head, full downgrade to base, and re-upgrade. Candidate-stamped and external/applied production states were not inspected and are not claimed. |
 
-## Migration transition boundary
+## [SUPERSEDED HISTORICAL] Migration transition boundary
 
 The collision was between candidate `20260824_0005_ndvi_history` and real
 `20260830_0005_observation_analysis`, both descending from `20260823_0004` and
@@ -73,7 +95,7 @@ follow-up gate. A downgrade from `20260908_0007` also fails closed before schema
 changes when one legacy cache key has multiple geometry-versioned rows; silently
 retaining one row would destroy historical lineage.
 
-## Validation evidence
+## [SUPERSEDED HISTORICAL] Validation evidence
 
 ### Runtime evidence
 
@@ -107,7 +129,7 @@ The Next build reports that ESLint is not installed in this repository and skips
 the lint phase. This is reported as a validation limitation, not a build pass for
 lint.
 
-## Product and safety boundary
+## [SUPERSEDED HISTORICAL] Product and safety boundary
 
 The implementation keeps trend-first monitoring and map-first evidence, separates
 selected/latest/latest-usable dates, keeps preview available for poor quality when
@@ -120,3 +142,100 @@ was added.
 This review does not claim live CDSE raster success, production readiness, formal
 security approval, deployment, merge, or support for uninspected applied migration
 states.
+
+## [SUPERSEDED HISTORICAL] Native correction validation receipt — 2026-09-10 (pre-review findings)
+
+This receipt supersedes the correction-delta `NOT RUN` result above for the
+current local tree. The historical R1–R8 results remain historical evidence and
+are not merged with this correction result. The prior v5 approval is not reused:
+the current tree contains post-review bytes and requires a fresh exact-diff
+review.
+
+- Reviewed start SHA: `c724fd655ddcb5290cac0dd21057cf4a4cd4b874`.
+- Current local HEAD before delivery: `c724fd655ddcb5290cac0dd21057cf4a4cd4b874`.
+- Branch: `codex/agriscope-baseline-integration`.
+- Focused fixes after native execution: mobile grid min-content overflow is
+  constrained in `apps/web/components/observation-workspace.module.css`; the
+  account-switch link is explicit opt-in so farm-map route semantics remain
+  unchanged; the root browser validator now includes the full desktop regression
+  set plus focused Chromium/API-backed and mobile observation coverage.
+- C1: PASS — common-support/threshold/lineage behavior is covered by focused
+  observation-analysis tests, contract tests, PostGIS integration, and browser
+  cases; `NOT_ASSESSABLE` derived values remain null and provisional 0.40 is
+  unchanged.
+- C2: PASS — identity-gated stale-response, blob cleanup, and no-refetch mode
+  transition cases pass in Chromium and Pixel 5.
+- C3: PASS — acquired/eligible/measured/last-good and failed-current-attempt
+  states pass in unit, integration, Chromium, and Pixel 5 evidence.
+- C4: PASS — same-document principal switch, measured raster/vector landmarks,
+  real FastAPI + disposable PostGIS API-backed flow, and desktop/mobile browser
+  coverage pass.
+
+### New native validation
+
+- `AGRISCOPE_PYTHON=/Users/bill/final-project/.venv/bin/python3.12 AGRISCOPE_TEST_DATABASE_URL=<loopback disposable PostGIS> MAP_VISUAL_ARTIFACT_DIR=test-results/agriscope-pr10-native/screenshots bash scripts/validate.sh all` — PASS; static, integration, and browser phases all completed. Aggregate log: `test-results/agriscope-pr10-native/aggregate-final.log`.
+- Static — PASS: Ruff, 119 unit/contract tests, web typecheck, production build,
+  and `git diff --check`; ESLint is unavailable and remains NOT_PROVEN.
+- Canonical OpenAPI — PASS: `tests/contract/test_foundation_contract.py`, 14/14;
+  log: `test-results/agriscope-pr10-native/openapi-contract-final.log`.
+- C1 focused unit — PASS: 10/10; log:
+  `test-results/agriscope-pr10-native/c1-unit-final.log`.
+- PostgreSQL/PostGIS — PASS: 50/50 on the loopback disposable database;
+  log: `test-results/agriscope-pr10-native/integration-final.log`.
+- Browser — PASS: 49 desktop regression tests, 12 focused Chromium tests
+  (mocked plus API-backed), and 11 Pixel 5 observation tests; log:
+  `test-results/agriscope-pr10-native/browser-final.log`.
+- Additional spatial retry proof — PASS: 5/5 focused Chromium repetitions;
+  log: `test-results/agriscope-pr10-native/spatial-repeat.log`.
+- Runtime screenshots are retained under
+  `test-results/agriscope-pr10-native/screenshots/`.
+
+### Delivery state
+
+- Current exact-diff LOCAL_NATIVE review: **PENDING**; the historical approval
+  does not cover the CSS, route opt-in, and validator changes above.
+- No correction commit, push, PR update, merge, or deployment has occurred;
+  PR #10 remains Draft with its historical head unchanged.
+- Live CDSE/provider evidence, production database state, formal security
+  review, and uninspected candidate-stamped migration states remain unclaimed.
+
+
+## [SUPERSEDED HISTORICAL] PR #10 independent-review correction receipt — C1–C4
+
+This section is additive to the historical R1–R8/pre-delivery receipt above.
+
+- Reviewed starting SHA: `c724fd655ddcb5290cac0dd21057cf4a4cd4b874`.
+- Current local HEAD before correction delivery: **NOT EXPOSED by the live IRIS FULL Git status capability**. GitHub independently confirms the current remote PR head remains `c724fd655ddcb5290cac0dd21057cf4a4cd4b874`; this is not asserted as a local-HEAD reading.
+- Reconnected local state: branch `codex/agriscope-baseline-integration`; dirty with 13 tracked and 1 untracked file; staged 0. This matches the pre-reconnect correction worktree counts, so no newer delta was identified by the exposed status fields.
+- Owner-work boundary: existing dirty correction work was preserved. No owner/production database was modified. The primary and Wave2B worktrees were not touched.
+
+### Implemented correction behavior
+
+- **C1:** comparison means and delta use aligned common field support; the denominator is field-grid pixel centers; support policy metadata/version/reason are returned; `NOT_ASSESSABLE` derived values are null; zero changed area is emitted only when assessable; legacy scalar comparisons are suppressed when common spatial support cannot be proven; NDVI-decrease highlighting is explicit.
+- **C2:** observation and comparison-pair identity gate asset state before render; API identity fields are validated; late responses are rejected; blob URLs are revoked; display-mode changes reuse provider metadata without unnecessary refetches; transition regressions use `MutationObserver`.
+- **C3:** latest acquired, latest eligible, and latest successfully measured are separate; the current attempt is separate from last-good measurement; successful analysis updates the React Query observation cache; freshness is explicit; legacy-ineligible observations do not make the workspace analytically ready.
+- **C4:** same-document principal switching releases a pending principal-A response only after the switch; raster/vector landmarks and pan/zoom registration are measured in pixel positions; an API-backed browser flow uses real FastAPI plus disposable PostGIS while mocking only the STAC/CDSE boundary; the fixture is a deterministic georeferenced GeoTIFF; CI adds focused Chromium/mobile regression and failure-artifact upload.
+
+The comparison minimum common-support ratio is configurable through `SATELLITE_COMPARISON_MIN_COMMON_SUPPORT_RATIO` and defaults provisionally to **0.40**. The default is a conservative pilot policy rather than a production-calibrated agronomic threshold: it prevents sparse overlap from producing a numeric comparison while leaving room for realistic masked imagery. Because correction validation could not execute after reconnect, production/candidate calibration of 0.40 remains unproven and must use representative field/provider data before production reliance.
+
+### Correction delta paths recovered from governed write receipts
+
+`.env.example`; `.github/workflows/ci.yml`; `apps/api/agriscope_api/api/v1/satellite.py`; `apps/api/agriscope_api/core/config.py`; `apps/api/agriscope_api/services/satellite.py`; `apps/web/components/MapWorkspaceShell.tsx`; `apps/web/components/ObservationWorkspace.tsx`; `apps/web/lib/types.ts`; `docs/decisions/ADR-0010-observation-raster-change-cache.md`; `tests/contract/test_foundation_contract.py`; `tests/e2e/field-workspace-001.spec.ts`; `tests/e2e/field-workspace-api-backed.spec.ts`; `tests/e2e/stac_mock_server.py`; `tests/unit/test_observation_analysis.py`.
+
+IRIS exposes only counts, not porcelain paths or tracked/untracked classification. Therefore these are the 14 mission-write paths matching the 13 tracked + 1 untracked status, but the exact untracked member is not asserted.
+
+### Validation and delivery result after reconnect
+
+Attempted governed command/capability:
+
+- `project.test.run` for the registered project — **BLOCKED**: `CAPABILITY_DENIED: Registered project does not declare a bounded test script`.
+
+Consequently the focused C1 unit tests, full unit + contract suite, disposable-PostGIS integration suite, TypeScript typecheck, production build, mocked-API Playwright C1–C4 suite, API-backed Playwright suite, mobile observation regression, and `git diff --check` are **NOT RUN for this correction delta**. Historical R1–R8 passes above do not validate the newer C1–C4 dirty delta. No gate was weakened and no test result was fabricated.
+
+- Mocked-API evidence: implementation and regression source present; execution **NOT RUN**.
+- API-backed evidence: real-FastAPI/disposable-PostGIS test and deterministic provider mock source present; execution **NOT RUN**.
+- Live-provider evidence: **NOT RUN**.
+- Independent correction-diff review: **NOT RUN**; no reviewer capability is exposed by IRIS FULL.
+- Intended CI failure artifacts: Playwright traces/screenshots/videos uploaded by the focused browser-regression job defined in `.github/workflows/ci.yml`; no new-SHA CI artifacts exist because delivery was blocked before commit.
+
+Remaining limitations are production/CDSE calibration and live-provider proof, candidate-stamped or unknown applied migration states, and validation through an explicitly declared bounded project test script. IRIS FULL also exposes no commit/push capability, so no correction commit was created, the feature branch was not pushed, PR #10 was not updated, and CI for a new SHA could not start. The PR remains Draft; merge and deploy were not requested.

@@ -66,6 +66,10 @@ class SatelliteNdviSummaryResponse(BaseModel):
     valid_sample_count: int
     valid_pixel_ratio: float
     comparison: "SatelliteNdviComparisonResponse | None"
+    comparison_status: Literal["NOT_ASSESSABLE"]
+    comparison_reason: Literal[
+        "NO_PREVIOUS_OBSERVATION", "COMMON_SPATIAL_SUPPORT_NOT_PROVEN"
+    ]
 
 
 class SatelliteNdviComparisonResponse(BaseModel):
@@ -109,7 +113,10 @@ class ObservationNdviSummaryResponse(BaseModel):
 
 class ObservationRasterResponse(BaseModel):
     observation_id: str
+    field_id: str
     acquired_at: datetime
+    algorithm_version: str
+    geometry_hash: str
     crs: str
     bounds: list[float]
     width: int
@@ -121,17 +128,35 @@ class ObservationRasterResponse(BaseModel):
     image_url: str
 
 
+class ComparisonSupportResponse(BaseModel):
+    common_valid_pixel_count: int
+    field_grid_pixel_count: int
+    common_support_ratio: float
+    minimum_required_ratio: float
+    policy_version: str
+    denominator: Literal["FIELD_GRID_PIXEL_CENTERS"]
+    reason: Literal[
+        "SUFFICIENT_COMMON_SUPPORT", "NO_COMMON_SUPPORT", "BELOW_MINIMUM_COMMON_SUPPORT"
+    ]
+
+
 class ChangeResponse(BaseModel):
     field_id: str
     before_observation_id: str
     after_observation_id: str
+    algorithm_version: str
+    geometry_hash: str
+    before_observation_ndvi_mean: float
+    after_observation_ndvi_mean: float
     before_ndvi: float | None
     after_ndvi: float | None
     ndvi_delta: float | None
     changed_area_sqm: float | None
     changed_area_rai: float | None
     threshold: float
+    highlight_semantics: Literal["NDVI_DECREASE_AT_OR_BELOW_THRESHOLD"]
     status: Literal["USABLE", "NOT_ASSESSABLE"]
+    support: ComparisonSupportResponse
     geometry: dict[str, Any] | None
 
 
@@ -217,7 +242,22 @@ if router:
         _satellite_limits(request, user.id, field.id, settings)
         value = await service.get_observation_raster(user_id=user.id, field_id=field_id, observation_id=observation_id, authorized_field=field)
         response.headers.update({"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"})
-        return ObservationRasterResponse(**{key: value.__dict__[key] for key in ("acquired_at", "crs", "bounds", "width", "height", "nodata", "value_min", "value_max", "valid_pixel_ratio")}, observation_id=str(value.observation_id), image_url=f"/api/v1/fields/{field_id}/observations/{observation_id}/ndvi-raster/image")
+        return ObservationRasterResponse(
+            observation_id=str(value.observation_id),
+            field_id=str(value.field_id),
+            acquired_at=value.acquired_at,
+            algorithm_version=value.algorithm_version,
+            geometry_hash=value.geometry_hash,
+            crs=value.crs,
+            bounds=value.bounds,
+            width=value.width,
+            height=value.height,
+            nodata=value.nodata,
+            value_min=value.value_min,
+            value_max=value.value_max,
+            valid_pixel_ratio=value.valid_pixel_ratio,
+            image_url=f"/api/v1/fields/{field_id}/observations/{observation_id}/ndvi-raster/image",
+        )
 
     @router.get("/{field_id}/observations/{observation_id}/ndvi-raster/image", response_class=Response,
         responses={200: {"content": {"image/png": {}}}})
@@ -239,7 +279,15 @@ if router:
         _satellite_limits(request, user.id, field.id, settings)
         value = await service.compare(user_id=user.id, field_id=field_id, before=before, after=after)
         response.headers.update({"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"})
-        return ChangeResponse(**{**value.__dict__, "field_id": str(value.field_id), "before_observation_id": str(value.before_observation_id), "after_observation_id": str(value.after_observation_id)})
+        return ChangeResponse(
+            **{
+                **value.__dict__,
+                "field_id": str(value.field_id),
+                "before_observation_id": str(value.before_observation_id),
+                "after_observation_id": str(value.after_observation_id),
+                "support": ComparisonSupportResponse(**value.support.__dict__),
+            }
+        )
 
     def _response(result) -> SatelliteLatestResponse:
         field_id = str(result.field_id)
@@ -439,4 +487,6 @@ if router:
                 if summary.comparison is not None
                 else None
             ),
+            comparison_status=summary.comparison_status,
+            comparison_reason=summary.comparison_reason,
         )

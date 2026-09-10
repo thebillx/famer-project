@@ -35,5 +35,5 @@ export default function FieldWorkspacePage() {
   if (identity.isError) return <MapWorkspaceShell><div className="p-8" role="alert">ตรวจสอบบัญชีไม่สำเร็จ กรุณาลองใหม่อีกครั้ง</div></MapWorkspaceShell>;
   if (field.isPending || history.isPending) return <MapWorkspaceShell><div className="p-8" role="status" aria-busy="true">กำลังโหลดพื้นที่ทำงานแปลง…</div></MapWorkspaceShell>;
   if (field.isError || history.isError || !field.data || !history.data) return <MapWorkspaceShell><div className="p-8" role="alert">โหลดข้อมูลแปลงไม่สำเร็จ กรุณาตรวจสอบการเชื่อมต่อแล้วลองอีกครั้ง</div></MapWorkspaceShell>;
-  return <MapWorkspaceShell accountLabel={identity.data.display_name}><FieldAnalysisWorkspace field={field.data} observations={history.data} /></MapWorkspaceShell>;
+  return <MapWorkspaceShell accountLabel={identity.data.display_name} showAccountSwitch><FieldAnalysisWorkspace field={field.data} observations={history.data} /></MapWorkspaceShell>;
 }
