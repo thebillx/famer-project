@@ -7,9 +7,9 @@ STATUS: APPROVED_FOR_EXTERNAL_REVIEW
 PROJECT: /Users/bill/final-project-baseline-integration
 BRANCH: codex/agriscope-baseline-integration
 START_HEAD_SHA: c724fd655ddcb5290cac0dd21057cf4a4cd4b874
-CURRENT_HEAD_SHA: 68c41294b2e3e555cecd245be2252427ba5e5c38
+DELIVERED_SOURCE_HEAD_SHA: 68c41294b2e3e555cecd245be2252427ba5e5c38
 DELIVERED_SOURCE_TREE: commit 68c41294b2e3e555cecd245be2252427ba5e5c38 is the reviewed and pushed 24-path correction; source tree is unchanged.
-CURRENT_GIT: post-delivery docs-only review boundary is 2 tracked modified paths; staged 0; untracked 0
+CURRENT_GIT: final delivered worktree is clean; no staged or untracked files. The prior docs-only review boundary was base 68c41294b2e3e555cecd245be2252427ba5e5c38 with 2 tracked paths, staged 0, untracked 0, fingerprint afd472b11a9689b748b251476029c58cb3f93e4aad03b36bb4fbe07e8e53a172, and approval.
 SCOPE: C1-C4 observation analysis, canonical OpenAPI/backend/frontend contract, stale-state protection, readiness semantics, validation entrypoints/CI, and lifecycle records
 OWNER_BOUNDARY: the two current documentation paths are explicitly included in this post-delivery record update; no source, Primary, Wave2B, or IRIS files were touched
 
@@ -37,8 +37,9 @@ REVIEW_RECOVERY:
 - DELTA_REVIEW_JOB_ID: 01a08c0b-a54e-74c3-892b-d445eb58f717
 - DELTA_REVIEW_SESSION: /Users/bill/.codex/sessions/2026/09/10/rollout-2026-09-10T22-59-28-01a08c0b-a54e-74c3-892b-d445eb58f717.jsonl
 - DELTA_REVIEW_FINGERPRINT: a3e5b35ba84a4e3a2c5bd88d0aa8d30aa5680b03cfadd21a8d2a8c16f3ac6f75; decision APPROVED; findings NONE.
+- DELIVERY_RECORD_REVIEW_JOB_ID: 01a08c24-a0ad-70e2-8eaf-111d0444a0bc; fingerprint afd472b11a9689b748b251476029c58cb3f93e4aad03b36bb4fbe07e8e53a172; decision APPROVED; findings NONE.
 
-DELIVERY: commit 68c41294b2e3e555cecd245be2252427ba5e5c38 pushed non-force to origin/codex/agriscope-baseline-integration; PR #10 head matches and remains Draft. CI run 34500679418 validation/integration/browser-regression is green.
+DELIVERY: source correction commit 68c41294b2e3e555cecd245be2252427ba5e5c38 and the subsequent delivery-record commit were pushed non-force to origin/codex/agriscope-baseline-integration; final branch/PR SHA is verified in the mission receipt and PR #10 remains Draft. Final CI run 34502638233 validation/integration/browser-regression is green.
 SENSITIVE_DATA: NONE; only disposable local PostGIS and development fixtures used
 REMAINING: external review of Draft PR; ESLint, live CDSE/provider, production database, and formal security evidence remain unclaimed
 ```

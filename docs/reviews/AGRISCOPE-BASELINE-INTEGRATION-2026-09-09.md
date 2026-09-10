@@ -12,11 +12,14 @@ validation result, or delivery instruction below authorizes the current tree.
 
 - Project: `/Users/bill/final-project-baseline-integration`
 - Branch: `codex/agriscope-baseline-integration`
-- Current HEAD: `68c41294b2e3e555cecd245be2252427ba5e5c38`
-- Current boundary: post-delivery docs-only delta from base
-  `68c41294b2e3e555cecd245be2252427ba5e5c38`; exactly 2 tracked modified paths,
-  staged 0, untracked 0. The delivered source tree remains the 24-path commit
-  `68c41294b2e3e555cecd245be2252427ba5e5c38`.
+- Delivered source commit: `68c41294b2e3e555cecd245be2252427ba5e5c38`; the
+  final delivery-tree HEAD is verified in the mission receipt rather than
+  embedded in this self-referential record.
+- Current boundary: final delivered worktree is clean. The preceding docs-only
+  review boundary was base `68c41294b2e3e555cecd245be2252427ba5e5c38`, exactly 2
+  tracked modified paths, staged 0, untracked 0, fingerprint
+  `afd472b11a9689b748b251476029c58cb3f93e4aad03b36bb4fbe07e8e53a172`, and was
+  independently approved.
 - Current state: bounded correction approved by delta LOCAL_NATIVE review and
   delivered to the Draft PR; CI is green.
 - Recovered review: job `01a08bfb-a73e-7621-a186-ab2fbec53267`, raw session
@@ -32,8 +35,9 @@ validation result, or delivery instruction below authorizes the current tree.
   recomputed fingerprint
   `a3e5b35ba84a4e3a2c5bd88d0aa8d30aa5680b03cfadd21a8d2a8c16f3ac6f75` and
   returned `REVIEW_DECISION: APPROVED` with no findings.
-- Delivery commit `68c41294b2e3e555cecd245be2252427ba5e5c38` is the verified
-  local, remote-branch, and PR #10 head. CI run `34500679418` passed
+- Source correction commit `68c41294b2e3e555cecd245be2252427ba5e5c38` was
+  followed by the delivery-record commit; final local, remote-branch, and PR #10
+  SHA are verified in the mission receipt. CI run `34502638233` passed
   validation, integration, and browser-regression; PR #10 remains Draft.
 
 ## [SUPERSEDED HISTORICAL] Boundary and contribution record — 2026-09-09
