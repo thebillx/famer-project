@@ -824,6 +824,444 @@
           }
         }
       },
+      "Observation": {
+        "type": "object",
+        "required": [
+          "observation_id",
+          "field_id",
+          "acquired_at",
+          "cloud_percent",
+          "source",
+          "status",
+          "imagery_available",
+          "geometry_hash",
+          "analysis_eligible",
+          "analysis_ready",
+          "comparison_eligible"
+        ],
+        "properties": {
+          "observation_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "field_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "acquired_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "cloud_percent": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 100
+          },
+          "source": {
+            "type": "string",
+            "const": "Sentinel-2"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "USABLE",
+              "POOR_QUALITY",
+              "UNAVAILABLE"
+            ]
+          },
+          "imagery_available": {
+            "type": "boolean"
+          },
+          "geometry_hash": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 64,
+            "maxLength": 64
+          },
+          "analysis_eligible": {
+            "type": "boolean",
+            "description": "The observation has verified provenance, usable quality, and can be computed now."
+          },
+          "analysis_ready": {
+            "type": "boolean",
+            "description": "A geometry-matched computed analysis cache exists."
+          },
+          "comparison_eligible": {
+            "type": "boolean",
+            "description": "The observation can participate in a comparison after its analysis is computed."
+          }
+        }
+      },
+      "ObservationNdviSummary": {
+        "type": "object",
+        "required": [
+          "observation_id",
+          "field_id",
+          "acquired_at",
+          "algorithm_version",
+          "geometry_hash",
+          "analysis_eligible",
+          "analysis_ready",
+          "assessable",
+          "ndvi_mean",
+          "ndvi_min",
+          "ndvi_max",
+          "ndvi_stddev",
+          "sample_count",
+          "valid_sample_count",
+          "valid_pixel_ratio"
+        ],
+        "properties": {
+          "observation_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "field_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "acquired_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "algorithm_version": {
+            "type": "string"
+          },
+          "geometry_hash": {
+            "type": "string",
+            "minLength": 64,
+            "maxLength": 64
+          },
+          "analysis_eligible": {
+            "const": true
+          },
+          "analysis_ready": {
+            "const": true
+          },
+          "assessable": {
+            "const": true
+          },
+          "ndvi_mean": {
+            "type": "number",
+            "minimum": -1,
+            "maximum": 1
+          },
+          "ndvi_min": {
+            "type": "number",
+            "minimum": -1,
+            "maximum": 1
+          },
+          "ndvi_max": {
+            "type": "number",
+            "minimum": -1,
+            "maximum": 1
+          },
+          "ndvi_stddev": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "sample_count": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "valid_sample_count": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "valid_pixel_ratio": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 1
+          }
+        }
+      },
+      "ObservationRaster": {
+        "type": "object",
+        "required": [
+          "observation_id",
+          "field_id",
+          "acquired_at",
+          "algorithm_version",
+          "geometry_hash",
+          "crs",
+          "bounds",
+          "width",
+          "height",
+          "nodata",
+          "value_min",
+          "value_max",
+          "valid_pixel_ratio",
+          "image_url"
+        ],
+        "properties": {
+          "observation_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "field_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "acquired_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "algorithm_version": {
+            "type": "string"
+          },
+          "geometry_hash": {
+            "type": "string",
+            "minLength": 64,
+            "maxLength": 64
+          },
+          "crs": {
+            "type": "string",
+            "const": "EPSG:4326"
+          },
+          "bounds": {
+            "type": "array",
+            "minItems": 4,
+            "maxItems": 4,
+            "items": {
+              "type": "number"
+            }
+          },
+          "width": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 512
+          },
+          "height": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 512
+          },
+          "nodata": {
+            "type": "number",
+            "description": "Raster nodata marker; the current provider contract uses -9999."
+          },
+          "value_min": {
+            "type": "number",
+            "minimum": -1,
+            "maximum": 1
+          },
+          "value_max": {
+            "type": "number",
+            "minimum": -1,
+            "maximum": 1
+          },
+          "valid_pixel_ratio": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 1
+          },
+          "image_url": {
+            "type": "string"
+          }
+        }
+      },
+      "FieldChange": {
+        "type": "object",
+        "required": [
+          "field_id",
+          "before_observation_id",
+          "after_observation_id",
+          "algorithm_version",
+          "geometry_hash",
+          "before_observation_ndvi_mean",
+          "after_observation_ndvi_mean",
+          "before_ndvi",
+          "after_ndvi",
+          "ndvi_delta",
+          "changed_area_sqm",
+          "changed_area_rai",
+          "threshold",
+          "highlight_semantics",
+          "status",
+          "support",
+          "geometry"
+        ],
+        "properties": {
+          "field_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "before_observation_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "after_observation_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "algorithm_version": {
+            "type": "string"
+          },
+          "geometry_hash": {
+            "type": "string",
+            "minLength": 64,
+            "maxLength": 64
+          },
+          "before_observation_ndvi_mean": {
+            "type": "number",
+            "minimum": -1,
+            "maximum": 1
+          },
+          "after_observation_ndvi_mean": {
+            "type": "number",
+            "minimum": -1,
+            "maximum": 1
+          },
+          "before_ndvi": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": -1,
+            "maximum": 1
+          },
+          "after_ndvi": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": -1,
+            "maximum": 1
+          },
+          "ndvi_delta": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": -2,
+            "maximum": 2
+          },
+          "changed_area_sqm": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "changed_area_rai": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "threshold": {
+            "type": "number",
+            "const": -0.1
+          },
+          "highlight_semantics": {
+            "const": "NDVI_DECREASE_AT_OR_BELOW_THRESHOLD"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "USABLE",
+              "NOT_ASSESSABLE"
+            ]
+          },
+          "support": {
+            "$ref": "#/components/schemas/ComparisonSupport"
+          },
+          "geometry": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "GeoJSON MultiPolygon derived from aligned numeric NDVI rasters."
+          }
+        }
+      },
+      "ComparisonSupport": {
+        "type": "object",
+        "required": [
+          "common_valid_pixel_count",
+          "field_grid_pixel_count",
+          "common_support_ratio",
+          "minimum_required_ratio",
+          "policy_version",
+          "denominator",
+          "reason"
+        ],
+        "properties": {
+          "common_valid_pixel_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "field_grid_pixel_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "common_support_ratio": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "minimum_required_ratio": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 1
+          },
+          "policy_version": {
+            "type": "string",
+            "description": "Configurable provisional pilot policy; it is not production-validated."
+          },
+          "denominator": {
+            "const": "FIELD_GRID_PIXEL_CENTERS"
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "SUFFICIENT_COMMON_SUPPORT",
+              "NO_COMMON_SUPPORT",
+              "BELOW_MINIMUM_COMMON_SUPPORT"
+            ]
+          }
+        }
+      },
+      "SatelliteNdviComparison": {
+        "type": "object",
+        "required": [
+          "previous_acquired_at",
+          "previous_ndvi_mean",
+          "ndvi_mean_delta",
+          "direction"
+        ],
+        "properties": {
+          "previous_acquired_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "previous_ndvi_mean": {
+            "type": "number",
+            "minimum": -1,
+            "maximum": 1
+          },
+          "ndvi_mean_delta": {
+            "type": "number",
+            "minimum": -2,
+            "maximum": 2
+          },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "increased",
+              "decreased",
+              "unchanged"
+            ]
+          }
+        }
+      },
       "SatelliteNdviSummary": {
         "type": "object",
         "required": [
@@ -837,7 +1275,10 @@
           "ndvi_stddev",
           "sample_count",
           "valid_sample_count",
-          "valid_pixel_ratio"
+          "valid_pixel_ratio",
+          "comparison",
+          "comparison_status",
+          "comparison_reason"
         ],
         "properties": {
           "field_id": {
@@ -886,6 +1327,26 @@
             "type": "number",
             "exclusiveMinimum": 0,
             "maximum": 1
+          },
+          "comparison": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SatelliteNdviComparison"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "comparison_status": {
+            "const": "NOT_ASSESSABLE"
+          },
+          "comparison_reason": {
+            "type": "string",
+            "enum": [
+              "NO_PREVIOUS_OBSERVATION",
+              "COMMON_SPATIAL_SUPPORT_NOT_PROVEN"
+            ]
           }
         }
       }
@@ -2302,6 +2763,504 @@
         }
       }
     },
+    "/api/v1/fields/{field_id}/observations": {
+      "get": {
+        "summary": "List authorized field observations in latest-first order.",
+        "security": [
+          {
+            "accessCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-required-role": "Authenticated active farm owner or organization owner.",
+        "x-organization-scope": "Farm owner or organization owner; foreign resources are hidden as 404.",
+        "x-validation": "Field UUID is validated and active farm ownership is resolved before acquisition access.",
+        "x-idempotency": "Safe read-only operation.",
+        "parameters": [
+          {
+            "name": "field_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Observation history, possibly empty.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Observation"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Field not found or not visible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid field identifier.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/fields/{field_id}/observations/{observation_id}/preview": {
+      "get": {
+        "summary": "Render true-colour imagery for one authorized observation.",
+        "security": [
+          {
+            "accessCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-required-role": "Authenticated active farm owner or organization owner.",
+        "x-organization-scope": "Observation must belong to the authorized field.",
+        "x-validation": "Field and observation UUIDs, ownership, availability, and valid pixel coverage are validated.",
+        "x-rate-limit": "authenticated subject 20 and subject plus HMAC(field ID) 10 per configured window.",
+        "x-idempotency": "Provider-backed safe read with subject and field rate limits.",
+        "parameters": [
+          {
+            "name": "field_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "observation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Observation-scoped PNG.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "private, no-store"
+                }
+              },
+              "X-Content-Type-Options": {
+                "schema": {
+                  "const": "nosniff"
+                }
+              }
+            },
+            "content": {
+              "image/png": {
+                "schema": {
+                  "type": "string",
+                  "contentEncoding": "binary"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Field or observation not visible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "No usable imagery or insufficient quality.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitedError"
+          },
+          "503": {
+            "description": "Provider temporarily unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/fields/{field_id}/observations/{observation_id}/ndvi-summary": {
+      "get": {
+        "summary": "Return quality-approved NDVI statistics for one observation.",
+        "security": [
+          {
+            "accessCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-required-role": "Authenticated active farm owner or organization owner.",
+        "x-organization-scope": "Observation must belong to the authorized field.",
+        "x-validation": "Observation ownership, cloud quality, valid pixels, finite NDVI values, and bounded processing are validated.",
+        "x-rate-limit": "authenticated subject 20 and subject plus HMAC(field ID) 10 per configured window.",
+        "x-idempotency": "Lazy compute once and reuse the observation analysis cache.",
+        "parameters": [
+          {
+            "name": "field_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "observation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Observation NDVI summary.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObservationNdviSummary"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Field or observation not visible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "No data, poor quality, or request too large.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitedError"
+          },
+          "503": {
+            "description": "Provider temporarily unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/fields/{field_id}/observations/{observation_id}/ndvi-raster": {
+      "get": {
+        "summary": "Return numeric semantics and overlay location for one NDVI raster.",
+        "security": [
+          {
+            "accessCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-required-role": "Authenticated active farm owner or organization owner.",
+        "x-organization-scope": "Observation must belong to the authorized field.",
+        "x-validation": "Observation ownership, quality, numeric range, CRS, dimensions, and cache identity are validated.",
+        "x-rate-limit": "authenticated subject 20 and subject plus HMAC(field ID) 10 per configured window.",
+        "x-idempotency": "Reuses cached numeric GeoTIFF.",
+        "parameters": [
+          {
+            "name": "field_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "observation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Raster metadata and private image endpoint.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObservationRaster"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundError"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitedError"
+          },
+          "503": {
+            "description": "Provider temporarily unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/fields/{field_id}/observations/{observation_id}/ndvi-raster/image": {
+      "get": {
+        "summary": "Render a quantitative NDVI PNG from the cached numeric raster.",
+        "security": [
+          {
+            "accessCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-required-role": "Authenticated active farm owner or organization owner.",
+        "x-organization-scope": "Observation must belong to the authorized field.",
+        "x-validation": "Observation ownership and the cached numeric raster are validated before rendering.",
+        "x-rate-limit": "authenticated subject 20 and subject plus HMAC(field ID) 10 per configured window.",
+        "x-idempotency": "Derived from cached numeric GeoTIFF.",
+        "parameters": [
+          {
+            "name": "field_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "observation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Private NDVI PNG.",
+            "content": {
+              "image/png": {
+                "schema": {
+                  "type": "string",
+                  "contentEncoding": "binary"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundError"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitedError"
+          },
+          "503": {
+            "description": "Provider temporarily unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/fields/{field_id}/change": {
+      "get": {
+        "summary": "Compare two usable observations and return spatial NDVI decrease evidence.",
+        "security": [
+          {
+            "accessCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-required-role": "Authenticated active farm owner or organization owner.",
+        "x-organization-scope": "Both observations must belong to the same authorized field.",
+        "x-validation": "Distinct ordered observation IDs, ownership, quality, finite values, aligned grids, common field-grid support, geometry and algorithm lineage, and valid output geometry are validated; insufficient common support returns NOT_ASSESSABLE with null derived values.",
+        "x-rate-limit": "authenticated subject 20 and subject plus HMAC(field ID) 10 per configured window.",
+        "x-idempotency": "Safe read using cached observation analyses.",
+        "parameters": [
+          {
+            "name": "field_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Scalar and GeoJSON change evidence; no diagnosis.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FieldChange"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundError"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitedError"
+          },
+          "503": {
+            "description": "Provider temporarily unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/fields/{field_id}/satellite/ndvi-summary": {
       "get": {
         "summary": "Return an on-demand NDVI statistical summary for the latest saved acquisition.",
@@ -2315,7 +3274,7 @@
         ],
         "x-required-role": "viewer",
         "x-organization-scope": "field lookup joins active membership and farm owner scope before acquisition, rate-limit, OAuth, or Statistical API work.",
-        "x-validation": "uses only persisted field geometry in CRS84 and the UTC day of the latest persisted acquisition; fixed 0.00009 degree sampling, a maximum 262144-cell bounding grid enforced before OAuth, and agriscope-ndvi-summary-v1 evalscript; foreign and non-owner fields return 404; an oversized grid or zero/insufficient valid samples returns no summary.",
+        "x-validation": "uses only persisted field geometry in CRS84 and the UTC day of the latest persisted acquisition; fixed 0.00009 degree sampling, a maximum 262144-cell bounding grid enforced before OAuth, and agriscope-ndvi-summary-v1 evalscript; legacy scalar comparison is NOT_ASSESSABLE because common spatial support is not proven; foreign and non-owner fields return 404; an oversized grid or zero/insufficient valid samples returns no summary.",
         "x-timeout": "bounded OAuth and Statistical API timeouts return a safe temporary-unavailable error.",
         "x-rate-limit": "authenticated subject 20 and subject plus HMAC(field ID) 10 per configured window.",
         "x-idempotency": "safe read-only operation initiated explicitly by the user; no automatic summary request.",

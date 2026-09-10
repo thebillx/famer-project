@@ -14,7 +14,11 @@
   ],
   "scripts": {
     "test:unit:python": "python3 -m unittest discover -s tests/unit",
-    "validate:contracts": "python3 -m unittest discover -s tests/contract"
+    "validate:contracts": "python3 -m unittest discover -s tests/contract",
+    "validate": "bash scripts/validate.sh all",
+    "validate:static": "bash scripts/validate.sh static",
+    "validate:integration": "bash scripts/validate.sh integration",
+    "validate:browser": "bash scripts/validate.sh browser"
   },
   "dependencies": {
     "@hookform/resolvers": "3.10.0",

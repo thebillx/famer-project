@@ -7,7 +7,17 @@ import { ApiError, apiFetch, apiFetchBlob } from "../lib/api";
 import type { SatelliteLatest, SatelliteNdviSummary, SatelliteSearch } from "../lib/types";
 import { Badge, Card } from "./Primitives";
 
-export function SatelliteStatusCard({ fieldId }: { fieldId: string }) {
+const AUTH_FAILURES = new Set(["authentication_required", "invalid_refresh_token"]);
+
+export function SatelliteStatusCard({
+  fieldId,
+  identityId,
+  onTerminalAuth
+}: {
+  fieldId: string;
+  identityId: string;
+  onTerminalAuth: () => void;
+}) {
   const queryClient = useQueryClient();
   const previewEpoch = useRef(0);
   const ndviEpoch = useRef(0);
@@ -18,10 +28,11 @@ export function SatelliteStatusCard({ fieldId }: { fieldId: string }) {
   const [ndviSummary, setNdviSummary] = useState<SatelliteNdviSummary | null>(null);
   const [ndviError, setNdviError] = useState<unknown>(null);
   const [ndviPending, setNdviPending] = useState(false);
+  const latestQueryKey = ["satellite-latest", identityId, fieldId] as const;
   const latest = useQuery({
-    queryKey: ["satellite-latest", fieldId],
+    queryKey: latestQueryKey,
     queryFn: () => apiFetch<SatelliteLatest>(`/api/v1/fields/${fieldId}/satellite/latest`),
-    enabled: Boolean(fieldId),
+    enabled: Boolean(fieldId && identityId),
     retry: false
   });
   const search = useMutation({
@@ -30,7 +41,7 @@ export function SatelliteStatusCard({ fieldId }: { fieldId: string }) {
         method: "POST"
       }),
     onSuccess: (data) => {
-      queryClient.setQueryData(["satellite-latest", fieldId], data);
+      queryClient.setQueryData(latestQueryKey, data);
     },
     retry: false
   });
@@ -38,6 +49,11 @@ export function SatelliteStatusCard({ fieldId }: { fieldId: string }) {
   const acquisitionId = result?.status === "available" ? result.acquisition.item_id : null;
   const requestError = search.error ?? (search.data ? null : latest.error);
   const unavailable = search.isError || (!search.data && latest.isError) || result?.status === "temporarily_unavailable";
+
+  useEffect(() => {
+    const error = search.error ?? latest.error;
+    if (error instanceof ApiError && AUTH_FAILURES.has(error.code)) onTerminalAuth();
+  }, [latest.error, onTerminalAuth, search.error]);
 
   function replacePreviewUrl(nextUrl: string | null) {
     if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
@@ -230,7 +246,7 @@ export function SatelliteStatusCard({ fieldId }: { fieldId: string }) {
           </div>
         ) : null}
         {!unavailable && result?.status === "no_data" ? (
-          <p className="font-semibold text-[var(--as-ink-muted)]">ยังไม่พบภาพ Sentinel-2 ที่ตรงกับเงื่อนไขในช่วงเวลาที่ค้นหา</p>
+          <p className="font-semibold text-[var(--as-ink-muted)]">ข้อมูลยังไม่เพียงพอ: ยังไม่พบภาพ Sentinel-2 ที่ตรงกับเงื่อนไขในช่วงเวลาที่ค้นหา</p>
         ) : null}
         {!unavailable && result?.status === "not_searched" ? (
           <div>

@@ -22,7 +22,8 @@ const TENANT_QUERY_ROOTS = new Set([
   "farm",
   "fields",
   "field",
-  "satellite-latest"
+  "satellite-latest",
+  "observations"
 ]);
 
 const emailSchema = z.string().trim().min(1, "กรุณากรอกอีเมล").email("กรุณากรอกอีเมลให้ถูกต้อง");

@@ -138,6 +138,7 @@
 }
 
 .workspace {
+  position: relative;
   display: grid;
   min-height: calc(100dvh - 64px);
   grid-template-columns: 288px minmax(0, 1fr);
@@ -612,6 +613,21 @@
 .mapPane :global(.agri-map-controls button:hover),
 .mapPane :global(.agri-map-controls button:focus-visible) {
   background: var(--agri-surface-page);
+}
+
+@media (min-width: 1101px) {
+  .workspace[data-has-inspector="true"] {
+    grid-template-columns: 288px minmax(0, 1fr);
+  }
+
+  .workspace[data-has-inspector="true"] > .inspector {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 10;
+    width: 328px;
+  }
 }
 
 

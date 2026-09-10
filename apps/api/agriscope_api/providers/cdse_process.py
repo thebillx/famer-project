@@ -30,6 +30,22 @@ function evaluatePixel(sample) {
 }
 """
 
+NDVI_RASTER_EVALSCRIPT_VERSION = "agriscope-ndvi-raster-v1"
+NDVI_RASTER_EVALSCRIPT = """//VERSION=3
+function setup() {
+  return {
+    input: [{ bands: ["B04", "B08", "SCL", "dataMask"] }],
+    output: { bands: 2, sampleType: "FLOAT32" }
+  };
+}
+function evaluatePixel(sample) {
+  const denominator = sample.B08 + sample.B04;
+  const excludedScl = [0, 1, 3, 6, 8, 9, 10, 11].includes(sample.SCL);
+  const valid = sample.dataMask === 1 && denominator !== 0 && !excludedScl;
+  return [valid ? (sample.B08 - sample.B04) / denominator : -9999, valid ? 1 : 0];
+}
+"""
+
 NDVI_SUMMARY_EVALSCRIPT_VERSION = "agriscope-ndvi-summary-v1"
 NDVI_SUMMARY_EVALSCRIPT = """//VERSION=3
 function setup() {
@@ -57,6 +73,7 @@ _STATISTICS_RESOLUTION_DEGREES = 0.00009
 _STATISTICS_RESOLUTION_DEGREES_DECIMAL = Decimal("0.00009")
 _MAX_STATISTICS_GRID_CELLS = 512 * 512
 _MAX_PREVIEW_BYTES = 5 * 1024 * 1024
+_MAX_RASTER_BYTES = 8 * 1024 * 1024
 _PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 
 TokenSender = Callable[
@@ -116,6 +133,17 @@ class CdseNdviSummary:
     evalscript_version: str = NDVI_SUMMARY_EVALSCRIPT_VERSION
 
 
+@dataclass(frozen=True)
+class CdseNdviRaster:
+    geotiff: bytes
+    width: int
+    height: int
+    bounds: tuple[float, float, float, float]
+    crs: str
+    valid_pixel_ratio: float
+    evalscript_version: str = NDVI_RASTER_EVALSCRIPT_VERSION
+
+
 class CdseProcessClient:
     def __init__(
         self,
@@ -154,8 +182,11 @@ class CdseProcessClient:
         geometry: dict[str, Any],
         *,
         acquired_at: datetime,
+        exact_observation: bool = False,
     ) -> CdseTrueColorPreview:
-        payload = self.build_process_payload(geometry, acquired_at=acquired_at)
+        payload = self.build_process_payload(
+            geometry, acquired_at=acquired_at, exact_observation=exact_observation
+        )
         token = await self._access_token()
         status_code, content_type, body = await self._process(payload, token)
         if status_code == 401:
@@ -180,15 +211,70 @@ class CdseProcessClient:
             raise CdseProcessNoData("cdse process returned no valid pixels")
         return CdseTrueColorPreview(image_png=body, valid_pixel_ratio=valid_pixel_ratio)
 
-    def build_process_payload(
+    async def render_ndvi_raster(
+        self,
+        geometry: dict[str, Any],
+        *,
+        acquired_at: datetime,
+    ) -> CdseNdviRaster:
+        payload = self.build_ndvi_raster_payload(geometry, acquired_at=acquired_at)
+        token = await self._access_token()
+        status_code, content_type, body = await self._process(payload, token)
+        if status_code == 401:
+            token = await self._access_token(rejected_token=token)
+            status_code, content_type, body = await self._process(payload, token)
+        if status_code == 429:
+            raise CdseProcessRateLimited("cdse process rate limited")
+        if status_code == 204 or (status_code < 400 and not body):
+            raise CdseProcessNoData("cdse process returned no ndvi raster")
+        if status_code >= 400:
+            raise CdseProcessUnavailable("cdse process unavailable")
+        if content_type.partition(";")[0].strip().lower() not in {"image/tiff", "image/geotiff"}:
+            raise CdseProcessMalformedResponse("cdse process returned unsupported raster type")
+        return _validate_ndvi_geotiff(body, expected_geometry=geometry)
+
+    def build_ndvi_raster_payload(
         self,
         geometry: dict[str, Any],
         *,
         acquired_at: datetime,
     ) -> dict[str, Any]:
         acquired_utc = acquired_at.astimezone(UTC)
-        start = acquired_utc.replace(hour=0, minute=0, second=0, microsecond=0)
-        end = start + timedelta(days=1)
+        start, end = acquired_utc - timedelta(seconds=1), acquired_utc + timedelta(seconds=1)
+        width, height = _raster_dimensions(geometry)
+        return {
+            "input": {
+                "bounds": {"geometry": geometry, "properties": {"crs": _CRS84}},
+                "data": [{
+                    "type": "sentinel-2-l2a",
+                    "dataFilter": {
+                        "timeRange": {"from": _iso_z(start), "to": _iso_z(end)},
+                        "maxCloudCoverage": self.max_cloud_cover_percent,
+                        "mosaickingOrder": "mostRecent",
+                    },
+                }],
+            },
+            "output": {
+                "width": width,
+                "height": height,
+                "responses": [{"identifier": "default", "format": {"type": "image/tiff"}}],
+            },
+            "evalscript": NDVI_RASTER_EVALSCRIPT,
+        }
+
+    def build_process_payload(
+        self,
+        geometry: dict[str, Any],
+        *,
+        acquired_at: datetime,
+        exact_observation: bool = False,
+    ) -> dict[str, Any]:
+        acquired_utc = acquired_at.astimezone(UTC)
+        if exact_observation:
+            start, end = acquired_utc - timedelta(seconds=1), acquired_utc + timedelta(seconds=1)
+        else:
+            start = acquired_utc.replace(hour=0, minute=0, second=0, microsecond=0)
+            end = start + timedelta(days=1)
         return {
             "input": {
                 "bounds": {
@@ -227,8 +313,11 @@ class CdseProcessClient:
         geometry: dict[str, Any],
         *,
         acquired_at: datetime,
+        exact_observation: bool = False,
     ) -> CdseNdviSummary:
-        payload = self.build_statistics_payload(geometry, acquired_at=acquired_at)
+        payload = self.build_statistics_payload(
+            geometry, acquired_at=acquired_at, exact_observation=exact_observation
+        )
         token = await self._access_token()
         status_code, body = await self._statistics(payload, token)
         if status_code == 401:
@@ -250,12 +339,16 @@ class CdseProcessClient:
         geometry: dict[str, Any],
         *,
         acquired_at: datetime,
+        exact_observation: bool = False,
     ) -> dict[str, Any]:
         if _statistics_grid_cells(geometry) > _MAX_STATISTICS_GRID_CELLS:
             raise CdseProcessRequestTooLarge("cdse statistical grid exceeds request budget")
         acquired_utc = acquired_at.astimezone(UTC)
-        start = acquired_utc.replace(hour=0, minute=0, second=0, microsecond=0)
-        end = start + timedelta(days=1)
+        if exact_observation:
+            start, end = acquired_utc - timedelta(seconds=1), acquired_utc + timedelta(seconds=1)
+        else:
+            start = acquired_utc.replace(hour=0, minute=0, second=0, microsecond=0)
+            end = start + timedelta(days=1)
         return {
             "input": {
                 "bounds": {
@@ -443,6 +536,63 @@ def _valid_pixel_ratio(image_png: bytes) -> float:
     return float((mask > 0).sum() / mask.size)
 
 
+def _validate_ndvi_geotiff(
+    body: bytes, *, expected_geometry: dict[str, Any] | None = None
+) -> CdseNdviRaster:
+    if len(body) > _MAX_RASTER_BYTES:
+        raise CdseProcessMalformedResponse("cdse ndvi raster exceeds size limit")
+    try:
+        import numpy as np
+        from rasterio.io import MemoryFile
+
+        with MemoryFile(body) as memory_file:
+            with memory_file.open() as dataset:
+                if dataset.driver != "GTiff" or dataset.count != 2:
+                    raise CdseProcessMalformedResponse("cdse ndvi raster has invalid bands")
+                if not (0 < dataset.width <= 512 and 0 < dataset.height <= 512):
+                    raise CdseProcessMalformedResponse("cdse ndvi raster has invalid dimensions")
+                values = dataset.read(1)
+                valid = dataset.read(2) > 0.5
+                if not valid.any():
+                    raise CdseProcessNoData("cdse ndvi raster has no valid pixels")
+                if not np.isfinite(values[valid]).all() or (values[valid] < -1).any() or (
+                    values[valid] > 1
+                ).any():
+                    raise CdseProcessMalformedResponse("cdse ndvi raster values are invalid")
+                if ((~valid) & (values != -9999)).any():
+                    raise CdseProcessMalformedResponse("cdse ndvi raster nodata values are invalid")
+                if dataset.crs is None or dataset.crs.to_epsg() != 4326:
+                    raise CdseProcessMalformedResponse("cdse ndvi raster must use EPSG:4326")
+                bounds = tuple(float(value) for value in dataset.bounds)
+                if expected_geometry is not None:
+                    expected_bounds = _geometry_bounds(expected_geometry)
+                    tolerance = max(
+                        (expected_bounds[2] - expected_bounds[0]) / dataset.width,
+                        (expected_bounds[3] - expected_bounds[1]) / dataset.height,
+                        1e-9,
+                    )
+                    if any(
+                        abs(actual - expected) > tolerance
+                        for actual, expected in zip(bounds, expected_bounds, strict=True)
+                    ):
+                        raise CdseProcessMalformedResponse(
+                            "cdse ndvi raster bounds do not match requested field"
+                        )
+                crs = dataset.crs.to_string()
+                return CdseNdviRaster(
+                    geotiff=body,
+                    width=dataset.width,
+                    height=dataset.height,
+                    bounds=bounds,  # type: ignore[arg-type]
+                    crs=crs,
+                    valid_pixel_ratio=float(valid.sum() / valid.size),
+                )
+    except (CdseProcessMalformedResponse, CdseProcessNoData):
+        raise
+    except Exception as exc:
+        raise CdseProcessMalformedResponse("cdse ndvi raster is unreadable") from exc
+
+
 def _parse_ndvi_summary(
     body: dict[str, Any],
     *,
@@ -526,6 +676,34 @@ def _statistics_grid_cells(geometry: dict[str, Any]) -> int:
         InvalidOperation,
     ) as exc:
         raise CdseProcessMalformedResponse("cdse statistical geometry is invalid") from exc
+
+
+def _raster_dimensions(geometry: dict[str, Any]) -> tuple[int, int]:
+    try:
+        positions = [position for ring in geometry["coordinates"] for position in ring]
+        longitudes = [float(position[0]) for position in positions]
+        latitudes = [float(position[1]) for position in positions]
+        latitude = (min(latitudes) + max(latitudes)) / 2
+        width_m = (max(longitudes) - min(longitudes)) * 111_320 * math.cos(math.radians(latitude))
+        height_m = (max(latitudes) - min(latitudes)) * 110_540
+        raw_width = max(1, math.ceil(width_m / 10))
+        raw_height = max(1, math.ceil(height_m / 10))
+        scale = min(1.0, 512 / max(raw_width, raw_height))
+        return max(1, round(raw_width * scale)), max(1, round(raw_height * scale))
+    except (KeyError, TypeError, ValueError, IndexError) as exc:
+        raise CdseProcessMalformedResponse("cdse raster geometry is invalid") from exc
+
+
+def _geometry_bounds(geometry: dict[str, Any]) -> tuple[float, float, float, float]:
+    try:
+        positions = [position for ring in geometry["coordinates"] for position in ring]
+        longitudes = [float(position[0]) for position in positions]
+        latitudes = [float(position[1]) for position in positions]
+        if not positions:
+            raise ValueError("empty geometry")
+        return min(longitudes), min(latitudes), max(longitudes), max(latitudes)
+    except (KeyError, TypeError, ValueError, IndexError) as exc:
+        raise CdseProcessMalformedResponse("cdse raster geometry is invalid") from exc
 
 
 def _statistics_grid_axis_cells(span_degrees: Decimal) -> int:

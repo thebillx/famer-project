@@ -35,6 +35,7 @@ class FieldAcquisition(TimestampMixin, Base):
             ondelete="RESTRICT",
         ),
         UniqueConstraint("field_id", "provider", "provider_item_id", name="uq_field_acquisition_item"),
+        UniqueConstraint("id", "field_id", "organization_id", name="uq_field_acquisitions_id_field_organization"),
     )
 
     id: Mapped[PyUUID] = uuid_pk()

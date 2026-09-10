@@ -93,6 +93,7 @@ class SettingsSnapshot:
     satellite_max_cloud_cover_percent: float = 80.0
     satellite_preview_min_valid_ratio: float = 0.4
     satellite_analysis_min_valid_ratio: float = 0.4
+    satellite_comparison_min_common_support_ratio: float = 0.4
     object_storage_secret_key: str = ""
 
     def safe_dict(self) -> dict[str, Any]:
@@ -178,6 +179,9 @@ def settings_from_env(environ: dict[str, str] | None = None) -> SettingsSnapshot
         satellite_analysis_min_valid_ratio=float(
             env.get("SATELLITE_ANALYSIS_MIN_VALID_RATIO", "0.40")
         ),
+        satellite_comparison_min_common_support_ratio=float(
+            env.get("SATELLITE_COMPARISON_MIN_COMMON_SUPPORT_RATIO", "0.40")
+        ),
         object_storage_secret_key=env.get("OBJECT_STORAGE_SECRET_KEY", ""),
     )
 
@@ -241,6 +245,12 @@ def validate_settings(settings: SettingsSnapshot) -> list[SettingsValidationIssu
     if not 0 < settings.satellite_analysis_min_valid_ratio <= 1:
         issues.append(
             SettingsValidationIssue("SATELLITE_ANALYSIS_MIN_VALID_RATIO", "must be >0 and <=1")
+        )
+    if not 0 < settings.satellite_comparison_min_common_support_ratio <= 1:
+        issues.append(
+            SettingsValidationIssue(
+                "SATELLITE_COMPARISON_MIN_COMMON_SUPPORT_RATIO", "must be >0 and <=1"
+            )
         )
 
     for field_name in ("session_secret", "encryption_key"):

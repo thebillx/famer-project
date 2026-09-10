@@ -28,8 +28,14 @@ EXPECTED_SCHEMAS = {
     "SatelliteEmptySearchResponse",
     "SatelliteLatestResponse",
     "SatelliteNdviSummary",
+    "SatelliteNdviComparison",
     "SatelliteNotSearchedResponse",
     "SatelliteSearchResponse",
+    "Observation",
+    "ObservationNdviSummary",
+    "ObservationRaster",
+    "ComparisonSupport",
+    "FieldChange",
     "User",
 }
 
@@ -54,6 +60,12 @@ EXPECTED_METHODS = {
     "/api/v1/fields/{field_id}/satellite/latest": {"get"},
     "/api/v1/fields/{field_id}/satellite/preview": {"get"},
     "/api/v1/fields/{field_id}/satellite/ndvi-summary": {"get"},
+    "/api/v1/fields/{field_id}/observations": {"get"},
+    "/api/v1/fields/{field_id}/observations/{observation_id}/preview": {"get"},
+    "/api/v1/fields/{field_id}/observations/{observation_id}/ndvi-summary": {"get"},
+    "/api/v1/fields/{field_id}/observations/{observation_id}/ndvi-raster": {"get"},
+    "/api/v1/fields/{field_id}/observations/{observation_id}/ndvi-raster/image": {"get"},
+    "/api/v1/fields/{field_id}/change": {"get"},
 }
 
 EXPECTED_RESPONSES = {
@@ -112,6 +124,12 @@ EXPECTED_RESPONSES = {
         "429",
         "503",
     },
+    ("/api/v1/fields/{field_id}/observations", "get"): {"200", "401", "404", "422"},
+    ("/api/v1/fields/{field_id}/observations/{observation_id}/preview", "get"): {"200", "401", "404", "422", "429", "503"},
+    ("/api/v1/fields/{field_id}/observations/{observation_id}/ndvi-summary", "get"): {"200", "401", "404", "422", "429", "503"},
+    ("/api/v1/fields/{field_id}/observations/{observation_id}/ndvi-raster", "get"): {"200", "401", "404", "422", "429", "503"},
+    ("/api/v1/fields/{field_id}/observations/{observation_id}/ndvi-raster/image", "get"): {"200", "401", "404", "422", "429", "503"},
+    ("/api/v1/fields/{field_id}/change", "get"): {"200", "401", "404", "422", "429", "503"},
 }
 
 EXPECTED_RATE_LIMITS = {
@@ -153,6 +171,21 @@ EXPECTED_RATE_LIMITS = {
         "authenticated subject 20 and subject plus HMAC(field ID) 10 per configured window."
     ),
     ("/api/v1/fields/{field_id}/satellite/ndvi-summary", "get"): (
+        "authenticated subject 20 and subject plus HMAC(field ID) 10 per configured window."
+    ),
+    ("/api/v1/fields/{field_id}/observations/{observation_id}/preview", "get"): (
+        "authenticated subject 20 and subject plus HMAC(field ID) 10 per configured window."
+    ),
+    ("/api/v1/fields/{field_id}/observations/{observation_id}/ndvi-summary", "get"): (
+        "authenticated subject 20 and subject plus HMAC(field ID) 10 per configured window."
+    ),
+    ("/api/v1/fields/{field_id}/observations/{observation_id}/ndvi-raster", "get"): (
+        "authenticated subject 20 and subject plus HMAC(field ID) 10 per configured window."
+    ),
+    ("/api/v1/fields/{field_id}/observations/{observation_id}/ndvi-raster/image", "get"): (
+        "authenticated subject 20 and subject plus HMAC(field ID) 10 per configured window."
+    ),
+    ("/api/v1/fields/{field_id}/change", "get"): (
         "authenticated subject 20 and subject plus HMAC(field ID) 10 per configured window."
     ),
 }
@@ -375,19 +408,103 @@ class FoundationContractTests(unittest.TestCase):
         self.assertIn("persisted field geometry", preview["x-validation"])
         self.assertIn("no automatic preview request", preview["x-idempotency"])
 
-    def test_satellite_ndvi_summary_is_explicit_bounded_and_fail_closed(self):
-        summary = self.document["paths"]["/api/v1/fields/{field_id}/satellite/ndvi-summary"]["get"]
+    def test_satellite_ndvi_summary_is_explicit_bounded_and_suppresses_unproven_comparison(self):
+        summary_path = self.document["paths"]["/api/v1/fields/{field_id}/satellite/ndvi-summary"]["get"]
         self.assertEqual(
-            summary["responses"]["200"]["content"],
+            summary_path["responses"]["200"]["content"],
             {"application/json": {"schema": {"$ref": "#/components/schemas/SatelliteNdviSummary"}}},
         )
         self.assertEqual(
-            summary["responses"]["200"]["headers"]["Cache-Control"]["schema"],
+            summary_path["responses"]["200"]["headers"]["Cache-Control"]["schema"],
             {"type": "string", "const": "private, no-store"},
         )
-        self.assertIn("persisted field geometry", summary["x-validation"])
-        self.assertIn("UTC day", summary["x-validation"])
-        self.assertIn("no automatic summary request", summary["x-idempotency"])
+        self.assertIn("persisted field geometry", summary_path["x-validation"])
+        self.assertIn("UTC day", summary_path["x-validation"])
+        self.assertIn("common spatial support", summary_path["x-validation"].lower())
+        self.assertIn("no automatic summary request", summary_path["x-idempotency"])
+
+        summary = self.document["components"]["schemas"]["SatelliteNdviSummary"]
+        self.assertIn("comparison_status", summary["required"])
+        self.assertIn("comparison_reason", summary["required"])
+        self.assertEqual(summary["properties"]["comparison_status"], {"const": "NOT_ASSESSABLE"})
+        self.assertEqual(
+            summary["properties"]["comparison_reason"]["enum"],
+            ["NO_PREVIOUS_OBSERVATION", "COMMON_SPATIAL_SUPPORT_NOT_PROVEN"],
+        )
+        self.assertEqual(
+            summary["properties"]["comparison"]["anyOf"][-1],
+            {"type": "null"},
+        )
+
+    def test_observation_contract_separates_eligibility_cache_identity_and_common_support(self):
+        schemas = self.document["components"]["schemas"]
+        observation = schemas["Observation"]
+        self.assertIn("analysis_eligible", observation["required"])
+        self.assertIn("analysis_ready", observation["required"])
+        self.assertIn("comparison_eligible", observation["required"])
+        self.assertIn("geometry_hash", observation["required"])
+        self.assertEqual(observation["properties"]["geometry_hash"]["type"], ["string", "null"])
+
+        raster = schemas["ObservationRaster"]
+        self.assertEqual(
+            {"field_id", "algorithm_version", "geometry_hash"}.issubset(set(raster["required"])),
+            True,
+        )
+        self.assertEqual(raster["properties"]["field_id"]["format"], "uuid")
+        self.assertEqual(raster["properties"]["geometry_hash"]["minLength"], 64)
+        self.assertNotIn("const", raster["properties"]["value_min"])
+        self.assertNotIn("const", raster["properties"]["value_max"])
+
+        support = schemas["ComparisonSupport"]
+        self.assertEqual(
+            set(support["required"]),
+            {
+                "common_valid_pixel_count",
+                "field_grid_pixel_count",
+                "common_support_ratio",
+                "minimum_required_ratio",
+                "policy_version",
+                "denominator",
+                "reason",
+            },
+        )
+        self.assertEqual(support["properties"]["denominator"], {"const": "FIELD_GRID_PIXEL_CENTERS"})
+        self.assertEqual(
+            support["properties"]["reason"]["enum"],
+            ["SUFFICIENT_COMMON_SUPPORT", "NO_COMMON_SUPPORT", "BELOW_MINIMUM_COMMON_SUPPORT"],
+        )
+        self.assertIn("provisional", support["properties"]["policy_version"]["description"].lower())
+
+        change = schemas["FieldChange"]
+        self.assertEqual(change["properties"]["status"]["enum"], ["USABLE", "NOT_ASSESSABLE"])
+        self.assertEqual(change["properties"]["ndvi_delta"]["type"], ["number", "null"])
+        self.assertEqual(change["properties"]["geometry"]["type"], ["object", "null"])
+        self.assertEqual(
+            change["properties"]["highlight_semantics"],
+            {"const": "NDVI_DECREASE_AT_OR_BELOW_THRESHOLD"},
+        )
+        self.assertEqual(change["properties"]["support"], {"$ref": "#/components/schemas/ComparisonSupport"})
+        self.assertIn("before_observation_ndvi_mean", change["required"])
+        self.assertIn("after_observation_ndvi_mean", change["required"])
+        self.assertIn("algorithm_version", change["required"])
+        self.assertIn("geometry_hash", change["required"])
+        self.assertIn("support", change["required"])
+        self.assertIn("highlight_semantics", change["required"])
+        for derived in (
+            "before_ndvi",
+            "after_ndvi",
+            "ndvi_delta",
+            "changed_area_sqm",
+            "changed_area_rai",
+            "geometry",
+        ):
+            self.assertIn("null", change["properties"][derived]["type"])
+
+        change_path = self.document["paths"]["/api/v1/fields/{field_id}/change"]["get"]
+        validation = change_path["x-validation"].lower()
+        self.assertIn("common", validation)
+        self.assertIn("field-grid", validation)
+        self.assertIn("not_assessable", validation)
 
     def test_standard_error_schema_is_structural(self):
         error_response = self.document["components"]["schemas"]["ErrorResponse"]

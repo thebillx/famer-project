@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from apps.api.agriscope_api.core.errors import ApiException
 from apps.api.agriscope_api.core.security import Role
@@ -20,7 +20,7 @@ class FarmService:
         return FarmRepository(
             self.session,
             TenantScope(
-                organization_id=organization_id or uuid4(),
+                organization_id=organization_id,
                 user_id=user_id,
                 role=Role.VIEWER.value,
             ),

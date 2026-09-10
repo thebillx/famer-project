@@ -20,7 +20,8 @@ const TENANT_QUERY_ROOTS = new Set([
   "fields",
   "organizations",
   "organization-members",
-  "satellite-latest"
+  "satellite-latest",
+  "observations"
 ]);
 
 function isTerminalAuthError(error: unknown): error is ApiError {

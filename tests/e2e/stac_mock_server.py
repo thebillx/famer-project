@@ -53,6 +53,20 @@ async def process(request: Request) -> Response:
     payload = await request.json()
     if payload.get("input", {}).get("data", [{}])[0].get("type") != "sentinel-2-l2a":
         return Response(status_code=422)
+    response_type = (
+        payload.get("output", {})
+        .get("responses", [{}])[0]
+        .get("format", {})
+        .get("type")
+    )
+    if response_type == "image/tiff":
+        try:
+            body = _fixture_geotiff(payload)
+        except (KeyError, TypeError, ValueError):
+            return Response(status_code=422)
+        return Response(content=body, media_type="image/tiff")
+    if response_type != "image/png":
+        return Response(status_code=422)
     return Response(content=_fixture_png(), media_type="image/png")
 
 
@@ -90,6 +104,42 @@ async def statistics(request: Request):
         ],
         "status": "OK",
     }
+
+
+def _fixture_geotiff(payload: dict) -> bytes:
+    import numpy as np
+    from rasterio.io import MemoryFile
+    from rasterio.transform import from_bounds
+
+    output = payload["output"]
+    width = int(output["width"])
+    height = int(output["height"])
+    geometry = payload["input"]["bounds"]["geometry"]
+    positions = [position for ring in geometry["coordinates"] for position in ring]
+    longitudes = [float(position[0]) for position in positions]
+    latitudes = [float(position[1]) for position in positions]
+    west, south, east, north = min(longitudes), min(latitudes), max(longitudes), max(latitudes)
+    values = np.full((height, width), 0.62, dtype=np.float32)
+    valid = np.ones((height, width), dtype=np.float32)
+    # A bounded deterministic gradient proves the returned raster is numeric while
+    # keeping every pixel finite and valid for the API-backed browser fixture.
+    values[:, : max(1, width // 4)] = 0.58
+    profile = {
+        "driver": "GTiff",
+        "width": width,
+        "height": height,
+        "count": 2,
+        "dtype": "float32",
+        "crs": "EPSG:4326",
+        "transform": from_bounds(west, south, east, north, width, height),
+        "compress": "deflate",
+        "nodata": -9999.0,
+    }
+    with MemoryFile() as memory:
+        with memory.open(**profile) as dataset:
+            dataset.write(values, 1)
+            dataset.write(valid, 2)
+        return memory.read()
 
 
 def _fixture_png() -> bytes:

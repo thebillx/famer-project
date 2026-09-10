@@ -8,7 +8,7 @@ from uuid import UUID
 
 @dataclass(frozen=True)
 class TenantScope:
-    organization_id: UUID
+    organization_id: UUID | None
     user_id: UUID
     role: str
 

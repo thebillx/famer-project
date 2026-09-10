@@ -93,4 +93,95 @@ export type SatelliteNdviSummary = {
   sample_count: number;
   valid_sample_count: number;
   valid_pixel_ratio: number;
+  comparison: SatelliteNdviComparison | null;
+  comparison_status: "NOT_ASSESSABLE";
+  comparison_reason: "NO_PREVIOUS_OBSERVATION" | "COMMON_SPATIAL_SUPPORT_NOT_PROVEN";
+};
+
+export type SatelliteNdviComparison = {
+  previous_acquired_at: string;
+  previous_ndvi_mean: number;
+  ndvi_mean_delta: number;
+  direction: "increased" | "decreased" | "unchanged";
+};
+
+export type Observation = {
+  observation_id: string;
+  field_id: string;
+  acquired_at: string;
+  cloud_percent: number | null;
+  source: "Sentinel-2";
+  status: "USABLE" | "POOR_QUALITY" | "UNAVAILABLE";
+  imagery_available: boolean;
+  geometry_hash: string | null;
+  analysis_eligible: boolean;
+  analysis_ready: boolean;
+  comparison_eligible: boolean;
+};
+
+export type ObservationNdviSummary = {
+  observation_id: string;
+  field_id: string;
+  acquired_at: string;
+  algorithm_version: string;
+  geometry_hash: string;
+  analysis_eligible: true;
+  analysis_ready: true;
+  assessable: true;
+  ndvi_mean: number;
+  ndvi_min: number;
+  ndvi_max: number;
+  ndvi_stddev: number;
+  sample_count: number;
+  valid_sample_count: number;
+  valid_pixel_ratio: number;
+};
+
+export type ObservationRaster = {
+  observation_id: string;
+  field_id: string;
+  acquired_at: string;
+  algorithm_version: string;
+  geometry_hash: string;
+  crs: "EPSG:4326";
+  bounds: [number, number, number, number];
+  width: number;
+  height: number;
+  nodata: number;
+  value_min: number;
+  value_max: number;
+  valid_pixel_ratio: number;
+  image_url: string;
+};
+
+export type GeoJsonMultiPolygon = { type: "MultiPolygon"; coordinates: number[][][][] };
+
+export type ComparisonSupport = {
+  common_valid_pixel_count: number;
+  field_grid_pixel_count: number;
+  common_support_ratio: number;
+  minimum_required_ratio: number;
+  policy_version: string;
+  denominator: "FIELD_GRID_PIXEL_CENTERS";
+  reason: "SUFFICIENT_COMMON_SUPPORT" | "NO_COMMON_SUPPORT" | "BELOW_MINIMUM_COMMON_SUPPORT";
+};
+
+export type FieldChange = {
+  field_id: string;
+  before_observation_id: string;
+  after_observation_id: string;
+  algorithm_version: string;
+  geometry_hash: string;
+  before_observation_ndvi_mean: number;
+  after_observation_ndvi_mean: number;
+  before_ndvi: number | null;
+  after_ndvi: number | null;
+  ndvi_delta: number | null;
+  changed_area_sqm: number | null;
+  changed_area_rai: number | null;
+  threshold: -0.1;
+  highlight_semantics: "NDVI_DECREASE_AT_OR_BELOW_THRESHOLD";
+  status: "USABLE" | "NOT_ASSESSABLE";
+  support: ComparisonSupport;
+  geometry: GeoJsonMultiPolygon | null;
 };
