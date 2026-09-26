@@ -28,6 +28,7 @@ from apps.api.agriscope_api.providers.cdse_stac import (
     CDSE_STAC_PROVIDER,
     SENTINEL_2_L2A_COLLECTION,
     CdseStacItem,
+    CdseStacHistoryResult,
     CdseStacSearchResult,
     CdseStacUnavailable,
 )
@@ -168,7 +169,7 @@ def _truncate_application_tables() -> None:
     with _connect() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "TRUNCATE field_ndvi_snapshots, field_observation_analyses, field_acquisitions, fields, farms, refresh_sessions, memberships, organizations, users"
+                "TRUNCATE field_backfill_receipts, field_ndvi_snapshots, field_observation_analyses, field_acquisitions, fields, farms, refresh_sessions, memberships, organizations, users"
             )
 
 
@@ -1914,3 +1915,174 @@ def test_geometry_edit_changes_analysis_identity_without_overwriting_history(cli
             count, hashes = cur.fetchone()
             assert count == 1
             assert hashes == [original_hash]
+
+
+class FakeHistoryProvider:
+    def __init__(self):
+        self.calls = 0
+        self.failure = False
+        self.truncated = False
+        self.empty = False
+        self.started = threading.Event()
+        self.release = None
+
+    async def search_history(self, geometry, *, start, end, max_pages):
+        self.calls += 1
+        self.started.set()
+        if self.release is not None:
+            assert self.release.wait(timeout=5)
+        if self.failure:
+            raise CdseStacUnavailable("private upstream failure")
+        items = tuple(CdseStacItem(
+            provider=CDSE_STAC_PROVIDER,
+            collection=SENTINEL_2_L2A_COLLECTION,
+            item_id=f"HISTORY_{index}",
+            acquired_at=datetime(2026, 7, 20 + index, 3, tzinfo=UTC),
+            cloud_cover_percent=cloud,
+            provider_metadata={"untrusted_secret": "must not persist"},
+        ) for index, cloud in enumerate((5.0, 90.0)))
+        return CdseStacHistoryResult(
+            items=() if self.empty else items,
+            searched_at=datetime.now(UTC), page_count=2, truncated=self.truncated,
+        )
+
+
+def _history_fixture(client):
+    owner = _register(client, "history-owner@example.com")
+    farm = _create_farm(client, owner["organization"]["id"])
+    field = _create_field(client, farm["id"])
+    provider = FakeHistoryProvider()
+    client.app.state.cdse_stac_provider = provider
+    return owner, field, provider, f"/api/v1/fields/{field['id']}/observations/backfill"
+
+
+HISTORY_RANGE = {"start_date": "2026-07-01", "end_date": "2026-07-31"}
+
+
+def test_history_atomic_receipt_replay_and_original_geometry_lineage(client):
+    _owner, field, provider, url = _history_fixture(client)
+    result = client.post(url, json=HISTORY_RANGE)
+    assert result.status_code == 200, result.text
+    receipt = result.json()
+    assert receipt["status"] == "COMPLETED"
+    assert (receipt["catalog_found_count"], receipt["persisted_count"], receipt["rejected_count"]) == (2, 2, 1)
+    assert client.get(f"{url}/{receipt['id']}").json() == receipt
+    assert client.post(url, json=HISTORY_RANGE).json() == receipt
+    assert provider.calls == 1
+    history = client.get(f"/api/v1/fields/{field['id']}/observations").json()
+    original_hash = geometry_fingerprint(field["geometry"])
+    assert len(history) == 2
+    assert all(row["geometry_hash"] == original_hash for row in history)
+    with _connect() as conn:
+        rows = conn.execute("SELECT provider_metadata FROM field_acquisitions").fetchall()
+        assert all("untrusted_secret" not in row[0] for row in rows)
+    moved = json.loads(json.dumps(field["geometry"]))
+    for point in moved["coordinates"][0]:
+        point[0] += 0.0002
+    assert client.patch(f"/api/v1/fields/{field['id']}", json={"geometry": moved}).status_code == 200
+    again = client.post(url, json=HISTORY_RANGE)
+    assert again.status_code == 200, again.text
+    assert again.json()["id"] != receipt["id"]
+    assert again.json()["persisted_count"] == 0
+    assert provider.calls == 2
+    history = client.get(f"/api/v1/fields/{field['id']}/observations").json()
+    assert all(row["geometry_hash"] == original_hash and not row["analysis_eligible"] for row in history)
+
+
+@pytest.mark.parametrize("failure_kind", ["failure", "truncated"])
+def test_history_failure_rolls_back_receipt_and_acquisitions_then_retries(client, failure_kind):
+    _owner, _field, provider, url = _history_fixture(client)
+    setattr(provider, failure_kind, True)
+    response = client.post(url, json=HISTORY_RANGE)
+    assert response.status_code == (503 if failure_kind == "failure" else 422)
+    assert "private upstream" not in response.text
+    with _connect() as conn:
+        assert conn.execute("SELECT count(*) FROM field_backfill_receipts").fetchone()[0] == 0
+        assert conn.execute("SELECT count(*) FROM field_acquisitions").fetchone()[0] == 0
+    setattr(provider, failure_kind, False)
+    retried = client.post(url, json=HISTORY_RANGE)
+    assert retried.status_code == 200, retried.text
+    assert retried.json()["persisted_count"] == 2
+    assert provider.calls == 2
+
+
+def test_history_empty_range_commits_explicit_receipt(client):
+    _owner, _field, provider, url = _history_fixture(client)
+    provider.empty = True
+    response = client.post(url, json=HISTORY_RANGE)
+    assert response.status_code == 200, response.text
+    assert response.json()["catalog_found_count"] == 0
+    assert response.json()["no_history_reason"] == "NO_CATALOG_RESULTS_IN_BOUNDED_RANGE"
+
+
+def test_history_concurrent_identical_requests_share_one_committed_receipt(client):
+    _owner, _field, provider, url = _history_fixture(client)
+    provider.release = threading.Event()
+    cookies = dict(client.cookies)
+    csrf = client.headers["X-CSRF-Token"]
+
+    def discover():
+        worker = TestClient(client.app)
+        worker.cookies.update(cookies)
+        return worker.post(url, json=HISTORY_RANGE, headers={"Origin": APP_ORIGIN, "X-CSRF-Token": csrf})
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        first = executor.submit(discover)
+        assert provider.started.wait(timeout=5)
+        second = executor.submit(discover)
+        provider.release.set()
+        responses = [first.result(timeout=10), second.result(timeout=10)]
+    assert [response.status_code for response in responses] == [200, 200]
+    assert responses[0].json() == responses[1].json()
+    assert provider.calls == 1
+    with _connect() as conn:
+        assert conn.execute("SELECT count(*) FROM field_backfill_receipts").fetchone()[0] == 1
+        assert conn.execute("SELECT count(*) FROM field_acquisitions").fetchone()[0] == 2
+
+
+def test_history_authorization_denies_provider_work_and_hides_receipts(client):
+    owner, field, provider, url = _history_fixture(client)
+    receipt = client.post(url, json=HISTORY_RANGE).json()
+    provider.calls = 0
+    stranger = TestClient(client.app)
+    other = _register(stranger, "history-stranger@example.com")
+    assert stranger.post(url, json=HISTORY_RANGE).status_code == 404
+    assert stranger.get(f"{url}/{receipt['id']}").status_code == 404
+    with _connect() as conn:
+        conn.execute("INSERT INTO memberships (organization_id,user_id,role,status,joined_at) VALUES (%s,%s,'field_manager','active',now())", (owner["organization"]["id"], other["user"]["id"]))
+    assert stranger.post(url, json=HISTORY_RANGE).status_code == 404
+    assert stranger.get(f"{url}/{receipt['id']}").status_code == 404
+    with _connect() as conn:
+        conn.execute("UPDATE memberships SET role='viewer' WHERE organization_id=%s AND user_id=%s", (owner["organization"]["id"], owner["user"]["id"]))
+    assert client.post(url, json=HISTORY_RANGE).status_code == 403
+    assert client.get(f"{url}/{receipt['id']}").status_code == 200
+    with _connect() as conn:
+        conn.execute("UPDATE memberships SET status='disabled' WHERE organization_id=%s AND user_id=%s", (owner["organization"]["id"], owner["user"]["id"]))
+    assert client.post(url, json=HISTORY_RANGE).status_code == 404
+    anonymous = TestClient(client.app)
+    assert anonymous.post(url, json=HISTORY_RANGE).status_code == 401
+    assert provider.calls == 0
+
+
+def test_history_range_csrf_and_rate_gates_precede_provider(client):
+    _owner, _field, provider, url = _history_fixture(client)
+    invalid = [
+        {}, {"start_date": "2026-07-01"},
+        {**HISTORY_RANGE, "unexpected": True},
+        {**HISTORY_RANGE, "start_at": "2026-07-01T00:00:00Z"},
+        {"start_at": "2026-07-01T00:00:00", "end_at": "2026-07-02T00:00:00Z"},
+        {"start_at": "2026-07-02T00:00:00Z", "end_at": "2026-07-01T00:00:00Z"},
+        {"start_at": "2024-07-01T00:00:00Z", "end_at": "2026-07-01T00:00:01Z"},
+    ]
+    for payload in invalid:
+        response = client.post(url, json=payload)
+        assert response.status_code == 422, response.text
+    assert client.post(url, json=HISTORY_RANGE, headers={"X-CSRF-Token": "invalid"}).status_code == 403
+    assert provider.calls == 0
+    # A failed provider call consumes the same bounded provider budget as success.
+    provider.failure = True
+    for _ in range(client.app.state.settings.rate_limit_satellite_field):
+        assert client.post(url, json=HISTORY_RANGE).status_code == 503
+    calls = provider.calls
+    assert client.post(url, json=HISTORY_RANGE).status_code == 429
+    assert provider.calls == calls

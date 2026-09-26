@@ -13,6 +13,9 @@ OWNER_MIGRATION = pathlib.Path("apps/api/migrations/versions/20260823_0004_farm_
 OBSERVATION_MIGRATION = pathlib.Path("apps/api/migrations/versions/20260830_0005_observation_analysis.py")
 MERGE_MIGRATION = pathlib.Path("apps/api/migrations/versions/20260908_0006_ndvi_history.py")
 LINEAGE_MIGRATION = pathlib.Path("apps/api/migrations/versions/20260908_0007_observation_geometry_lineage.py")
+HISTORY_RECEIPT_MIGRATION = pathlib.Path(
+    "apps/api/migrations/versions/20260926_0008_history_receipts.py"
+)
 
 
 class MigrationContractTests(unittest.TestCase):
@@ -90,6 +93,23 @@ class MigrationContractTests(unittest.TestCase):
         self.assertIn("geometry_hash", lineage)
         self.assertIn("uq_observation_analysis_analysis_identity", lineage)
         self.assertIn("uq_field_ndvi_snapshot_analysis_identity", lineage)
+
+    def test_bounded_history_receipt_migration_is_forward_only_and_tenant_bound(self):
+        text = HISTORY_RECEIPT_MIGRATION.read_text()
+        module = ast.parse(text)
+        functions = {node.name for node in module.body if isinstance(node, ast.FunctionDef)}
+        self.assertEqual(functions & {"upgrade", "downgrade"}, {"upgrade", "downgrade"})
+        self.assertIn('revision = "20260926_0008"', text)
+        self.assertIn('down_revision = "20260908_0007"', text)
+        self.assertIn('"field_backfill_receipts"', text)
+        self.assertIn("fk_field_backfill_receipts_field_organization", text)
+        self.assertIn("uq_field_backfill_receipt_identity", text)
+        self.assertIn('"geometry_hash"', text)
+        self.assertIn('"start_at"', text)
+        self.assertIn('"end_at"', text)
+        self.assertIn("status = 'COMPLETED'", text)
+        self.assertNotIn("field_backfill_jobs", text)
+        self.assertNotIn("field_geometry_versions", text)
 
 
 if __name__ == "__main__":

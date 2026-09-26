@@ -1,0 +1,30 @@
+.discovery {
+  border-bottom: 1px solid var(--agri-line-subtle, #c9cec5);
+  background: var(--agri-surface-panel, #faf9f4);
+  color: var(--agri-ink-strong, #202a24);
+  font-family: var(--as-font-ui);
+  font-size: 14px;
+}
+
+.discovery summary {
+  min-height: 44px;
+  padding: 12px 20px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.content { padding: 0 20px 16px; }
+.content p { margin: 8px 0; max-width: 75ch; line-height: 1.6; }
+.controls { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; margin: 12px 0; padding: 0; border: 0; }
+.controls label { display: grid; gap: 5px; }
+.legend { margin-bottom: 8px; font-weight: 600; }
+.controls input { min-height: 44px; max-width: 100%; padding: 8px; border: 1px solid var(--agri-line-subtle, #c9cec5); background: #fff; color: inherit; }
+.action { min-height: 44px; padding: 8px 14px; background: var(--agri-brand-olive, #3d543b); border: 1px solid var(--agri-brand-olive, #3d543b); color: #fff; font-weight: 600; cursor: pointer; }
+.action:disabled { opacity: .6; cursor: wait; }
+.action:hover:not(:disabled) { background: #2f432e; }
+.discovery summary:focus-visible, .controls input:focus-visible, .action:focus-visible { outline: 3px solid var(--agri-brand-olive, #3d543b); outline-offset: 3px; }
+
+@media (max-width: 560px) {
+  .controls { display: grid; grid-template-columns: minmax(0, 1fr); }
+  .controls label, .controls input { width: 100%; min-width: 0; }
+}

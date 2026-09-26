@@ -153,6 +153,134 @@ class CdseStacClientTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(result.item)
         self.assertEqual(result.item.item_id, "older-acceptable-from-provider-filter")
 
+    async def test_history_search_keeps_query_and_deduplicates_pages(self):
+        calls: list[tuple[str, dict]] = []
+
+        async def post_json(url, payload, _timeout):
+            calls.append((url, payload))
+            if len(calls) == 1:
+                return 200, {
+                    "features": [
+                        feature("cloudy", "2026-07-01T00:00:00Z", 95.0),
+                        feature("shared", "2026-07-02T00:00:00Z", 12.0),
+                    ],
+                    "links": [{
+                        "rel": "next",
+                        "href": self.client().stac_url,
+                        "method": "POST",
+                        "body": {"token": "page-2"},
+                    }],
+                }
+            return 200, {
+                "features": [
+                    feature("shared", "2026-07-02T00:00:00Z", 12.0),
+                    feature("new", "2026-07-03T00:00:00Z", 4.0),
+                ]
+            }
+
+        result = await self.client(post_json=post_json).search_history(
+            GEOMETRY,
+            start=datetime(2026, 7, 1, tzinfo=UTC),
+            end=datetime(2026, 7, 31, tzinfo=UTC),
+        )
+
+        self.assertEqual([item.item_id for item in result.items], ["cloudy", "shared", "new"])
+        self.assertEqual(result.page_count, 2)
+        self.assertFalse(result.truncated)
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(calls[0][1]["sortby"], [{"field": "properties.datetime", "direction": "asc"}])
+        self.assertNotIn("filter", calls[0][1])
+        self.assertNotIn("filter-lang", calls[0][1])
+        self.assertEqual(calls[1][1]["collections"], calls[0][1]["collections"])
+        self.assertEqual(calls[1][1]["intersects"], calls[0][1]["intersects"])
+        self.assertEqual(calls[1][1]["datetime"], calls[0][1]["datetime"])
+        self.assertEqual(calls[1][1]["token"], "page-2")
+
+    async def test_history_search_rejects_non_post_continuation_before_followup(self):
+        calls = 0
+
+        async def post_json(_url, _payload, _timeout):
+            nonlocal calls
+            calls += 1
+            return 200, {
+                "features": [],
+                "links": [{
+                    "rel": "next",
+                    "href": self.client().stac_url,
+                    "method": "GET",
+                    "token": "page-2",
+                }],
+            }
+
+        with self.assertRaises(CdseStacMalformedResponse):
+            await self.client(post_json=post_json).search_history(
+                GEOMETRY,
+                start=datetime(2026, 7, 1, tzinfo=UTC),
+                end=datetime(2026, 7, 31, tzinfo=UTC),
+            )
+        self.assertEqual(calls, 1)
+
+    async def test_history_search_rejects_untrusted_continuations_before_followup(self):
+        origin = self.client().stac_url
+        cases = (
+            ("cross_origin", "https://evil.example/search?token=page-2", {}),
+            ("userinfo", origin.replace("https://", "https://user:pass@") + "?token=page-2", {}),
+            ("fragment", origin + "?token=page-2#fragment", {}),
+            ("query_widening", origin + "?token=page-2&limit=100", {}),
+            (
+                "body_geometry_widening",
+                origin,
+                {"body": {"token": "page-2", "intersects": {"type": "Polygon", "coordinates": []}}},
+            ),
+            (
+                "body_filter_widening",
+                origin,
+                {"body": {"token": "page-2", "filter": {"op": "alwaysTrue"}}},
+            ),
+        )
+
+        for name, href, continuation in cases:
+            with self.subTest(name=name):
+                calls = 0
+
+                async def post_json(_url, _payload, _timeout):
+                    nonlocal calls
+                    calls += 1
+                    return 200, {
+                        "features": [],
+                        "links": [{
+                            "rel": "next",
+                            "href": href,
+                            "method": "POST",
+                            **continuation,
+                        }],
+                    }
+
+                with self.assertRaises(CdseStacMalformedResponse):
+                    await self.client(post_json=post_json).search_history(
+                        GEOMETRY,
+                        start=datetime(2026, 7, 1, tzinfo=UTC),
+                        end=datetime(2026, 7, 31, tzinfo=UTC),
+                    )
+                self.assertEqual(calls, 1)
+
+    async def test_history_search_marks_page_cap_truncated(self):
+        async def post_json(_url, _payload, _timeout):
+            return 200, {
+                "features": [feature("first", "2026-07-01T00:00:00Z")],
+                "next": "page-2",
+            }
+
+        result = await self.client(post_json=post_json).search_history(
+            GEOMETRY,
+            start=datetime(2026, 7, 1, tzinfo=UTC),
+            end=datetime(2026, 7, 31, tzinfo=UTC),
+            max_pages=1,
+        )
+        self.assertEqual(result.page_count, 1)
+        self.assertTrue(result.truncated)
+        self.assertEqual([item.item_id for item in result.items], ["first"])
+
 
 if __name__ == "__main__":
     unittest.main()

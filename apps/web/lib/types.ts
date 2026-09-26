@@ -185,3 +185,18 @@ export type FieldChange = {
   support: ComparisonSupport;
   geometry: GeoJsonMultiPolygon | null;
 };
+
+export type BackfillReceipt = {
+  id: string;
+  field_id: string;
+  start_at: string;
+  end_at: string;
+  status: "COMPLETED";
+  pages_discovered: number;
+  catalog_found_count: number;
+  persisted_count: number;
+  rejected_count: number;
+  no_history_reason: string | null;
+  started_at: string;
+  completed_at: string;
+};

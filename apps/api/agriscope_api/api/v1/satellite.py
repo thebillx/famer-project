@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Annotated, Any, Literal, TypeAlias
 
 try:
     from fastapi import APIRouter, Depends, Request, Response
-    from pydantic import BaseModel, Field
+    from pydantic import BaseModel, ConfigDict, Field, model_validator
 except Exception:  # pragma: no cover
     APIRouter = None  # type: ignore[assignment]
     Depends = None  # type: ignore[assignment]
@@ -16,6 +16,12 @@ except Exception:  # pragma: no cover
 
     class BaseModel:  # type: ignore[no-redef]
         pass
+
+    class ConfigDict(dict):  # type: ignore[no-redef]
+        pass
+
+    def model_validator(*args, **kwargs):  # type: ignore[no-untyped-def]
+        return lambda function: function
 
     def Field(*args, **kwargs):  # type: ignore[no-untyped-def]
         return None
@@ -160,6 +166,58 @@ class ChangeResponse(BaseModel):
     geometry: dict[str, Any] | None
 
 
+class BackfillRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    start_at: datetime | None = None
+    end_at: datetime | None = None
+    start_date: date | None = None
+    end_date: date | None = None
+
+    @model_validator(mode="after")
+    def validate_range_aliases(self):
+        has_timestamps = self.start_at is not None or self.end_at is not None
+        has_dates = self.start_date is not None or self.end_date is not None
+        if has_timestamps and has_dates:
+            raise ValueError("use either start_date/end_date or start_at/end_at")
+        if has_timestamps:
+            if self.start_at is None or self.end_at is None:
+                raise ValueError("start_at and end_at are required together")
+            if self.start_at.tzinfo is None or self.end_at.tzinfo is None:
+                raise ValueError("start_at and end_at must include a timezone")
+            if self.start_at.utcoffset() is None or self.end_at.utcoffset() is None:
+                raise ValueError("start_at and end_at must include a timezone")
+            if self.start_at > self.end_at:
+                raise ValueError("start_at must not be after end_at")
+            if self.end_at - self.start_at > timedelta(days=730):
+                raise ValueError("backfill range exceeds 730 days")
+            return self
+        if self.start_date is None or self.end_date is None:
+            raise ValueError("start_date and end_date are required together")
+        if self.start_date > self.end_date:
+            raise ValueError("start_date must not be after end_date")
+        if self.end_date - self.start_date > timedelta(days=730):
+            raise ValueError("backfill range exceeds 730 days")
+        self.start_at = datetime.combine(self.start_date, time.min, tzinfo=UTC)
+        self.end_at = datetime.combine(self.end_date, time.max, tzinfo=UTC)
+        return self
+
+
+class BackfillReceiptResponse(BaseModel):
+    id: str
+    field_id: str
+    start_at: datetime
+    end_at: datetime
+    status: Literal["COMPLETED"]
+    pages_discovered: int
+    catalog_found_count: int
+    persisted_count: int
+    rejected_count: int
+    no_history_reason: str | None
+    started_at: datetime
+    completed_at: datetime
+
+
 SatelliteLatestResponse: TypeAlias = Annotated[
     SatelliteAvailableResponse | SatelliteNotSearchedResponse | SatelliteEmptySearchResponse,
     Field(discriminator="status"),
@@ -178,8 +236,14 @@ if router:
 
     from apps.api.agriscope_api.core.csrf import validate_csrf
     from apps.api.agriscope_api.core.rate_limit import RateLimitBucket, enforce_rate_limit
-    from apps.api.agriscope_api.dependencies.auth import get_current_user
+    from apps.api.agriscope_api.core.security import Role
+    from apps.api.agriscope_api.dependencies.auth import (
+        get_active_membership,
+        get_current_user,
+        require_minimum_role,
+    )
     from apps.api.agriscope_api.dependencies.runtime import get_db_session, get_settings
+    from apps.api.agriscope_api.services.observation_history import ObservationHistoryService
     from apps.api.agriscope_api.services.satellite import SatelliteService, cloud_decimal_to_float
 
     def _satellite_limits(request: Request, user_id, field_id, settings) -> None:
@@ -194,6 +258,71 @@ if router:
         user = await get_current_user(request, session)
         rows = await SatelliteService(session, settings).list_observations(user_id=user.id, field_id=field_id)
         return [ObservationResponse(**{**row.__dict__, "observation_id": str(row.observation_id), "field_id": str(row.field_id)}) for row in rows]
+
+    def _backfill_receipt_response(receipt) -> BackfillReceiptResponse:
+        return BackfillReceiptResponse(
+            id=str(receipt.id),
+            field_id=str(receipt.field_id),
+            start_at=receipt.start_at,
+            end_at=receipt.end_at,
+            status="COMPLETED",
+            pages_discovered=receipt.pages_discovered,
+            catalog_found_count=receipt.catalog_found_count,
+            persisted_count=receipt.persisted_count,
+            rejected_count=receipt.rejected_count,
+            no_history_reason=receipt.no_history_reason,
+            started_at=receipt.started_at,
+            completed_at=receipt.completed_at,
+        )
+
+    @router.post(
+        "/{field_id}/observations/backfill",
+        response_model=BackfillReceiptResponse,
+    )
+    async def backfill_observations(
+        field_id: UUID,
+        payload: BackfillRequest,
+        request: Request,
+        session=Depends(get_db_session),
+        settings=Depends(get_settings),
+    ) -> BackfillReceiptResponse:
+        user = await get_current_user(request, session)
+        validate_csrf(request)
+        service = SatelliteService(session, settings)
+        field = await service.get_authorized_field(user_id=user.id, field_id=field_id)
+        membership = await get_active_membership(session, user, field.organization_id)
+        require_minimum_role(membership, Role.FIELD_MANAGER)
+        _satellite_limits(request, user.id, field.id, settings)
+        result = await ObservationHistoryService(
+            session,
+            settings,
+            provider=getattr(request.app.state, "cdse_stac_provider", None),
+        ).run_backfill(
+            user_id=user.id,
+            field_id=field_id,
+            start_at=payload.start_at,
+            end_at=payload.end_at,
+        )
+        return _backfill_receipt_response(result.receipt)
+
+    @router.get(
+        "/{field_id}/observations/backfill/{receipt_id}",
+        response_model=BackfillReceiptResponse,
+    )
+    async def get_backfill_receipt(
+        field_id: UUID,
+        receipt_id: UUID,
+        request: Request,
+        session=Depends(get_db_session),
+        settings=Depends(get_settings),
+    ) -> BackfillReceiptResponse:
+        user = await get_current_user(request, session)
+        receipt = await ObservationHistoryService(session, settings).get_receipt(
+            user_id=user.id,
+            field_id=field_id,
+            receipt_id=receipt_id,
+        )
+        return _backfill_receipt_response(receipt)
 
     @router.get("/{field_id}/observations/{observation_id}/preview", response_class=Response,
         responses={200: {"content": {"image/png": {}}}})

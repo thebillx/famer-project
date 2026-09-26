@@ -36,6 +36,8 @@ EXPECTED_SCHEMAS = {
     "ObservationRaster",
     "ComparisonSupport",
     "FieldChange",
+    "BackfillRequest",
+    "BackfillReceipt",
     "User",
 }
 
@@ -61,6 +63,8 @@ EXPECTED_METHODS = {
     "/api/v1/fields/{field_id}/satellite/preview": {"get"},
     "/api/v1/fields/{field_id}/satellite/ndvi-summary": {"get"},
     "/api/v1/fields/{field_id}/observations": {"get"},
+    "/api/v1/fields/{field_id}/observations/backfill": {"post"},
+    "/api/v1/fields/{field_id}/observations/backfill/{receipt_id}": {"get"},
     "/api/v1/fields/{field_id}/observations/{observation_id}/preview": {"get"},
     "/api/v1/fields/{field_id}/observations/{observation_id}/ndvi-summary": {"get"},
     "/api/v1/fields/{field_id}/observations/{observation_id}/ndvi-raster": {"get"},
@@ -125,6 +129,12 @@ EXPECTED_RESPONSES = {
         "503",
     },
     ("/api/v1/fields/{field_id}/observations", "get"): {"200", "401", "404", "422"},
+    ("/api/v1/fields/{field_id}/observations/backfill", "post"): {
+        "200", "401", "403", "404", "422", "429", "503"
+    },
+    ("/api/v1/fields/{field_id}/observations/backfill/{receipt_id}", "get"): {
+        "200", "401", "404", "422"
+    },
     ("/api/v1/fields/{field_id}/observations/{observation_id}/preview", "get"): {"200", "401", "404", "422", "429", "503"},
     ("/api/v1/fields/{field_id}/observations/{observation_id}/ndvi-summary", "get"): {"200", "401", "404", "422", "429", "503"},
     ("/api/v1/fields/{field_id}/observations/{observation_id}/ndvi-raster", "get"): {"200", "401", "404", "422", "429", "503"},
@@ -165,6 +175,9 @@ EXPECTED_RATE_LIMITS = {
         "trusted-client-IP 300 and authenticated subject 60 per configured window."
     ),
     ("/api/v1/fields/{field_id}/satellite/search-latest", "post"): (
+        "authenticated subject 20 and subject plus HMAC(field ID) 10 per configured window."
+    ),
+    ("/api/v1/fields/{field_id}/observations/backfill", "post"): (
         "authenticated subject 20 and subject plus HMAC(field ID) 10 per configured window."
     ),
     ("/api/v1/fields/{field_id}/satellite/preview", "get"): (
@@ -229,6 +242,10 @@ OWNER_SCOPE_ASSERTIONS = {
     ("/api/v1/fields/{field_id}/satellite/search-latest", "post"): {
         "x-organization-scope": ("owner", "before any provider request"),
         "x-validation": ("non-owner",),
+    },
+    ("/api/v1/fields/{field_id}/observations/backfill", "post"): {
+        "x-organization-scope": ("before provider work", "hidden fields return 404"),
+        "x-validation": ("normalized UTC range", "730 days"),
     },
     ("/api/v1/fields/{field_id}/satellite/latest", "get"): {
         "x-organization-scope": ("farm owner", "before"),
@@ -646,6 +663,27 @@ class FoundationContractTests(unittest.TestCase):
                                 response["content"]["application/json"]["schema"],
                                 ERROR_RESPONSE_REF,
                             )
+
+    def test_backfill_schema_accepts_exactly_one_complete_pair(self):
+        schema = self.document["components"]["schemas"]["BackfillRequest"]
+        self.assertFalse(schema["additionalProperties"])
+        pairs = [("start_date", "end_date"), ("start_at", "end_at")]
+        self.assertEqual(schema["oneOf"], [
+            {"required": list(pair), "not": {"anyOf": [
+                {"required": [key]} for key in pairs[1 - index]
+            ]}} for index, pair in enumerate(pairs)
+        ])
+        # Exercise every presence/absence combination against the published
+        # required/not-anyOf branches, including empty, partial and mixed pairs.
+        keys = pairs[0] + pairs[1]
+        for mask in range(16):
+            supplied = {key for bit, key in enumerate(keys) if mask & (1 << bit)}
+            matches = sum(
+                set(branch["required"]) <= supplied
+                and not any(set(rule["required"]) <= supplied for rule in branch["not"]["anyOf"])
+                for branch in schema["oneOf"]
+            )
+            self.assertEqual(matches == 1, supplied in [set(pair) for pair in pairs], supplied)
 
     def test_shared_json_schemas_parse_strictly(self):
         schemas = REPOSITORY_ROOT / "packages/shared-types/schemas"
