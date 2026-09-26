@@ -195,6 +195,26 @@ const notAssessable: FieldChange = {
   geometry: null
 };
 
+const increasedNoDecreaseArea: FieldChange = {
+  ...change,
+  before_observation_ndvi_mean: 0.61,
+  after_observation_ndvi_mean: 0.65,
+  before_ndvi: 0.61,
+  after_ndvi: 0.65,
+  ndvi_delta: 0.04,
+  changed_area_sqm: 0,
+  changed_area_rai: 0,
+  geometry: { type: "MultiPolygon", coordinates: [] }
+};
+
+const malformedUsableChange: FieldChange = {
+  ...change,
+  ndvi_delta: null,
+  changed_area_sqm: null,
+  changed_area_rai: null,
+  geometry: null
+};
+
 type ErrorResponse = { status: number; code: string; message: string };
 type Operation = "preview" | "ndvi-summary" | "ndvi-raster" | "ndvi-raster/image";
 
@@ -299,7 +319,7 @@ function map(page: Page) {
 async function captureVisual(page: Page, name: string) {
   const directory = process.env.MAP_VISUAL_ARTIFACT_DIR;
   if (!directory) return;
-  await page.screenshot({ path: `${directory}/${name}.png`, fullPage: true });
+  await page.screenshot({ path: `${directory}/${test.info().project.name}-${name}.png`, fullPage: true });
 }
 
 async function renderedLandmarks(page: Page) {
@@ -488,14 +508,123 @@ test("[mocked-api] late A preview, summary, raster, and comparison responses can
   await expect(map(page)).toHaveAttribute("data-render-key", new RegExp(before.observation_id));
 });
 
+test("[mocked-api] trend-first workspace opens measurable decrease evidence first", async ({ page }) => {
+  await mockFieldWorkspace(page, { observations: [after, before] });
+  await page.goto(`/fields/${field.id}`);
+
+  await expect(page.getByRole("button", { name: "พื้นที่ NDVI ลดลง" })).toHaveAttribute("aria-pressed", "true");
+  const trend = page.locator('[data-trend-state="INSPECT"]');
+  await expect(trend).toContainText("แนวโน้มล่าสุด");
+  await expect(trend).toContainText("พบพื้นที่ควรตรวจ");
+  await expect(trend).toContainText("0.5 ไร่");
+  await expect(page.getByRole("link", { name: "เปรียบเทียบภาพ" })).toBeVisible();
+});
+
+test("[mocked-api] trend-first workspace reports measured increase without inventing priority", async ({ page }) => {
+  await mockFieldWorkspace(page, { observations: [after, before], changeResponse: increasedNoDecreaseArea });
+  await page.goto(`/fields/${field.id}`);
+
+  const trend = page.locator('[data-trend-state="INCREASED"]');
+  await expect(trend).toContainText("NDVI เพิ่มขึ้นจากครั้งก่อน");
+  await expect(trend).toContainText("0.04");
+  await expect(trend).not.toContainText("พบพื้นที่ควรตรวจ");
+});
+
+test("[mocked-api] failed trend request stays distinct from absent evidence and can retry", async ({ page }) => {
+  const options: MockOptions = {
+    observations: [after, before],
+    changeResponse: { status: 503, code: "satellite_temporarily_unavailable", message: "unavailable" }
+  };
+  const calls = await mockFieldWorkspace(page, options);
+  await page.goto(`/fields/${field.id}`);
+  await expect(page.locator('[data-trend-state="ERROR"]')).toContainText("โหลดแนวโน้มไม่สำเร็จ");
+  await expect(page.locator('[data-trend-state="NO_COMPARISON"]')).toHaveCount(0);
+  await captureVisual(page, "field-trend-error");
+  options.changeResponse = change;
+  await page.getByRole("button", { name: "ลองโหลดแนวโน้มอีกครั้ง" }).click();
+  await expect(page.locator('[data-trend-state="INSPECT"]')).toContainText("พบพื้นที่ควรตรวจ");
+  expect(calls.change).toBe(2);
+});
+
+test("[mocked-api] malformed usable comparison fails closed instead of treating missing values as zero", async ({ page }) => {
+  await mockFieldWorkspace(page, { observations: [after, before], changeResponse: malformedUsableChange });
+  await page.goto(`/fields/${field.id}`);
+
+  const trend = page.locator('[data-trend-state="NO_COMPARISON"]');
+  await expect(trend).toContainText("ยังสรุปแนวโน้มไม่ได้");
+  await expect(trend).toContainText("ไม่ตีความค่าที่หายเป็นศูนย์");
+  await expect(page.getByText("0.0 ไร่", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("→ 0.00", { exact: true })).toHaveCount(0);
+});
+
 test("[mocked-api] not-assessable comparison never renders unchanged or zero changed area", async ({ page }) => {
   await mockFieldWorkspace(page, { observations: [after, before], changeResponse: notAssessable });
   await page.goto(`/fields/${field.id}`);
 
+  await expect(page.getByRole("button", { name: "พื้นที่ NDVI ลดลง" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator('[data-trend-state="NOT_ASSESSABLE"]')).toContainText("ข้อมูลยังไม่พอสำหรับสรุปแนวโน้ม");
   await expect(page.getByText(/พื้นที่ร่วมที่ใช้วัดได้ 20\.0%/)).toBeVisible();
   await expect(page.getByText("0.0 ไร่", { exact: true })).toHaveCount(0);
   await expect(page.getByText("→ 0.00", { exact: true })).toHaveCount(0);
 });
+
+test("[mocked-api] trend-first workspace falls back to satellite when no comparable observation exists", async ({ page }) => {
+  await mockFieldWorkspace(page, { observations: [before] });
+  await page.goto(`/fields/${field.id}`);
+
+  await expect(page.getByRole("button", { name: "ภาพดาวเทียม" })).toHaveAttribute("aria-pressed", "true");
+  const trend = page.locator('[data-trend-state="NO_COMPARISON"]');
+  await expect(trend).toContainText("ยังสรุปแนวโน้มไม่ได้");
+  await expect(trend).toContainText("อย่างน้อยสองช่วงเวลา");
+});
+
+test("[mocked-api] mobile trend workspace keeps context compact and controls touch-sized", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockFieldWorkspace(page, { observations: [after, before] });
+  await page.goto(`/fields/${field.id}`);
+
+  await expect(page.locator('[data-trend-state="INSPECT"]')).toContainText("พบพื้นที่ควรตรวจ");
+
+  const fieldRail = page.getByRole("heading", { level: 1, name: `แปลง ${field.name}` }).locator("..");
+  const canvas = page.getByRole("region", { name: "ภาพวิเคราะห์แปลง" });
+  const mode = page.getByRole("button", { name: "พื้นที่ NDVI ลดลง" });
+  const timeline = page.locator(`[data-observation-id="${after.observation_id}"]`);
+
+  const railBox = await fieldRail.boundingBox();
+  const canvasBox = await canvas.boundingBox();
+  const modeBox = await mode.boundingBox();
+  const timelineBox = await timeline.boundingBox();
+
+  expect(railBox?.height ?? 999).toBeLessThan(100);
+  expect(canvasBox?.height ?? 0).toBeGreaterThanOrEqual(400);
+  expect(canvasBox?.y ?? 999).toBeLessThan(180);
+  expect(modeBox?.height ?? 0).toBeGreaterThanOrEqual(44);
+  expect(timelineBox?.height ?? 0).toBeGreaterThanOrEqual(44);
+  await expect(page.locator("body")).not.toHaveCSS("overflow-x", "scroll");
+});
+
+for (const width of [390, 920]) {
+test(`[mocked-api] compare at ${width}px keeps evidence and slider readable without overlap`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 844 });
+  await mockFieldWorkspace(page, { observations: [after, before] });
+  await page.goto(`/fields/${field.id}/compare?before=${before.observation_id}&after=${after.observation_id}`);
+  await expect(page.getByText("หลักฐานการเปลี่ยนแปลง")).toBeVisible();
+  const mapBox = await map(page).boundingBox();
+  const slider = page.getByRole("slider", { name: "เลื่อนเพื่อเปรียบเทียบภาพก่อนและภาพล่าสุด" });
+  const sliderBox = await slider.locator("..").boundingBox();
+  const noteBox = await page.getByText(/พิกเซลบนพื้นที่ร่วมที่ค่า NDVI ลดลง/).boundingBox();
+  const evidenceBox = await page.getByText("หลักฐานการเปลี่ยนแปลง").locator("..").boundingBox();
+  if (!mapBox || !sliderBox || !noteBox || !evidenceBox) throw new Error("Compare layout missing");
+  expect(mapBox.height).toBeGreaterThanOrEqual(400);
+  expect(sliderBox.y + sliderBox.height).toBeLessThanOrEqual(mapBox.y + mapBox.height);
+  expect(noteBox.y).toBeGreaterThanOrEqual(mapBox.y + mapBox.height);
+  expect(evidenceBox.y).toBeGreaterThanOrEqual(noteBox.y + noteBox.height);
+  await slider.focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(slider).toHaveValue("51");
+  await captureVisual(page, `field-compare-layout-${width}`);
+});
+}
 
 test("[mocked-api] map initialization errors remain visible until a real retry succeeds", async ({ page }) => {
   let styleFailed = true;
@@ -522,6 +651,7 @@ test("[mocked-api] known raster and vector landmarks remain registered after pan
 
   await page.getByRole("button", { name: "พื้นที่ NDVI ลดลง" }).click();
   await expect(page.getByText(/พิกเซลบนพื้นที่ร่วมที่ค่า NDVI ลดลง/)).toBeVisible();
+  await expect.poll(async () => (await renderedLandmarks(page)).clayCount).toBeGreaterThan(10);
   const initial = await renderedLandmarks(page);
   expect(initial.cyanCount).toBeGreaterThan(10);
   expect(initial.clayCount).toBeGreaterThan(10);
