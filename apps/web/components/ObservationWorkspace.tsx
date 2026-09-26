@@ -191,6 +191,8 @@ function useObservationAssets(fieldId: string, observation: Observation | undefi
 function useObservationChange(field: FieldBoundary, before: Observation | undefined, after: Observation | undefined) {
   const identityKey = comparisonIdentity(field.id, before, after);
   const [state, setState] = useState<ChangeState>({ identityKey: "", loading: false });
+  const [retryVersion, setRetryVersion] = useState(0);
+  const retry = () => setRetryVersion((value) => value + 1);
   const epoch = useRef(0);
   useEffect(() => {
     const current = ++epoch.current;
@@ -212,17 +214,92 @@ function useObservationChange(field: FieldBoundary, before: Observation | undefi
       if (epoch.current === current) setState({ identityKey, error, loading: false });
     });
     return () => { epoch.current++; };
-  }, [after?.geometry_hash, after?.observation_id, before?.geometry_hash, before?.observation_id, field.id, identityKey]);
-  if (state.identityKey !== identityKey) return { change: null, error: undefined, loading: Boolean(before && after) };
-  return { change: state.value ?? null, error: state.error, loading: state.loading };
+  }, [after?.geometry_hash, after?.observation_id, before?.geometry_hash, before?.observation_id, field.id, identityKey, retryVersion]);
+  if (state.identityKey !== identityKey) return { change: null, error: undefined, loading: Boolean(before && after), retry };
+  return { change: state.value ?? null, error: state.error, loading: state.loading, retry };
 }
 
 function ModeControl({ mode, setMode }: { mode: Mode; setMode: (mode: Mode) => void }) {
-  return <div className={styles.modeControl} aria-label="ชั้นข้อมูล">{(["satellite", "ndvi", "change"] as Mode[]).map((item) => <button key={item} type="button" aria-pressed={mode === item} onClick={() => setMode(item)}>{item === "satellite" ? "ภาพดาวเทียม" : item === "ndvi" ? "NDVI" : "พื้นที่ NDVI ลดลง"}</button>)}</div>;
+  return <div className={styles.modeControl} role="group" aria-label="ชั้นข้อมูล">{(["satellite", "ndvi", "change"] as Mode[]).map((item) => <button key={item} type="button" aria-pressed={mode === item} onClick={() => setMode(item)}>{item === "satellite" ? "ภาพดาวเทียม" : item === "ndvi" ? "NDVI" : "พื้นที่ NDVI ลดลง"}</button>)}</div>;
 }
 
 function Timeline({ observations, selected, before, onSelect }: { observations: Observation[]; selected: string; before?: string; onSelect: (id: string) => void }) {
-  return <div className={styles.timeline} aria-label="ช่วงเวลาที่ใช้วิเคราะห์"><span>ช่วงเวลาที่ใช้วิเคราะห์</span><div className={styles.timelineDates}>{observations.slice(0, 8).reverse().map((item) => <button key={item.observation_id} type="button" data-observation-id={item.observation_id} data-current={item.observation_id === selected} data-before={item.observation_id === before} data-analysis-ready={item.analysis_ready} data-analysis-eligible={item.analysis_eligible} onClick={() => onSelect(item.observation_id)}><i aria-hidden="true" /><strong>{shortDate(item.acquired_at)}</strong><small>{item.observation_id === selected ? "เลือก" : item.status === "POOR_QUALITY" ? "เมฆสูง" : item.analysis_ready ? "วัดแล้ว" : item.analysis_eligible ? "พร้อมประเมิน" : "จำกัด"}</small></button>)}</div></div>;
+  return <div className={styles.timeline} role="group" aria-label="ช่วงเวลาที่ใช้วิเคราะห์"><span>ช่วงเวลาที่ใช้วิเคราะห์</span><div className={styles.timelineDates}>{observations.slice(0, 8).reverse().map((item) => <button key={item.observation_id} type="button" data-observation-id={item.observation_id} data-current={item.observation_id === selected} data-before={item.observation_id === before} data-analysis-ready={item.analysis_ready} data-analysis-eligible={item.analysis_eligible} onClick={() => onSelect(item.observation_id)}><i aria-hidden="true" /><strong>{shortDate(item.acquired_at)}</strong><small>{item.observation_id === selected ? "เลือก" : item.status === "POOR_QUALITY" ? "เมฆสูง" : item.analysis_ready ? "วัดแล้ว" : item.analysis_eligible ? "พร้อมประเมิน" : "จำกัด"}</small></button>)}</div></div>;
+}
+
+type TrendState = "INSPECT" | "DECREASED" | "INCREASED" | "UNCHANGED" | "NOT_ASSESSABLE" | "NO_COMPARISON" | "PENDING" | "ERROR";
+
+function trendSummary(change: FieldChange | null, before: Observation | undefined, loading: boolean, error: unknown): { state: TrendState; title: string; detail: string } {
+  if (!before) {
+    return {
+      state: "NO_COMPARISON",
+      title: "ยังสรุปแนวโน้มไม่ได้",
+      detail: "ต้องมีข้อมูลที่ใช้เปรียบเทียบได้อย่างน้อยสองช่วงเวลาก่อนจึงจะแสดงแนวโน้ม"
+    };
+  }
+  if (error) {
+    return {
+      state: "ERROR",
+      title: "โหลดแนวโน้มไม่สำเร็จ",
+      detail: "ยังตรวจผลเปรียบเทียบของวันที่เลือกไม่ได้ กรุณาลองโหลดอีกครั้ง"
+    };
+  }
+  if (loading && !change) {
+    return {
+      state: "PENDING",
+      title: "กำลังตรวจแนวโน้มล่าสุด",
+      detail: `กำลังเปรียบเทียบกับข้อมูลวันที่ ${thaiDate(before.acquired_at)} บนพื้นที่ร่วมที่ใช้วัดได้`
+    };
+  }
+  if (!change) {
+    return {
+      state: "NO_COMPARISON",
+      title: "ยังสรุปแนวโน้มไม่ได้",
+      detail: "ยังไม่มีผลเปรียบเทียบที่ประเมินได้สำหรับวันที่เลือก"
+    };
+  }
+  if (change.status === "NOT_ASSESSABLE") {
+    return {
+      state: "NOT_ASSESSABLE",
+      title: "ข้อมูลยังไม่พอสำหรับสรุปแนวโน้ม",
+      detail: "พื้นที่ร่วมที่ใช้วัดไม่ถึงเกณฑ์ จึงไม่แปลงข้อมูลที่ขาดให้เป็นศูนย์หรือสถานะปกติ"
+    };
+  }
+  if (change.changed_area_rai === null || change.ndvi_delta === null) {
+    return {
+      state: "NO_COMPARISON",
+      title: "ยังสรุปแนวโน้มไม่ได้",
+      detail: "ผลเปรียบเทียบที่ได้รับยังมีข้อมูลไม่ครบ ระบบจึงไม่ตีความค่าที่หายเป็นศูนย์"
+    };
+  }
+  const changedAreaRai = change.changed_area_rai;
+  if (changedAreaRai > 0) {
+    return {
+      state: "INSPECT",
+      title: "พบพื้นที่ควรตรวจ",
+      detail: `พบพื้นที่ NDVI ลดลงอย่างน้อย ${Math.abs(change.threshold).toFixed(2)} รวม ${changedAreaRai.toFixed(1)} ไร่ เทียบกับ ${thaiDate(before.acquired_at)}`
+    };
+  }
+  const delta = change.ndvi_delta;
+  if (delta < 0) {
+    return {
+      state: "DECREASED",
+      title: "NDVI ลดลงจากครั้งก่อน",
+      detail: `ค่าเฉลี่ยบนพื้นที่ร่วมลดลง ${Math.abs(delta).toFixed(2)} แต่ยังไม่พบพื้นที่ที่ลดลงถึงเกณฑ์ ${Math.abs(change.threshold).toFixed(2)}`
+    };
+  }
+  if (delta > 0) {
+    return {
+      state: "INCREASED",
+      title: "NDVI เพิ่มขึ้นจากครั้งก่อน",
+      detail: `ค่าเฉลี่ยบนพื้นที่ร่วมเพิ่มขึ้น ${delta.toFixed(2)} และยังไม่พบพื้นที่ที่ลดลงถึงเกณฑ์ ${Math.abs(change.threshold).toFixed(2)}`
+    };
+  }
+  return {
+    state: "UNCHANGED",
+    title: "NDVI ใกล้เคียงครั้งก่อน",
+    detail: "ค่าเฉลี่ยบนพื้นที่ร่วมไม่เปลี่ยนจากครั้งก่อนตามค่าที่ระบบคำนวณได้"
+  };
 }
 
 function WorkspaceMessage({ title, body, login = false }: { title: string; body: string; login?: boolean }) {
@@ -234,10 +311,12 @@ export function FieldAnalysisWorkspace({ field, observations }: { field: FieldBo
   const ordered = useMemo(() => [...observations].sort((a, b) => new Date(b.acquired_at).getTime() - new Date(a.acquired_at).getTime()), [observations]);
   const comparisonEligible = ordered.filter((item) => item.status === "USABLE" && item.comparison_eligible);
   const [selectedId, setSelectedId] = useState(ordered[0]?.observation_id ?? "");
-  const [mode, setMode] = useState<Mode>("satellite");
   useEffect(() => { if (!ordered.some((item) => item.observation_id === selectedId)) setSelectedId(ordered[0]?.observation_id ?? ""); }, [ordered, selectedId]);
   const selected = ordered.find((item) => item.observation_id === selectedId) ?? ordered[0];
   const before = comparisonEligible.find((item) => selected && new Date(item.acquired_at).getTime() < new Date(selected.acquired_at).getTime());
+  const initialMode: Mode = before && selected?.status === "USABLE" && selected.analysis_eligible ? "change" : "satellite";
+  const [mode, setMode] = useState<Mode>(initialMode);
+  useEffect(() => { setMode(initialMode); }, [field.id]);
   const { assets, loading, attempt } = useObservationAssets(field.id, selected, mode);
   const changeState = useObservationChange(field, before, selected?.status === "USABLE" && selected.analysis_eligible ? selected : undefined);
   const change = changeState.change;
@@ -256,11 +335,12 @@ export function FieldAnalysisWorkspace({ field, observations }: { field: FieldBo
   const selectedState = selected.status === "POOR_QUALITY" ? "คุณภาพภาพต่ำ" : selected.status === "UNAVAILABLE" ? "ไม่มีภาพใช้งาน" : !selected.analysis_eligible ? "ประเมิน NDVI ไม่ได้" : selected.analysis_ready ? "วัด NDVI แล้ว" : selected.observation_id === latestAcquired?.observation_id ? "ภาพล่าสุด · พร้อมประเมิน" : "ภาพย้อนหลัง · พร้อมประเมิน";
   const attemptLabel = !selected.analysis_eligible ? "จำกัด" : selected.analysis_ready ? "วัดสำเร็จและบันทึกแล้ว" : attempt === "measuring" ? "กำลังประเมิน" : attempt === "success" ? "วัดสำเร็จ" : attempt === "failed" ? "การประเมินครั้งล่าสุดไม่สำเร็จ" : "พร้อมประเมิน";
   const supportNote = change?.status === "NOT_ASSESSABLE" ? `พื้นที่ร่วมที่ใช้วัดได้ ${(change.support.common_support_ratio * 100).toFixed(1)}% จาก grid ในขอบเขตแปลง ต่ำกว่าเกณฑ์ ${(change.support.minimum_required_ratio * 100).toFixed(1)}% จึงยังสรุปการเปลี่ยนแปลงไม่ได้` : null;
+  const trend = trendSummary(change, before, changeState.loading, changeState.error);
 
   return <div className={styles.analysis}>
     <aside className={styles.fieldRail}><h1>แปลง {field.name}</h1><p>{Number(field.area_rai).toFixed(1)} ไร่</p><div className={styles.railRule} /><small>ภาพล่าสุดที่ได้มา<br /><strong>{latestAcquired ? thaiDate(latestAcquired.acquired_at) : "—"}</strong></small><small>ล่าสุดที่พร้อมประเมิน<br /><strong>{latestEligible ? thaiDate(latestEligible.acquired_at) : "ยังไม่มี"}</strong></small><small>ล่าสุดที่วัด NDVI สำเร็จ<br /><strong>{latestMeasured ? thaiDate(latestMeasured.acquired_at) : "ยังไม่มี"}</strong><br />{freshness}</small><small>ประวัติภาพ {observations.length} ครั้ง</small></aside>
     <section className={styles.canvas} aria-label="ภาพวิเคราะห์แปลง"><SpatialEvidenceMap field={field} before={preview} overlayBefore={mode === "ndvi" ? raster : undefined} change={mode === "change" ? changeReady : null} label={`${mode === "ndvi" ? "NDVI" : mode === "change" ? "พื้นที่ NDVI ลดลง" : "ภาพดาวเทียม"} ของแปลง ${field.name}`} renderKey={`${selected.observation_id}:${mode}:${assets.rasterMeta?.bounds.join(",") ?? "pending"}`} /><div className={styles.scope}>← แปลง {field.name}<small>{Number(field.area_rai).toFixed(1)} ไร่</small></div><ModeControl mode={mode} setMode={setMode} />{mode === "ndvi" ? <div className={styles.legend}><strong>NDVI</strong><i aria-hidden="true" /><span>0.2　0.4　0.6　0.8+</span></div> : null}{loading || changeState.loading ? <div className={styles.loading}>กำลังโหลดข้อมูลวันที่เลือก…</div> : null}{selected.status === "POOR_QUALITY" ? <div className={styles.quality}>ภาพวันที่เลือกมีเมฆปกคลุมสูง ({cloudLabel(selected.cloud_percent)}) แสดงภาพตัวอย่างได้ แต่ยังไม่ใช้คำนวณ NDVI</div> : null}{selected.status === "UNAVAILABLE" ? <div className={styles.quality}>ภาพวันที่เลือกยังไม่พร้อมใช้งาน</div> : null}{!selected.analysis_eligible && selected.status === "USABLE" ? <div className={styles.quality}>ยังยืนยันขอบเขตและแหล่งที่มาของภาพวันที่นี้ไม่ได้ จึงยังประเมิน NDVI ไม่ได้</div> : null}</section>
-    <aside className={styles.inspector}><h2>แปลง {field.name}</h2><p>{thaiDate(selected.acquired_at)} · เมฆ {cloudLabel(selected.cloud_percent)}</p><span className={selected.status === "POOR_QUALITY" ? styles.statusClay : styles.statusNeutral}>{selectedState}</span><dl><div><dt>NDVI ของภาพนี้</dt><dd>{assets.summary?.ndvi_mean.toFixed(2) ?? "—"}</dd></div><div><dt>การเปลี่ยนแปลงบนพื้นที่ร่วม</dt><dd className={styles.clay}>{change?.status === "USABLE" && change.ndvi_delta !== null ? `${change.ndvi_delta > 0 ? "↑" : change.ndvi_delta < 0 ? "↓" : "→"} ${Math.abs(change.ndvi_delta).toFixed(2)}` : "—"}</dd></div><div><dt>พื้นที่ NDVI ลดลง</dt><dd>{change?.status === "USABLE" && change.changed_area_rai !== null ? `${change.changed_area_rai.toFixed(1)} ไร่` : "—"}</dd></div></dl>{before && selected.comparison_eligible ? <div className={styles.comparisonContext}><h3>เปรียบเทียบกับ</h3><p>{thaiDate(before.acquired_at)} → {thaiDate(selected.acquired_at)}</p>{changeState.loading ? <p className={styles.note}>กำลังตรวจพื้นที่ร่วมที่ใช้วัดได้…</p> : supportNote ? <p className={styles.note}>{supportNote}</p> : change?.status === "USABLE" ? <Link className={styles.primaryAction} href={`/fields/${field.id}/compare?before=${before.observation_id}&after=${selected.observation_id}`}>เปรียบเทียบภาพ</Link> : <p className={styles.note}>ยังไม่มีผลเปรียบเทียบที่ประเมินได้</p>}</div> : <p className={styles.note}>ยังไม่มีข้อมูลเพียงพอสำหรับเปรียบเทียบกับภาพก่อนหน้า</p>}<div className={styles.inspectorRule} /><h3>ข้อมูลภาพ</h3><dl className={styles.meta}><div><dt>ภาพที่เลือก</dt><dd>{thaiDate(selected.acquired_at)}</dd></div><div><dt>แหล่งข้อมูล</dt><dd>{selected.source}</dd></div><div><dt>สถานะการวิเคราะห์</dt><dd>{attemptLabel}</dd></div><div><dt>last-good</dt><dd>{latestMeasured ? `${thaiDate(latestMeasured.acquired_at)} · ${freshness}` : "ยังไม่มี"}</dd></div></dl><p className={styles.note}>ข้อมูลนี้แสดงการเปลี่ยนแปลงของสัญญาณพืชพรรณ และยังไม่สามารถระบุสาเหตุจากภาพดาวเทียมเพียงอย่างเดียว</p></aside>
+    <aside className={styles.inspector}><h2>แปลง {field.name}</h2><p>{thaiDate(selected.acquired_at)} · เมฆ {cloudLabel(selected.cloud_percent)}</p><span className={selected.status === "POOR_QUALITY" ? styles.statusClay : styles.statusNeutral}>{selectedState}</span><section className={styles.trendSummary} data-trend-state={trend.state} aria-live="polite"><small>แนวโน้มล่าสุด</small><h3>{trend.title}</h3><p>{trend.detail}</p>{trend.state === "ERROR" ? <button type="button" className={styles.primaryAction} onClick={changeState.retry}>ลองโหลดแนวโน้มอีกครั้ง</button> : null}</section><dl><div><dt>NDVI ของภาพนี้</dt><dd>{assets.summary?.ndvi_mean.toFixed(2) ?? "—"}</dd></div><div><dt>การเปลี่ยนแปลงบนพื้นที่ร่วม</dt><dd className={styles.clay}>{change?.status === "USABLE" && change.ndvi_delta !== null ? `${change.ndvi_delta > 0 ? "↑" : change.ndvi_delta < 0 ? "↓" : "→"} ${Math.abs(change.ndvi_delta).toFixed(2)}` : "—"}</dd></div><div><dt>พื้นที่ NDVI ลดลง</dt><dd>{change?.status === "USABLE" && change.changed_area_rai !== null ? `${change.changed_area_rai.toFixed(1)} ไร่` : "—"}</dd></div></dl>{before && selected.comparison_eligible ? <div className={styles.comparisonContext}><h3>เปรียบเทียบกับ</h3><p>{thaiDate(before.acquired_at)} → {thaiDate(selected.acquired_at)}</p>{changeState.loading ? <p className={styles.note}>กำลังตรวจพื้นที่ร่วมที่ใช้วัดได้…</p> : supportNote ? <p className={styles.note}>{supportNote}</p> : change?.status === "USABLE" ? <Link className={styles.primaryAction} href={`/fields/${field.id}/compare?before=${before.observation_id}&after=${selected.observation_id}`}>เปรียบเทียบภาพ</Link> : <p className={styles.note}>ยังไม่มีผลเปรียบเทียบที่ประเมินได้</p>}</div> : <p className={styles.note}>ยังไม่มีข้อมูลเพียงพอสำหรับเปรียบเทียบกับภาพก่อนหน้า</p>}<div className={styles.inspectorRule} /><h3>ข้อมูลภาพ</h3><dl className={styles.meta}><div><dt>ภาพที่เลือก</dt><dd>{thaiDate(selected.acquired_at)}</dd></div><div><dt>แหล่งข้อมูล</dt><dd>{selected.source}</dd></div><div><dt>สถานะการวิเคราะห์</dt><dd>{attemptLabel}</dd></div><div><dt>last-good</dt><dd>{latestMeasured ? `${thaiDate(latestMeasured.acquired_at)} · ${freshness}` : "ยังไม่มี"}</dd></div></dl><p className={styles.note}>ข้อมูลนี้แสดงการเปลี่ยนแปลงของสัญญาณพืชพรรณ และยังไม่สามารถระบุสาเหตุจากภาพดาวเทียมเพียงอย่างเดียว</p></aside>
     <Timeline observations={ordered} selected={selected.observation_id} before={before?.observation_id} onSelect={setSelectedId} />
   </div>;
 }
@@ -286,5 +366,5 @@ export function CompareWorkspace({ field, observations, initialBefore, initialAf
   const beforeRaster = beforeAssets.assets.rasterMeta && beforeAssets.assets.raster ? { url: beforeAssets.assets.raster, bounds: beforeAssets.assets.rasterMeta.bounds } : undefined;
   const afterRaster = afterAssets.assets.rasterMeta && afterAssets.assets.raster ? { url: afterAssets.assets.raster, bounds: afterAssets.assets.rasterMeta.bounds } : undefined;
   const supportText = change?.status === "NOT_ASSESSABLE" ? `พื้นที่ร่วมที่ใช้วัดได้ ${(change.support.common_support_ratio * 100).toFixed(1)}% จาก grid ในขอบเขตแปลง ต่ำกว่าเกณฑ์ ${(change.support.minimum_required_ratio * 100).toFixed(1)}% จึงไม่สรุปการเปลี่ยนแปลง` : null;
-  return <div className={styles.compare}><div className={styles.compareCanvas}><SpatialEvidenceMap field={field} before={preview(beforeAssets.assets)} after={preview(afterAssets.assets)} overlayBefore={mode === "ndvi" ? beforeRaster : undefined} overlayAfter={mode === "ndvi" ? afterRaster : undefined} change={mode === "change" && change?.status === "USABLE" ? change.geometry : null} split={split} label={`เปรียบเทียบแปลง ${field.name}`} renderKey={`${before.observation_id}:${after.observation_id}:${mode}`} /><div className={styles.scope}>← แปลง {field.name}</div><ModeControl mode={mode} setMode={setMode} /><div className={styles.beforeLabel}><strong>ภาพก่อน</strong><span>{thaiDate(before.acquired_at)} · เมฆ {cloudLabel(before.cloud_percent)}</span></div><div className={styles.afterLabel}><strong>ภาพล่าสุดที่เลือก</strong><span>{thaiDate(after.acquired_at)} · เมฆ {cloudLabel(after.cloud_percent)}</span></div><label className={styles.swipe}>เลื่อนแบ่งภาพ<input type="range" min="10" max="90" value={split} onChange={(event) => setSplit(Number(event.target.value))} aria-label="เลื่อนเพื่อเปรียบเทียบภาพก่อนและภาพล่าสุด" /></label>{mode === "ndvi" ? <div className={styles.legend}><strong>NDVI</strong><i aria-hidden="true" /><span>0.2　0.4　0.6　0.8+</span></div> : null}{changeState.loading ? <p className={styles.uncertainty}>กำลังตรวจพื้นที่ร่วมที่ใช้วัดได้…</p> : supportText ? <p className={styles.uncertainty}>{supportText}</p> : <p className={styles.uncertainty}>พื้นที่ที่ไฮไลต์คือพิกเซลบนพื้นที่ร่วมที่ค่า NDVI ลดลงอย่างน้อย 0.10 ตามเกณฑ์การเปรียบเทียบ และยังไม่สามารถระบุสาเหตุจากภาพดาวเทียมเพียงอย่างเดียว</p>}<div className={styles.evidence}><small>หลักฐานการเปลี่ยนแปลง</small><strong>{thaiDate(before.acquired_at)} → {thaiDate(after.acquired_at)}</strong><dl><div><dt>NDVI บนพื้นที่ร่วม</dt><dd>{change?.before_ndvi !== null && change?.before_ndvi !== undefined && change?.after_ndvi !== null && change?.after_ndvi !== undefined ? `${change.before_ndvi.toFixed(2)} → ${change.after_ndvi.toFixed(2)}` : "—"}</dd></div><div><dt>การเปลี่ยนแปลง</dt><dd>{change?.ndvi_delta !== null && change?.ndvi_delta !== undefined ? change.ndvi_delta.toFixed(2) : "—"}</dd></div><div><dt>พื้นที่ NDVI ลดลง</dt><dd>{change?.changed_area_rai !== null && change?.changed_area_rai !== undefined ? `${change.changed_area_rai.toFixed(1)} ไร่` : "—"}</dd></div><div><dt>พื้นที่ร่วมที่ใช้วัด</dt><dd>{change ? `${(change.support.common_support_ratio * 100).toFixed(1)}%` : "—"}</dd></div></dl><Link href={`/fields/${field.id}`}>กลับไปแปลง {field.name}</Link></div></div></div>;
+  return <div className={styles.compare}><div className={styles.compareCanvas}><div className={styles.compareViewport}><SpatialEvidenceMap field={field} before={preview(beforeAssets.assets)} after={preview(afterAssets.assets)} overlayBefore={mode === "ndvi" ? beforeRaster : undefined} overlayAfter={mode === "ndvi" ? afterRaster : undefined} change={mode === "change" && change?.status === "USABLE" ? change.geometry : null} split={split} label={`เปรียบเทียบแปลง ${field.name}`} renderKey={`${before.observation_id}:${after.observation_id}:${mode}`} /><div className={styles.scope}>← แปลง {field.name}</div><ModeControl mode={mode} setMode={setMode} /><div className={styles.beforeLabel}><strong>ภาพก่อน</strong><span>{thaiDate(before.acquired_at)} · เมฆ {cloudLabel(before.cloud_percent)}</span></div><div className={styles.afterLabel}><strong>ภาพล่าสุดที่เลือก</strong><span>{thaiDate(after.acquired_at)} · เมฆ {cloudLabel(after.cloud_percent)}</span></div><label className={styles.swipe}>เลื่อนแบ่งภาพ<input type="range" min="10" max="90" value={split} onChange={(event) => setSplit(Number(event.target.value))} aria-label="เลื่อนเพื่อเปรียบเทียบภาพก่อนและภาพล่าสุด" /></label>{mode === "ndvi" ? <div className={styles.legend}><strong>NDVI</strong><i aria-hidden="true" /><span>0.2　0.4　0.6　0.8+</span></div> : null}</div>{changeState.loading ? <p className={styles.uncertainty}>กำลังตรวจพื้นที่ร่วมที่ใช้วัดได้…</p> : supportText ? <p className={styles.uncertainty}>{supportText}</p> : <p className={styles.uncertainty}>พื้นที่ที่ไฮไลต์คือพิกเซลบนพื้นที่ร่วมที่ค่า NDVI ลดลงอย่างน้อย 0.10 ตามเกณฑ์การเปรียบเทียบ และยังไม่สามารถระบุสาเหตุจากภาพดาวเทียมเพียงอย่างเดียว</p>}<div className={styles.evidence}><small>หลักฐานการเปลี่ยนแปลง</small><strong>{thaiDate(before.acquired_at)} → {thaiDate(after.acquired_at)}</strong><dl><div><dt>NDVI บนพื้นที่ร่วม</dt><dd>{change?.before_ndvi !== null && change?.before_ndvi !== undefined && change?.after_ndvi !== null && change?.after_ndvi !== undefined ? `${change.before_ndvi.toFixed(2)} → ${change.after_ndvi.toFixed(2)}` : "—"}</dd></div><div><dt>การเปลี่ยนแปลง</dt><dd>{change?.ndvi_delta !== null && change?.ndvi_delta !== undefined ? change.ndvi_delta.toFixed(2) : "—"}</dd></div><div><dt>พื้นที่ NDVI ลดลง</dt><dd>{change?.changed_area_rai !== null && change?.changed_area_rai !== undefined ? `${change.changed_area_rai.toFixed(1)} ไร่` : "—"}</dd></div><div><dt>พื้นที่ร่วมที่ใช้วัด</dt><dd>{change ? `${(change.support.common_support_ratio * 100).toFixed(1)}%` : "—"}</dd></div></dl><Link href={`/fields/${field.id}`}>กลับไปแปลง {field.name}</Link></div></div></div>;
 }
