@@ -132,3 +132,19 @@ re-homed in forward-only `20260908_0006_ndvi_history.py`, after the real applied
 the applied revision; `20260908_0006` only creates/drops the NDVI-history table.
 `20260908_0007` adds geometry lineage to both cache tables and replaces their old
 uniqueness constraints. No applied revision is edited in place.
+
+## BOUNDED observation-history receipts
+
+Migration `20260926_0008_history_receipts.py` adds the organization-scoped
+`field_backfill_receipts` table. A receipt is unique for the field, current
+acquisition `geometry_hash`, and normalized UTC `start_at`/`end_at` range. Only
+completed receipts are visible; a provider failure or a result truncated at the
+bounded page cap rolls back the receipt and all acquisition inserts.
+
+Historical acquisitions continue to use the existing `field_acquisitions`
+identity `(field_id, provider, provider_item_id)` with `INSERT ... ON CONFLICT
+DO NOTHING`. Their allowlisted provider metadata includes the current geometry
+hash on first insert, so a later geometry edit cannot relabel an existing
+observation. The receipt stores discovery, catalog, persistence, and rejected
+counts plus the explicit empty-range reason; it does not add a background job or
+polling state.

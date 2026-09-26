@@ -897,6 +897,139 @@
           }
         }
       },
+      "BackfillRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "start_date": {
+            "type": "string",
+            "format": "date"
+          },
+          "end_date": {
+            "type": "string",
+            "format": "date"
+          },
+          "start_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "end_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "description": "Provide either the complete start_date/end_date pair or the complete timezone-aware start_at/end_at pair. The normalized UTC range is limited to 730 days.",
+        "oneOf": [
+          {
+            "required": [
+              "start_date",
+              "end_date"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "start_at"
+                  ]
+                },
+                {
+                  "required": [
+                    "end_at"
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "required": [
+              "start_at",
+              "end_at"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "start_date"
+                  ]
+                },
+                {
+                  "required": [
+                    "end_date"
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "BackfillReceipt": {
+        "type": "object",
+        "required": [
+          "id",
+          "field_id",
+          "start_at",
+          "end_at",
+          "status",
+          "pages_discovered",
+          "catalog_found_count",
+          "persisted_count",
+          "rejected_count",
+          "no_history_reason",
+          "started_at",
+          "completed_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "field_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "start_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "end_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "status": {
+            "const": "COMPLETED"
+          },
+          "pages_discovered": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "catalog_found_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "persisted_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "rejected_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "no_history_reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "completed_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
       "ObservationNdviSummary": {
         "type": "object",
         "required": [
@@ -2832,6 +2965,142 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/fields/{field_id}/observations/backfill": {
+      "post": {
+        "summary": "Synchronously discover bounded historical satellite observations.",
+        "security": [
+          {
+            "accessCookie": [],
+            "csrfCookie": [],
+            "csrfHeader": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-required-role": "field_manager",
+        "x-organization-scope": "Active membership and farm-owner scope are checked before provider work; hidden fields return 404.",
+        "x-validation": "Complete date or timezone-aware timestamp pair, normalized UTC range no longer than 730 days, and no unknown fields.",
+        "x-rate-limit": "authenticated subject 20 and subject plus HMAC(field ID) 10 per configured window.",
+        "x-idempotency": "The committed receipt identity includes field, current geometry hash, and normalized UTC range; failed work rolls back and can be retried.",
+        "parameters": [
+          {
+            "name": "field_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BackfillRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Completed bounded discovery receipt.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackfillReceipt"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundError"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitedError"
+          },
+          "503": {
+            "description": "Provider temporarily unavailable; no receipt or acquisition writes are committed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/fields/{field_id}/observations/backfill/{receipt_id}": {
+      "get": {
+        "summary": "Read one tenant-scoped completed observation-history receipt.",
+        "security": [
+          {
+            "accessCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-required-role": "Authenticated active farm owner or organization owner.",
+        "x-organization-scope": "Receipt, field, farm, and membership are joined under the active organization scope; foreign receipts return 404.",
+        "x-validation": "Receipt identifier and field ownership are validated before returning the completed receipt.",
+        "x-idempotency": "Read-only receipt lookup.",
+        "parameters": [
+          {
+            "name": "field_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "receipt_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Completed bounded discovery receipt.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackfillReceipt"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundError"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
           }
         }
       }

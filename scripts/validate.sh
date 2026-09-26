@@ -106,6 +106,7 @@ run_browser() {
     npx --no-install playwright test -c apps/web/playwright.config.ts \
       tests/e2e/field-workspace-001.spec.ts \
       tests/e2e/field-workspace-api-backed.spec.ts \
+      tests/e2e/observation-history-001.spec.ts \
       --project=chromium --workers=1
   DATABASE_URL="$AGRISCOPE_TEST_DATABASE_URL" \
     AGRISCOPE_TEST_DATABASE_URL="$AGRISCOPE_TEST_DATABASE_URL" \
