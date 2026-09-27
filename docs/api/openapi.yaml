@@ -386,6 +386,122 @@
           "province": "Chiang Mai"
         }
       },
+      "FarmInspectionOverviewItem": {
+        "type": "object",
+        "required": [
+          "field_id",
+          "status",
+          "needs_inspection",
+          "latest_observation_id",
+          "latest_acquired_at",
+          "latest_ndvi_mean",
+          "previous_observation_id",
+          "previous_acquired_at",
+          "previous_ndvi_mean",
+          "ndvi_delta",
+          "direction",
+          "changed_area_rai",
+          "common_support_ratio"
+        ],
+        "properties": {
+          "field_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "NEEDS_INSPECTION",
+              "MEASURED",
+              "NOT_ASSESSABLE",
+              "FIRST_OBSERVATION",
+              "NO_ANALYSIS"
+            ]
+          },
+          "needs_inspection": {
+            "type": "boolean"
+          },
+          "latest_observation_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "latest_acquired_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "latest_ndvi_mean": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": -1,
+            "maximum": 1
+          },
+          "previous_observation_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "previous_acquired_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "previous_ndvi_mean": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": -1,
+            "maximum": 1
+          },
+          "ndvi_delta": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": -2,
+            "maximum": 2
+          },
+          "direction": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "increased",
+              "decreased",
+              "unchanged",
+              null
+            ]
+          },
+          "changed_area_rai": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "common_support_ratio": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 1
+          }
+        }
+      },
       "Farm": {
         "type": "object",
         "required": [
@@ -2136,6 +2252,58 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/farms/{farm_id}/inspection-overview": {
+      "get": {
+        "summary": "Read cached farm inspection overview",
+        "operationId": "getFarmInspectionOverview",
+        "x-required-role": "Authenticated farm owner or organization owner.",
+        "x-organization-scope": "Returns cached inspection evidence only for a visible farm; hidden or non-owned farms return 404 before evidence is exposed.",
+        "x-validation": "Reads only persisted current-geometry observation analyses, uses at most the latest two cached analyses per field and the canonical common-support change threshold, and never calls satellite provider transport or creates analysis.",
+        "security": [
+          {
+            "accessCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "farm_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cached field inspection evidence for the visible farm.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/FarmInspectionOverviewItem"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundError"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
           }
         }
       }

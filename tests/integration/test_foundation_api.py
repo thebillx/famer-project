@@ -37,7 +37,7 @@ from apps.api.agriscope_api.providers.cdse_process import (
     CdseNdviRaster,
     CdseTrueColorPreview,
 )
-from apps.api.agriscope_api.services.satellite import SatelliteResponse
+from apps.api.agriscope_api.services.satellite import OBSERVATION_ANALYSIS_VERSION, SatelliteResponse
 from packages.geospatial.agriscope_geospatial.field_geometry import geometry_fingerprint
 
 
@@ -2086,3 +2086,209 @@ def test_history_range_csrf_and_rate_gates_precede_provider(client):
     calls = provider.calls
     assert client.post(url, json=HISTORY_RANGE).status_code == 429
     assert provider.calls == calls
+
+
+def _cached_overview_analysis(
+    conn,
+    *,
+    field: dict,
+    acquired_at: datetime,
+    value: float,
+    item_id: str,
+    geometry_hash: str | None = None,
+    valid_mask=None,
+) -> str:
+    import numpy as np
+    from rasterio.io import MemoryFile
+    from rasterio.transform import from_bounds
+
+    ring = field["geometry"]["coordinates"][0]
+    west = min(point[0] for point in ring)
+    south = min(point[1] for point in ring)
+    east = max(point[0] for point in ring)
+    north = max(point[1] for point in ring)
+    transform = from_bounds(west, south, east, north, 4, 4)
+    values = np.full((4, 4), value, dtype="float32")
+    valid = (
+        np.ones((4, 4), dtype="float32")
+        if valid_mask is None
+        else np.asarray(valid_mask, dtype="float32")
+    )
+    assert valid.shape == values.shape
+    profile = {
+        "driver": "GTiff",
+        "height": 4,
+        "width": 4,
+        "count": 2,
+        "dtype": "float32",
+        "crs": "EPSG:4326",
+        "transform": transform,
+        "nodata": -9999.0,
+    }
+    with MemoryFile() as memory:
+        with memory.open(**profile) as dataset:
+            dataset.write(values, 1)
+            dataset.write(valid, 2)
+        raster_tiff = memory.read()
+
+    current_hash = geometry_fingerprint(field["geometry"])
+    stored_hash = geometry_hash or current_hash
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO field_acquisitions
+              (field_id, organization_id, provider, collection, provider_item_id,
+               acquired_at, cloud_cover_percent, search_status, searched_at, provider_metadata)
+            VALUES (%s,%s,%s,%s,%s,%s,5,'available',now(),%s::jsonb)
+            RETURNING id
+            """,
+            (
+                field["id"],
+                field["organization_id"],
+                CDSE_STAC_PROVIDER,
+                SENTINEL_2_L2A_COLLECTION,
+                item_id,
+                acquired_at,
+                json.dumps({"geometry_hash": stored_hash}),
+            ),
+        )
+        observation_id = cur.fetchone()[0]
+        valid_count = int((valid > 0.5).sum())
+        ratio = valid_count / values.size
+        cur.execute(
+            """
+            INSERT INTO field_observation_analyses
+              (observation_id, field_id, organization_id, acquired_at, algorithm_version,
+               geometry_hash, ndvi_mean, ndvi_min, ndvi_max, ndvi_stddev, sample_count,
+               valid_sample_count, valid_pixel_ratio, raster_tiff, raster_crs,
+               raster_bounds, raster_width, raster_height)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,0,%s,%s,%s,%s,'EPSG:4326',%s::jsonb,4,4)
+            """,
+            (
+                observation_id,
+                field["id"],
+                field["organization_id"],
+                acquired_at,
+                OBSERVATION_ANALYSIS_VERSION,
+                stored_hash,
+                value,
+                value,
+                value,
+                values.size,
+                valid_count,
+                ratio,
+                raster_tiff,
+                json.dumps([west, south, east, north]),
+            ),
+        )
+    return str(observation_id)
+
+
+def test_farm_inspection_overview_uses_cached_current_geometry_only(client: TestClient):
+    registered = _register(client, "inspection-owner@example.com")
+    farm = _create_farm(client, registered["organization"]["id"], "Inspection Farm")
+    needs = _create_field(client, farm["id"], "Needs inspection")
+    measured = _create_field(client, farm["id"], "Measured increase")
+    insufficient = _create_field(client, farm["id"], "Insufficient support")
+    first = _create_field(client, farm["id"], "First observation")
+    no_analysis = _create_field(client, farm["id"], "No analysis")
+
+    left = [
+        [1, 1, 0, 0],
+        [1, 1, 0, 0],
+        [1, 1, 0, 0],
+        [1, 1, 0, 0],
+    ]
+    right = [
+        [0, 0, 1, 1],
+        [0, 0, 1, 1],
+        [0, 0, 1, 1],
+        [0, 0, 1, 1],
+    ]
+    with _connect() as conn:
+        _cached_overview_analysis(
+            conn, field=needs, acquired_at=datetime(2026, 8, 12, 3, tzinfo=UTC),
+            value=0.70, item_id="OVERVIEW_NEEDS_BEFORE"
+        )
+        needs_latest = _cached_overview_analysis(
+            conn, field=needs, acquired_at=datetime(2026, 8, 22, 3, tzinfo=UTC),
+            value=0.40, item_id="OVERVIEW_NEEDS_AFTER"
+        )
+        _cached_overview_analysis(
+            conn, field=measured, acquired_at=datetime(2026, 8, 12, 3, tzinfo=UTC),
+            value=0.40, item_id="OVERVIEW_MEASURED_BEFORE"
+        )
+        measured_latest = _cached_overview_analysis(
+            conn, field=measured, acquired_at=datetime(2026, 8, 22, 3, tzinfo=UTC),
+            value=0.50, item_id="OVERVIEW_MEASURED_AFTER"
+        )
+        _cached_overview_analysis(
+            conn, field=measured, acquired_at=datetime(2026, 8, 30, 3, tzinfo=UTC),
+            value=-0.80, item_id="OVERVIEW_STALE_GEOMETRY", geometry_hash="f" * 64
+        )
+        _cached_overview_analysis(
+            conn, field=insufficient, acquired_at=datetime(2026, 8, 12, 3, tzinfo=UTC),
+            value=0.50, item_id="OVERVIEW_SUPPORT_BEFORE", valid_mask=left
+        )
+        _cached_overview_analysis(
+            conn, field=insufficient, acquired_at=datetime(2026, 8, 22, 3, tzinfo=UTC),
+            value=0.45, item_id="OVERVIEW_SUPPORT_AFTER", valid_mask=right
+        )
+        first_latest = _cached_overview_analysis(
+            conn, field=first, acquired_at=datetime(2026, 8, 22, 3, tzinfo=UTC),
+            value=0.61, item_id="OVERVIEW_FIRST"
+        )
+
+    response = client.get(f"/api/v1/farms/{farm['id']}/inspection-overview")
+    assert response.status_code == 200, response.text
+    overview = response.json()
+    assert [item["status"] for item in overview] == [
+        "NEEDS_INSPECTION",
+        "MEASURED",
+        "NOT_ASSESSABLE",
+        "FIRST_OBSERVATION",
+        "NO_ANALYSIS",
+    ]
+    by_field = {item["field_id"]: item for item in overview}
+
+    priority = by_field[needs["id"]]
+    assert priority["needs_inspection"] is True
+    assert priority["latest_observation_id"] == needs_latest
+    assert priority["direction"] == "decreased"
+    assert priority["ndvi_delta"] == pytest.approx(-0.30, abs=1e-6)
+    assert priority["changed_area_rai"] is not None
+    assert priority["changed_area_rai"] > 0
+
+    measured_item = by_field[measured["id"]]
+    assert measured_item["needs_inspection"] is False
+    assert measured_item["latest_observation_id"] == measured_latest
+    assert measured_item["latest_ndvi_mean"] == pytest.approx(0.50, abs=1e-6)
+    assert measured_item["direction"] == "increased"
+    assert measured_item["ndvi_delta"] == pytest.approx(0.10, abs=1e-6)
+    assert measured_item["changed_area_rai"] == 0
+
+    insufficient_item = by_field[insufficient["id"]]
+    assert insufficient_item["needs_inspection"] is False
+    assert insufficient_item["ndvi_delta"] is None
+    assert insufficient_item["changed_area_rai"] is None
+    assert insufficient_item["common_support_ratio"] == 0
+
+    first_item = by_field[first["id"]]
+    assert first_item["latest_observation_id"] == first_latest
+    assert first_item["previous_observation_id"] is None
+    assert by_field[no_analysis["id"]]["latest_observation_id"] is None
+
+    foreign = TestClient(client.app)
+    other = _register(foreign, "inspection-foreign@example.com")
+    assert foreign.get(f"/api/v1/farms/{farm['id']}/inspection-overview").status_code == 404
+    with _connect() as conn:
+        conn.execute(
+            "INSERT INTO memberships (organization_id,user_id,role,status,joined_at) "
+            "VALUES (%s,%s,'field_manager','active',now())",
+            (registered["organization"]["id"], other["user"]["id"]),
+        )
+    assert foreign.get(f"/api/v1/farms/{farm['id']}/inspection-overview").status_code == 404
+
+    with _connect() as conn:
+        conn.execute("UPDATE farms SET status='disabled' WHERE id=%s", (farm["id"],))
+    assert client.get(f"/api/v1/farms/{farm['id']}/inspection-overview").status_code == 404
