@@ -219,7 +219,7 @@ class SatelliteService:
                     row.field_id,
                     row.acquired_at,
                     cloud,
-                    "Sentinel-2",
+                    "ข้อมูลสาธิต" if row.provider == "agriscope-demo" else "Sentinel-2",
                     status,
                     imagery_available,
                     stored_geometry_hash,
@@ -408,6 +408,12 @@ class SatelliteService:
     async def get_observation_preview(self, *, user_id: UUID, field_id: UUID,
         observation_id: UUID, authorized_field: FieldRecord | None = None) -> SatellitePreviewResponse:
         field, observation, _ = await self._observation_context(user_id, field_id, observation_id, authorized_field)
+        if observation.provider == "agriscope-demo":
+            raise ApiException(
+                "demo_preview_unavailable",
+                "Synthetic demo observations do not include true-colour imagery",
+                422,
+            )
         provider = self._process_provider()
         try:
             preview = await provider.render_true_color(field.geometry, acquired_at=observation.acquired_at, exact_observation=True)
@@ -638,7 +644,13 @@ class SatelliteService:
             status="available" if acquisition else "not_searched",
             acquisition=acquisition,
             searched_at=acquisition.searched_at if acquisition else None,
-            message_th="พบภาพดาวเทียมล่าสุด" if acquisition else "ยังไม่มีผลการค้นหาดาวเทียมที่บันทึกไว้",
+            message_th=(
+                "พบข้อมูลสาธิตล่าสุด"
+                if acquisition and acquisition.provider == "agriscope-demo"
+                else "พบภาพดาวเทียมล่าสุด"
+                if acquisition
+                else "ยังไม่มีผลการค้นหาดาวเทียมที่บันทึกไว้"
+            ),
         )
 
     async def get_preview(
@@ -663,6 +675,12 @@ class SatelliteService:
                 "satellite_not_searched",
                 "Search for satellite metadata before requesting a preview",
                 409,
+            )
+        if acquisition.provider == "agriscope-demo":
+            raise ApiException(
+                "demo_preview_unavailable",
+                "Synthetic demo observations do not include true-colour imagery",
+                422,
             )
         process_provider = self.process_provider or CdseProcessClient(
             client_id=self.settings.cdse_client_id,
@@ -732,6 +750,12 @@ class SatelliteService:
                 "satellite_not_searched",
                 "Search for satellite metadata before requesting NDVI statistics",
                 409,
+            )
+        if acquisition.provider == "agriscope-demo":
+            raise ApiException(
+                "demo_cached_analysis_only",
+                "Synthetic demo NDVI is available through the cached observation workspace",
+                422,
             )
         geometry_hash = geometry_fingerprint(field.geometry)
         repository = SatelliteRepository(
@@ -868,7 +892,11 @@ class SatelliteService:
         else:
             status = "USABLE"
         stored_geometry_hash = acquisition_geometry_hash(observation)
-        return status, observation.search_status == "available", stored_geometry_hash
+        imagery_available = (
+            observation.search_status == "available"
+            and observation.provider != "agriscope-demo"
+        )
+        return status, imagery_available, stored_geometry_hash
 
     def _require_analysis_provenance(
         self, observation: AcquisitionRecord, geometry_hash: str

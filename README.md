@@ -11,10 +11,25 @@ prescribe chemicals from satellite data.
 ## Current capabilities
 
 - Authentication, organizations, tenant-scoped farms, and field boundaries.
+- Field creation by map drawing or WGS84 latitude/longitude points.
 - PostgreSQL/PostGIS geometry storage and server-authoritative area.
-- Latest Sentinel-2 Level-2A catalogue metadata discovery.
-- Remote-sensing formulas, quality policy, and deterministic provider fixtures.
-- Thai-first public UI and authenticated UI foundations.
+- Sentinel-2 observation discovery and bounded historical backfill.
+- Cached NDVI analysis, raster visualization, spatial comparison, and farm-level inspection prioritization.
+- Thai-first map-first UI with desktop and mobile browser regression coverage.
+
+## Local demo
+
+After project dependencies are installed, start the deterministic local demo with:
+
+```bash
+npm run demo
+```
+
+The launcher starts the local database, applies migrations, seeds clearly labelled
+synthetic demo evidence, and starts the API and web app. It prints the local demo
+sign-in details and URL.
+
+See [docs/demo.md](docs/demo.md) for the walkthrough and safety boundaries.
 
 ## Focused validation
 

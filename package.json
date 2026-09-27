@@ -18,7 +18,8 @@
     "validate": "bash scripts/validate.sh all",
     "validate:static": "bash scripts/validate.sh static",
     "validate:integration": "bash scripts/validate.sh integration",
-    "validate:browser": "bash scripts/validate.sh browser"
+    "validate:browser": "bash scripts/validate.sh browser",
+    "demo": "bash scripts/demo.sh"
   },
   "dependencies": {
     "@hookform/resolvers": "3.10.0",

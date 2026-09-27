@@ -1,5 +1,6 @@
 import json
 import pathlib
+import subprocess
 import unittest
 
 
@@ -557,6 +558,37 @@ class FoundationContractTests(unittest.TestCase):
             },
         )
         self.assertNotIn("x-rate-limit", operation)
+
+    def test_local_demo_entrypoint_is_bounded_and_explicit(self):
+        package = json.loads((REPOSITORY_ROOT / "package.json").read_text(encoding="utf-8"))
+        self.assertEqual(package["scripts"]["demo"], "bash scripts/demo.sh")
+
+        launcher = (REPOSITORY_ROOT / "scripts/demo.sh").read_text(encoding="utf-8")
+        seed = (REPOSITORY_ROOT / "scripts/demo_seed.py").read_text(encoding="utf-8")
+        demo_module = (
+            REPOSITORY_ROOT / "apps/api/agriscope_api/demo.py"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn('APP_ENV:-development', launcher)
+        self.assertIn("Refusing to seed demo data when APP_ENV=production", seed)
+        self.assertIn("Demo seeding is forbidden when APP_ENV=production", demo_module)
+        self.assertIn("docker compose up -d postgres", launcher)
+        self.assertIn("scripts/demo_seed.py --quiet", launcher)
+        commands = [line.strip() for line in launcher.splitlines()]
+        self.assertFalse(any(line.startswith("npm install") for line in commands))
+        self.assertFalse(any(line.startswith("npm ci") for line in commands))
+        self.assertFalse(any(line.startswith("pip install") for line in commands))
+        self.assertFalse(any(line.startswith("pip3 install") for line in commands))
+        self.assertIn('provider=DEMO_PROVIDER', demo_module)
+        self.assertIn('DEMO_PROVIDER = "agriscope-demo"', demo_module)
+
+        syntax = subprocess.run(
+            ["bash", "-n", str(REPOSITORY_ROOT / "scripts/demo.sh")],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(syntax.returncode, 0, syntax.stderr)
 
     def test_health_readiness_contract_distinguishes_ready_and_not_ready(self):
         ready = self.document["paths"]["/health/ready"]["get"]
