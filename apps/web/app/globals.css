@@ -1063,3 +1063,62 @@ button:disabled {
     visibility: hidden;
   }
 }
+
+
+.as-field-entry-mode {
+  display: grid;
+  min-height: 64px;
+  gap: 3px;
+  align-content: center;
+  border: 1px solid transparent;
+  border-radius: var(--as-radius-md);
+  background: transparent;
+  padding: 9px 12px;
+  color: var(--as-ink-muted);
+  text-align: left;
+  transition:
+    background var(--as-duration-state) var(--as-ease-out),
+    border-color var(--as-duration-state) var(--as-ease-out),
+    color var(--as-duration-state) var(--as-ease-out);
+}
+
+.as-field-entry-mode strong {
+  color: var(--as-ink);
+  font-size: 0.9375rem;
+}
+
+.as-field-entry-mode span {
+  font-size: 0.75rem;
+}
+
+.as-field-entry-mode:hover {
+  background: var(--as-surface-soft);
+}
+
+.as-field-entry-mode[aria-pressed="true"] {
+  border-color: var(--as-primary);
+  background: var(--as-success-soft);
+  color: var(--as-primary);
+}
+
+.as-field-vertex-marker {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border: 3px solid var(--as-surface);
+  border-radius: 999px;
+  background: var(--as-primary);
+  color: var(--as-on-primary);
+  box-shadow: var(--as-shadow-md);
+  font-size: 0.75rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+@media (max-width: 480px) {
+  .as-field-entry-mode {
+    min-height: 72px;
+    padding-inline: 10px;
+  }
+}

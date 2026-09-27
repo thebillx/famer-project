@@ -220,11 +220,15 @@ test("farm inspection overview prioritizes cached evidence across list map and i
   });
   await page.goto(`/farms/${farm.id}`);
 
+  const summary = page.getByLabel("สรุปพื้นที่ควรตรวจ");
+  await expect(summary).toContainText("1 แปลงควรตรวจ");
+  await expect(summary).toContainText("ผลเปรียบเทียบที่บันทึกไว้");
+
   const list = page.getByLabel("แปลงที่บันทึกไว้");
   await expect(list.locator("li").first()).toContainText("A02");
-  await expect(list.locator("li").first()).toContainText("ควรตรวจ 0.75 ไร่");
+  await expect(list.locator("li").first()).toContainText("ควรตรวจ · 0.75 ไร่");
   await expect(page.getByRole("button", { name: /A02/ })).toHaveAttribute("data-inspection-priority", "true");
-  await expect(page.getByRole("button", { name: /A01/ })).toContainText("NDVI ล่าสุดเพิ่มขึ้น");
+  await expect(page.getByRole("button", { name: /A01/ })).toContainText("มีผลเปรียบเทียบ");
 
   await page.getByRole("button", { name: /A02/ }).click();
   await expect(page.getByLabel("Field map")).toHaveAttribute("data-selected-field-priority", "true");
@@ -280,27 +284,42 @@ test("empty farm keeps the map and one manager action", async ({ page }) => {
   await page.goto(`/farms/${farm.id}`);
   await expect(page.getByLabel("Field map")).toBeVisible();
   await expect(page.getByText("ยังไม่มีแปลงในฟาร์มนี้")).toBeVisible();
-  await expect(page.getByRole("link", { name: "เพิ่มแปลง", exact: true })).toHaveCount(1);
+  await expect(page.getByRole("link", { name: "เพิ่มแปลงแรก", exact: true })).toHaveCount(1);
   await captureVisual(page, "workspace-empty");
 });
 
-test("selected workspace keeps the map usable while inspector stacks at narrow widths", async ({ page }) => {
+test("mobile farm keeps the map dominant and opens selected details as a bottom sheet", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
   await mockWorkspace(page);
   await page.goto(`/farms/${farm.id}`);
+
+  await expect(page.getByLabel("Field map")).toBeVisible();
+  await expect(page.getByLabel("รายละเอียดแปลงที่เลือก")).toHaveCount(0);
+
   await page.getByRole("button", { name: /A02/ }).click();
-  for (const viewport of [{ width: 390, height: 844 }, { width: 768, height: 1024 }, { width: 1024, height: 768 }]) {
-    await page.setViewportSize(viewport);
-    const geometry = await page.evaluate(() => {
-      const map = document.querySelector<HTMLElement>("[aria-label='แผนที่ฟาร์มและแปลง']");
-      const inspector = document.querySelector<HTMLElement>("[aria-label='รายละเอียดแปลงที่เลือก']");
-      if (!map || !inspector) return null;
-      const mapRect = map.getBoundingClientRect();
-      const inspectorRect = inspector.getBoundingClientRect();
-      return { mapWidth: mapRect.width, mapBottom: mapRect.bottom, inspectorTop: inspectorRect.top };
-    });
-    expect(geometry?.mapWidth).toBeGreaterThan(300);
-    expect(geometry?.inspectorTop).toBeGreaterThanOrEqual((geometry?.mapBottom ?? 0) - 1);
-  }
+  const geometry = await page.evaluate(() => {
+    const map = document.querySelector<HTMLElement>("[aria-label='แผนที่ฟาร์มและแปลง']");
+    const inspector = document.querySelector<HTMLElement>("[aria-label='รายละเอียดแปลงที่เลือก']");
+    if (!map || !inspector) return null;
+    const mapRect = map.getBoundingClientRect();
+    const inspectorRect = inspector.getBoundingClientRect();
+    const style = getComputedStyle(inspector);
+    return {
+      mapWidth: mapRect.width,
+      mapHeight: mapRect.height,
+      inspectorTop: inspectorRect.top,
+      inspectorBottom: inspectorRect.bottom,
+      inspectorHeight: inspectorRect.height,
+      position: style.position
+    };
+  });
+
+  expect(geometry?.mapWidth).toBeGreaterThan(300);
+  expect(geometry?.mapHeight).toBeGreaterThan(500);
+  expect(geometry?.position).toBe("fixed");
+  expect(geometry?.inspectorBottom).toBeLessThanOrEqual(845);
+  expect(geometry?.inspectorHeight).toBeLessThanOrEqual(500);
+  await expect(page.getByRole("button", { name: "ปิดรายละเอียดแปลง" })).toBeVisible();
 });
 
 test("map selection opens the inspector and scrolls the matching field row", async ({ page }) => {
