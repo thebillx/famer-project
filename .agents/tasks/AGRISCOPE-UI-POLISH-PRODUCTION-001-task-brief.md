@@ -1,6 +1,6 @@
 # AGRISCOPE-UI-POLISH-PRODUCTION-001
 
-Status: IN_PROGRESS
+Status: VALIDATED_PENDING_MERGE
 
 ## Objective
 
@@ -93,3 +93,19 @@ All other paths are read-only.
 - Production build.
 - Browser regression.
 - git diff --check.
+
+
+## Validation evidence — 2026-09-27
+
+- Delivery base: `9266c2ef7695c58d8ed24b48cf98d2cedc8d9bcd` (`origin/main` at branch creation).
+- Delivery worktree: `/Users/bill/final-project-ui-polish-production` on `codex/ui-polish-production-001`; the dirty primary checkout was preserved unchanged.
+- Local dependency installation was attempted only inside the isolated worktree and failed closed on DNS resolution for `registry.npmjs.org`; generated npm/cache artifacts were removed.
+- GitHub Actions CI run #49 for `35106a08d790825c63d0387c9e1f82f828016d34` passed:
+  - validation: PASS
+  - integration: PASS
+  - browser-regression: PASS
+- Static validation therefore proved TypeScript typecheck, production build, Python/unit/contract checks and `git diff --check` on the exact commit.
+- Browser regression proved the real API/PostGIS field journey after Thai-first onboarding, coordinate-only field creation, map-only mobile creation, map/list/inspector behavior, empty-state CTA, and mobile bottom-sheet details.
+- No backend, API, migration, dependency, provider, satellite algorithm, comparison threshold, tenant/auth contract, or production data path changed.
+- No external UX/UI kit or design-system replacement was introduced.
+- IRIS-X does not expose the native Ponytail `code_review` surface in this session; no formal LOCAL_NATIVE-review claim is made. The exact diff was manually reviewed by the ChatGPT lifecycle owner and then exercised by matching CI.
