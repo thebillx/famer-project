@@ -16,6 +16,7 @@ from pydantic import ValidationError
 
 from apps.api.agriscope_api.application import create_app
 from apps.api.agriscope_api.api.v1 import auth as auth_api
+from apps.api.agriscope_api.api.v1 import health as health_api
 from apps.api.agriscope_api.api.v1.satellite import (
     SatelliteAvailableResponse,
     SatelliteEmptySearchResponse,
@@ -2097,6 +2098,7 @@ def _cached_overview_analysis(
     item_id: str,
     geometry_hash: str | None = None,
     valid_mask=None,
+    raster_bounds: tuple[float, float, float, float] | None = None,
 ) -> str:
     import numpy as np
     from rasterio.io import MemoryFile
@@ -2107,6 +2109,8 @@ def _cached_overview_analysis(
     south = min(point[1] for point in ring)
     east = max(point[0] for point in ring)
     north = max(point[1] for point in ring)
+    if raster_bounds is not None:
+        west, south, east, north = raster_bounds
     transform = from_bounds(west, south, east, north, 4, 4)
     values = np.full((4, 4), value, dtype="float32")
     valid = (
@@ -2292,3 +2296,122 @@ def test_farm_inspection_overview_uses_cached_current_geometry_only(client: Test
     with _connect() as conn:
         conn.execute("UPDATE farms SET status='disabled' WHERE id=%s", (farm["id"],))
     assert client.get(f"/api/v1/farms/{farm['id']}/inspection-overview").status_code == 404
+
+
+def test_readiness_returns_503_and_masks_database_failure(client: TestClient, monkeypatch):
+    async def broken_database_check(_engine):
+        raise RuntimeError("postgres password=should-never-leak")
+
+    monkeypatch.setattr(health_api, "check_database", broken_database_check)
+    anonymous = TestClient(client.app)
+
+    live = anonymous.get("/health/live")
+    assert live.status_code == 200
+    assert live.json() == {"status": "live"}
+
+    ready = anonymous.get("/health/ready")
+    assert ready.status_code == 503
+    assert ready.json()["error"]["code"] == "not_ready"
+    assert ready.json()["error"]["message"] == "Service is not ready"
+    assert "password" not in ready.text
+    assert "postgres" not in ready.text
+
+    dependencies = anonymous.get("/health/dependencies")
+    assert dependencies.status_code == 200
+    assert dependencies.json()["database"] == "unavailable"
+    assert "password" not in dependencies.text
+
+
+def test_farm_inspection_overview_uses_distinct_acquisition_times(client: TestClient):
+    registered = _register(client, "inspection-distinct-time@example.com")
+    farm = _create_farm(client, registered["organization"]["id"], "Distinct Time Farm")
+    field = _create_field(client, farm["id"], "Same timestamp")
+
+    acquired_at = datetime(2026, 8, 22, 3, tzinfo=UTC)
+    with _connect() as conn:
+        _cached_overview_analysis(
+            conn,
+            field=field,
+            acquired_at=acquired_at,
+            value=0.60,
+            item_id="OVERVIEW_SAME_TIME_A",
+        )
+        _cached_overview_analysis(
+            conn,
+            field=field,
+            acquired_at=acquired_at,
+            value=0.20,
+            item_id="OVERVIEW_SAME_TIME_B",
+        )
+
+    response = client.get(f"/api/v1/farms/{farm['id']}/inspection-overview")
+    assert response.status_code == 200, response.text
+    assert len(response.json()) == 1
+    item = response.json()[0]
+    assert item["field_id"] == field["id"]
+    assert item["status"] == "FIRST_OBSERVATION"
+    assert item["needs_inspection"] is False
+    assert item["previous_observation_id"] is None
+    assert item["previous_acquired_at"] is None
+    assert item["ndvi_delta"] is None
+    assert item["changed_area_rai"] is None
+    assert datetime.fromisoformat(item["latest_acquired_at"]) == acquired_at
+
+
+def test_farm_inspection_overview_isolates_incompatible_field_rasters(client: TestClient):
+    registered = _register(client, "inspection-isolation@example.com")
+    farm = _create_farm(client, registered["organization"]["id"], "Isolation Farm")
+    valid = _create_field(client, farm["id"], "Valid comparison")
+    incompatible = _create_field(client, farm["id"], "Incompatible comparison")
+
+    with _connect() as conn:
+        _cached_overview_analysis(
+            conn,
+            field=valid,
+            acquired_at=datetime(2026, 8, 12, 3, tzinfo=UTC),
+            value=0.70,
+            item_id="OVERVIEW_ISOLATION_VALID_BEFORE",
+        )
+        _cached_overview_analysis(
+            conn,
+            field=valid,
+            acquired_at=datetime(2026, 8, 22, 3, tzinfo=UTC),
+            value=0.40,
+            item_id="OVERVIEW_ISOLATION_VALID_AFTER",
+        )
+
+        _cached_overview_analysis(
+            conn,
+            field=incompatible,
+            acquired_at=datetime(2026, 8, 12, 3, tzinfo=UTC),
+            value=0.55,
+            item_id="OVERVIEW_ISOLATION_BAD_BEFORE",
+        )
+        ring = incompatible["geometry"]["coordinates"][0]
+        west = min(point[0] for point in ring)
+        south = min(point[1] for point in ring)
+        east = max(point[0] for point in ring)
+        north = max(point[1] for point in ring)
+        _cached_overview_analysis(
+            conn,
+            field=incompatible,
+            acquired_at=datetime(2026, 8, 22, 3, tzinfo=UTC),
+            value=0.35,
+            item_id="OVERVIEW_ISOLATION_BAD_AFTER",
+            raster_bounds=(west + 0.0001, south, east + 0.0001, north),
+        )
+
+    response = client.get(f"/api/v1/farms/{farm['id']}/inspection-overview")
+    assert response.status_code == 200, response.text
+    by_field = {item["field_id"]: item for item in response.json()}
+
+    assert by_field[valid["id"]]["status"] == "NEEDS_INSPECTION"
+    assert by_field[valid["id"]]["needs_inspection"] is True
+    assert by_field[valid["id"]]["changed_area_rai"] > 0
+
+    isolated = by_field[incompatible["id"]]
+    assert isolated["status"] == "NOT_ASSESSABLE"
+    assert isolated["needs_inspection"] is False
+    assert isolated["ndvi_delta"] is None
+    assert isolated["changed_area_rai"] is None
+    assert isolated["common_support_ratio"] is None

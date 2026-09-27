@@ -547,7 +547,8 @@ class FoundationContractTests(unittest.TestCase):
         validation = operation["x-validation"].lower()
         self.assertIn("persisted", validation)
         self.assertIn("never calls satellite provider", validation)
-        self.assertIn("latest two cached analyses", validation)
+        self.assertIn("latest two distinct acquisition times", validation)
+        self.assertIn("incompatible raster pairs as not_assessable", validation)
         self.assertEqual(
             operation["responses"]["200"]["content"]["application/json"]["schema"],
             {
@@ -556,6 +557,15 @@ class FoundationContractTests(unittest.TestCase):
             },
         )
         self.assertNotIn("x-rate-limit", operation)
+
+    def test_health_readiness_contract_distinguishes_ready_and_not_ready(self):
+        ready = self.document["paths"]["/health/ready"]["get"]
+        self.assertEqual(set(ready["responses"]), {"200", "503"})
+        self.assertEqual(
+            ready["responses"]["503"]["content"]["application/json"]["schema"],
+            {"$ref": "#/components/schemas/ErrorResponse"},
+        )
+        self.assertEqual(ready["security"], [])
 
     def test_standard_error_schema_is_structural(self):
         error_response = self.document["components"]["schemas"]["ErrorResponse"]

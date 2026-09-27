@@ -2262,7 +2262,7 @@
         "operationId": "getFarmInspectionOverview",
         "x-required-role": "Authenticated farm owner or organization owner.",
         "x-organization-scope": "Returns cached inspection evidence only for a visible farm; hidden or non-owned farms return 404 before evidence is exposed.",
-        "x-validation": "Reads only persisted current-geometry observation analyses, uses at most the latest two cached analyses per field and the canonical common-support change threshold, and never calls satellite provider transport or creates analysis.",
+        "x-validation": "Reads only persisted current-geometry observation analyses, compares at most the latest two distinct acquisition times per field using deterministic same-time deduplication and the canonical common-support change threshold, isolates known per-field incompatible raster pairs as NOT_ASSESSABLE, and never calls satellite provider transport or creates analysis.",
         "security": [
           {
             "accessCookie": []
