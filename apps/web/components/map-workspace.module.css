@@ -332,6 +332,56 @@
   line-height: 16px;
 }
 
+.fieldEvidence {
+  display: block;
+  margin-top: 2px;
+  color: var(--agri-ink-muted);
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.fieldEvidence[data-inspection-status="NEEDS_INSPECTION"] {
+  color: var(--agri-semantic-clay);
+  font-weight: 650;
+}
+
+.fieldButton[data-inspection-priority="true"]::before {
+  background: var(--agri-semantic-clay);
+}
+
+.fieldButton[data-inspection-priority="true"] .fieldName {
+  color: #6f4827;
+}
+
+.inspectionSummary {
+  display: grid;
+  gap: 5px;
+  border-left: 2px solid var(--agri-line-subtle);
+  padding-left: 12px;
+}
+
+.inspectionSummary strong {
+  color: var(--agri-ink-strong);
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 22px;
+}
+
+.inspectionSummary p {
+  margin: 0;
+  color: var(--agri-ink-muted);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.inspectionSummary[data-inspection-status="NEEDS_INSPECTION"] {
+  border-left-color: var(--agri-semantic-clay);
+}
+
+.inspectionSummary[data-inspection-status="NEEDS_INSPECTION"] strong {
+  color: #6f4827;
+}
+
 .plainLink {
   display: flex;
   width: fit-content;

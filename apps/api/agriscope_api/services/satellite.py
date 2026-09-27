@@ -157,6 +157,29 @@ class ChangeResponse:
     geometry: dict[str, Any] | None
 
 
+@dataclass(frozen=True)
+class FarmInspectionOverviewItem:
+    field_id: UUID
+    status: Literal[
+        "NEEDS_INSPECTION",
+        "MEASURED",
+        "NOT_ASSESSABLE",
+        "FIRST_OBSERVATION",
+        "NO_ANALYSIS",
+    ]
+    needs_inspection: bool
+    latest_observation_id: UUID | None
+    latest_acquired_at: datetime | None
+    latest_ndvi_mean: float | None
+    previous_observation_id: UUID | None
+    previous_acquired_at: datetime | None
+    previous_ndvi_mean: float | None
+    ndvi_delta: float | None
+    direction: Literal["increased", "decreased", "unchanged"] | None
+    changed_area_rai: float | None
+    common_support_ratio: float | None
+
+
 class SatelliteService:
     def __init__(
         self,
@@ -206,6 +229,158 @@ class SatelliteService:
                 )
             )
         return result
+
+    async def get_farm_inspection_overview(
+        self, *, user_id: UUID, farm_id: UUID
+    ) -> list[FarmInspectionOverviewItem]:
+        farm_repository = FarmRepository(
+            self.session,
+            TenantScope(organization_id=None, user_id=user_id, role="viewer"),
+        )
+        farm = await farm_repository.get_farm(farm_id)
+        if farm is None:
+            raise ApiException("not_found", "Resource not found", 404)
+        fields = await farm_repository.list_fields(farm_id)
+        if fields is None:
+            raise ApiException("not_found", "Resource not found", 404)
+
+        geometry_hashes = {
+            field.id: geometry_fingerprint(field.geometry) for field in fields
+        }
+        analyses = await SatelliteRepository(
+            self.session,
+            TenantScope(
+                organization_id=farm.organization_id,
+                user_id=user_id,
+                role="viewer",
+            ),
+        ).list_cached_analyses_for_farm(
+            farm_id=farm.id,
+            algorithm_version=OBSERVATION_ANALYSIS_VERSION,
+            geometry_hashes=geometry_hashes,
+        )
+        by_field: dict[UUID, list[ObservationAnalysisRecord]] = {}
+        for analysis in analyses:
+            by_field.setdefault(analysis.field_id, []).append(analysis)
+
+        items: list[FarmInspectionOverviewItem] = []
+        field_names = {field.id: field.name for field in fields}
+        for field in fields:
+            cached = by_field.get(field.id, [])
+            latest = cached[0] if cached else None
+            previous = cached[1] if len(cached) > 1 else None
+            if latest is None:
+                items.append(
+                    FarmInspectionOverviewItem(
+                        field_id=field.id,
+                        status="NO_ANALYSIS",
+                        needs_inspection=False,
+                        latest_observation_id=None,
+                        latest_acquired_at=None,
+                        latest_ndvi_mean=None,
+                        previous_observation_id=None,
+                        previous_acquired_at=None,
+                        previous_ndvi_mean=None,
+                        ndvi_delta=None,
+                        direction=None,
+                        changed_area_rai=None,
+                        common_support_ratio=None,
+                    )
+                )
+                continue
+            if previous is None:
+                items.append(
+                    FarmInspectionOverviewItem(
+                        field_id=field.id,
+                        status="FIRST_OBSERVATION",
+                        needs_inspection=False,
+                        latest_observation_id=latest.observation_id,
+                        latest_acquired_at=latest.acquired_at,
+                        latest_ndvi_mean=float(latest.ndvi_mean),
+                        previous_observation_id=None,
+                        previous_acquired_at=None,
+                        previous_ndvi_mean=None,
+                        ndvi_delta=None,
+                        direction=None,
+                        changed_area_rai=None,
+                        common_support_ratio=None,
+                    )
+                )
+                continue
+
+            comparison = _change_geometry(
+                previous.raster_tiff,
+                latest.raster_tiff,
+                field.geometry,
+                minimum_common_support_ratio=self.settings.satellite_comparison_min_common_support_ratio,
+            )
+            if not comparison.assessable:
+                items.append(
+                    FarmInspectionOverviewItem(
+                        field_id=field.id,
+                        status="NOT_ASSESSABLE",
+                        needs_inspection=False,
+                        latest_observation_id=latest.observation_id,
+                        latest_acquired_at=latest.acquired_at,
+                        latest_ndvi_mean=float(latest.ndvi_mean),
+                        previous_observation_id=previous.observation_id,
+                        previous_acquired_at=previous.acquired_at,
+                        previous_ndvi_mean=float(previous.ndvi_mean),
+                        ndvi_delta=None,
+                        direction=None,
+                        changed_area_rai=None,
+                        common_support_ratio=comparison.support.common_support_ratio,
+                    )
+                )
+                continue
+
+            assert comparison.before_mean is not None
+            assert comparison.after_mean is not None
+            assert comparison.changed_area_sqm is not None
+            delta = comparison.after_mean - comparison.before_mean
+            direction: Literal["increased", "decreased", "unchanged"]
+            if delta > 0:
+                direction = "increased"
+            elif delta < 0:
+                direction = "decreased"
+            else:
+                direction = "unchanged"
+            changed_area_rai = round(comparison.changed_area_sqm / 1600, 4)
+            needs_inspection = changed_area_rai > 0
+            items.append(
+                FarmInspectionOverviewItem(
+                    field_id=field.id,
+                    status="NEEDS_INSPECTION" if needs_inspection else "MEASURED",
+                    needs_inspection=needs_inspection,
+                    latest_observation_id=latest.observation_id,
+                    latest_acquired_at=latest.acquired_at,
+                    latest_ndvi_mean=float(latest.ndvi_mean),
+                    previous_observation_id=previous.observation_id,
+                    previous_acquired_at=previous.acquired_at,
+                    previous_ndvi_mean=float(previous.ndvi_mean),
+                    ndvi_delta=delta,
+                    direction=direction,
+                    changed_area_rai=changed_area_rai,
+                    common_support_ratio=comparison.support.common_support_ratio,
+                )
+            )
+
+        rank = {
+            "NEEDS_INSPECTION": 0,
+            "MEASURED": 1,
+            "NOT_ASSESSABLE": 2,
+            "FIRST_OBSERVATION": 3,
+            "NO_ANALYSIS": 4,
+        }
+        return sorted(
+            items,
+            key=lambda item: (
+                rank[item.status],
+                -(item.changed_area_rai or 0),
+                field_names[item.field_id].casefold(),
+                str(item.field_id),
+            ),
+        )
 
     async def get_observation_preview(self, *, user_id: UUID, field_id: UUID,
         observation_id: UUID, authorized_field: FieldRecord | None = None) -> SatellitePreviewResponse:

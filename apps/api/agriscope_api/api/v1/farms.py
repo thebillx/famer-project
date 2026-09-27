@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 try:
@@ -68,6 +68,28 @@ class FieldResponse(BaseModel):
     updated_at: datetime
 
 
+class FarmInspectionOverviewItemResponse(BaseModel):
+    field_id: str
+    status: Literal[
+        "NEEDS_INSPECTION",
+        "MEASURED",
+        "NOT_ASSESSABLE",
+        "FIRST_OBSERVATION",
+        "NO_ANALYSIS",
+    ]
+    needs_inspection: bool
+    latest_observation_id: str | None
+    latest_acquired_at: datetime | None
+    latest_ndvi_mean: float | None
+    previous_observation_id: str | None
+    previous_acquired_at: datetime | None
+    previous_ndvi_mean: float | None
+    ndvi_delta: float | None
+    direction: Literal["increased", "decreased", "unchanged"] | None
+    changed_area_rai: float | None
+    common_support_ratio: float | None
+
+
 router = APIRouter(tags=["farms"]) if APIRouter else None
 
 
@@ -84,8 +106,9 @@ if router:
         get_current_user,
         require_minimum_role,
     )
-    from apps.api.agriscope_api.dependencies.runtime import get_db_session
+    from apps.api.agriscope_api.dependencies.runtime import get_db_session, get_settings
     from apps.api.agriscope_api.services.farms import FarmService
+    from apps.api.agriscope_api.services.satellite import SatelliteService
 
     def _farm_response(farm) -> FarmResponse:
         return FarmResponse(
@@ -167,6 +190,48 @@ if router:
         user = await get_current_user(request, session)
         farm = await FarmService(session).get_farm(user_id=user.id, farm_id=farm_id)
         return _farm_response(farm)
+
+    @router.get(
+        "/farms/{farm_id}/inspection-overview",
+        response_model=list[FarmInspectionOverviewItemResponse],
+    )
+    async def get_farm_inspection_overview(
+        farm_id: UUID,
+        request: Request,
+        session=Depends(get_db_session),
+        settings=Depends(get_settings),
+    ) -> list[FarmInspectionOverviewItemResponse]:
+        user = await get_current_user(request, session)
+        rows = await SatelliteService(session, settings).get_farm_inspection_overview(
+            user_id=user.id,
+            farm_id=farm_id,
+        )
+        return [
+            FarmInspectionOverviewItemResponse(
+                field_id=str(row.field_id),
+                status=row.status,
+                needs_inspection=row.needs_inspection,
+                latest_observation_id=(
+                    str(row.latest_observation_id)
+                    if row.latest_observation_id is not None
+                    else None
+                ),
+                latest_acquired_at=row.latest_acquired_at,
+                latest_ndvi_mean=row.latest_ndvi_mean,
+                previous_observation_id=(
+                    str(row.previous_observation_id)
+                    if row.previous_observation_id is not None
+                    else None
+                ),
+                previous_acquired_at=row.previous_acquired_at,
+                previous_ndvi_mean=row.previous_ndvi_mean,
+                ndvi_delta=row.ndvi_delta,
+                direction=row.direction,
+                changed_area_rai=row.changed_area_rai,
+                common_support_ratio=row.common_support_ratio,
+            )
+            for row in rows
+        ]
 
     @router.patch("/farms/{farm_id}", response_model=FarmResponse)
     async def update_farm(

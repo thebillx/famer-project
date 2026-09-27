@@ -88,6 +88,9 @@ async function mockWorkspace(
     fieldsResponse?: unknown;
     latestResponse?: unknown;
     latestTerminal?: boolean;
+    inspectionResponse?: unknown;
+    inspectionTerminal?: boolean;
+    inspectionError?: boolean;
     membershipTerminal?: boolean;
     styleDelayMs?: number;
     styleError?: boolean;
@@ -105,6 +108,29 @@ async function mockWorkspace(
     if (path === "/api/v1/auth/me") return json(route, user);
     if (path === `/api/v1/farms/${farm.id}`) return json(route, farm);
     if (path === `/api/v1/farms/${farm.id}/fields`) return json(route, options.fieldsResponse ?? fields);
+    if (path === `/api/v1/farms/${farm.id}/inspection-overview`) {
+      if (options.inspectionTerminal) {
+        return json(route, { error: { code: "invalid_refresh_token", message: "expired" } }, 401);
+      }
+      if (options.inspectionError) {
+        return json(route, { error: { code: "inspection_unavailable", message: "temporary" } }, 503);
+      }
+      return json(route, options.inspectionResponse ?? fields.map((field) => ({
+        field_id: field.id,
+        status: "NO_ANALYSIS",
+        needs_inspection: false,
+        latest_observation_id: null,
+        latest_acquired_at: null,
+        latest_ndvi_mean: null,
+        previous_observation_id: null,
+        previous_acquired_at: null,
+        previous_ndvi_mean: null,
+        ndvi_delta: null,
+        direction: null,
+        changed_area_rai: null,
+        common_support_ratio: null
+      })));
+    }
     if (path === `/api/v1/organizations/${organization.id}/members`) {
       if (options.membershipTerminal) {
         return json(route, { error: { code: "invalid_refresh_token", message: "expired" } }, 401);
@@ -172,6 +198,62 @@ test("field selection synchronizes hierarchy, map, inspector, search, and keyboa
   await page.getByPlaceholder("ค้นหาแปลง...").fill("");
   await a02.click();
 
+});
+
+test("farm inspection overview prioritizes cached evidence across list map and inspector", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await mockWorkspace(page, {
+    inspectionResponse: [
+      {
+        field_id: fields[1].id, status: "NEEDS_INSPECTION", needs_inspection: true,
+        latest_observation_id: "10000000-0000-0000-0000-000000000002", latest_acquired_at: "2026-08-22T03:00:00Z", latest_ndvi_mean: 0.42,
+        previous_observation_id: "10000000-0000-0000-0000-000000000001", previous_acquired_at: "2026-08-12T03:00:00Z", previous_ndvi_mean: 0.57,
+        ndvi_delta: -0.15, direction: "decreased", changed_area_rai: 0.75, common_support_ratio: 0.82
+      },
+      {
+        field_id: fields[0].id, status: "MEASURED", needs_inspection: false,
+        latest_observation_id: "20000000-0000-0000-0000-000000000002", latest_acquired_at: "2026-08-22T03:00:00Z", latest_ndvi_mean: 0.64,
+        previous_observation_id: "20000000-0000-0000-0000-000000000001", previous_acquired_at: "2026-08-12T03:00:00Z", previous_ndvi_mean: 0.56,
+        ndvi_delta: 0.08, direction: "increased", changed_area_rai: 0, common_support_ratio: 0.91
+      }
+    ]
+  });
+  await page.goto(`/farms/${farm.id}`);
+
+  const list = page.getByLabel("แปลงที่บันทึกไว้");
+  await expect(list.locator("li").first()).toContainText("A02");
+  await expect(list.locator("li").first()).toContainText("ควรตรวจ 0.75 ไร่");
+  await expect(page.getByRole("button", { name: /A02/ })).toHaveAttribute("data-inspection-priority", "true");
+  await expect(page.getByRole("button", { name: /A01/ })).toContainText("NDVI ล่าสุดเพิ่มขึ้น");
+
+  await page.getByRole("button", { name: /A02/ }).click();
+  await expect(page.getByLabel("Field map")).toHaveAttribute("data-selected-field-priority", "true");
+  const trend = page.getByLabel("แนวโน้มล่าสุด");
+  await expect(trend).toContainText("พบพื้นที่ควรตรวจ");
+  await expect(trend).toContainText("0.75 ไร่");
+  await expect(trend).toContainText("ΔNDVI -0.150");
+  await expect(trend).not.toContainText("สุขภาพดี");
+  await expect(trend).not.toContainText("โรค");
+  await expect(trend).not.toContainText("สาเหตุคือ");
+});
+
+test("inspection overview failure keeps farm geometry usable", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await mockWorkspace(page, { inspectionError: true });
+  await page.goto(`/farms/${farm.id}`);
+  await expect(page.getByLabel("Field map")).toBeVisible();
+  await expect(page.getByText("โหลดสถานะพื้นที่ควรตรวจไม่สำเร็จ")).toBeVisible();
+  await page.getByRole("button", { name: /A02/ }).click();
+  await expect(page.getByLabel("รายละเอียดแปลงที่เลือก")).toBeVisible();
+  await expect(page.getByLabel("แนวโน้มล่าสุด")).toContainText("ยังอ่านหลักฐานรวมไม่ได้");
+});
+
+test("terminal auth from inspection overview hides protected farm geometry", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await mockWorkspace(page, { inspectionTerminal: true });
+  await page.goto(`/farms/${farm.id}`);
+  await expect(page.getByRole("heading", { name: "เซสชันหมดอายุ กรุณาเข้าสู่ระบบอีกครั้ง" })).toBeVisible();
+  await expect(page.getByLabel("Field map")).toHaveCount(0);
 });
 
 test("farm workspace keeps geometry visible when imagery data is unavailable", async ({ page }) => {

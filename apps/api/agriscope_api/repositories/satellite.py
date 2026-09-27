@@ -244,6 +244,70 @@ class SatelliteRepository(TenantScopedRepository):
         row = result.mappings().one_or_none()
         return _analysis(row) if row else None
 
+    async def list_cached_analyses_for_farm(
+        self,
+        *,
+        farm_id: UUID,
+        algorithm_version: str,
+        geometry_hashes: dict[UUID, str],
+    ) -> list[ObservationAnalysisRecord]:
+        result = await self.session.execute(
+            text(
+                """
+                WITH ranked AS (
+                  SELECT analysis.observation_id, analysis.field_id, analysis.organization_id,
+                         analysis.acquired_at, analysis.algorithm_version,
+                         analysis.geometry_hash, analysis.ndvi_mean, analysis.ndvi_min,
+                         analysis.ndvi_max, analysis.ndvi_stddev, analysis.sample_count,
+                         analysis.valid_sample_count, analysis.valid_pixel_ratio,
+                         analysis.raster_tiff, analysis.raster_crs, analysis.raster_bounds,
+                         analysis.raster_width, analysis.raster_height,
+                         row_number() OVER (
+                           PARTITION BY analysis.field_id
+                           ORDER BY analysis.acquired_at DESC, analysis.observation_id DESC
+                         ) AS analysis_rank
+                  FROM field_observation_analyses analysis
+                  JOIN fields f
+                    ON f.id = analysis.field_id
+                   AND f.organization_id = analysis.organization_id
+                  JOIN farms farm
+                    ON farm.id = f.farm_id
+                   AND farm.organization_id = f.organization_id
+                  JOIN memberships m
+                    ON m.organization_id = f.organization_id
+                   AND m.user_id = :user_id
+                   AND m.status = 'active'
+                  WHERE farm.id = :farm_id
+                    AND analysis.organization_id = :organization_id
+                    AND analysis.algorithm_version = :algorithm_version
+                    AND analysis.geometry_hash = (
+                      CAST(:geometry_hashes AS jsonb) ->> analysis.field_id::text
+                    )
+                    AND f.status = 'active'
+                    AND farm.status = 'active'
+                    AND (m.role = 'organization_owner' OR farm.owner_user_id = :user_id)
+                )
+                SELECT observation_id, field_id, organization_id, acquired_at,
+                       algorithm_version, geometry_hash, ndvi_mean, ndvi_min, ndvi_max,
+                       ndvi_stddev, sample_count, valid_sample_count, valid_pixel_ratio,
+                       raster_tiff, raster_crs, raster_bounds, raster_width, raster_height
+                FROM ranked
+                WHERE analysis_rank <= 2
+                ORDER BY field_id, acquired_at DESC, observation_id DESC
+                """
+            ),
+            {
+                "farm_id": farm_id,
+                "organization_id": self.require_scope(),
+                "algorithm_version": algorithm_version,
+                "geometry_hashes": json.dumps(
+                    {str(field_id): value for field_id, value in geometry_hashes.items()}
+                ),
+                "user_id": self.scope.user_id,
+            },
+        )
+        return [_analysis(row) for row in result.mappings().all()]
+
     async def lock_observation_for_analysis(
         self, observation_id: UUID, field_id: UUID
     ) -> None:

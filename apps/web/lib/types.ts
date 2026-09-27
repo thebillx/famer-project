@@ -41,6 +41,22 @@ export type FieldBoundary = {
   updated_at: string;
 };
 
+export type FarmInspectionOverviewItem = {
+  field_id: string;
+  status: "NEEDS_INSPECTION" | "MEASURED" | "NOT_ASSESSABLE" | "FIRST_OBSERVATION" | "NO_ANALYSIS";
+  needs_inspection: boolean;
+  latest_observation_id: string | null;
+  latest_acquired_at: string | null;
+  latest_ndvi_mean: number | null;
+  previous_observation_id: string | null;
+  previous_acquired_at: string | null;
+  previous_ndvi_mean: number | null;
+  ndvi_delta: number | null;
+  direction: "increased" | "decreased" | "unchanged" | null;
+  changed_area_rai: number | null;
+  common_support_ratio: number | null;
+};
+
 export type GeoJsonPolygon = {
   type: "Polygon";
   coordinates: number[][][];

@@ -11,6 +11,7 @@ EXPECTED_SCHEMAS = {
     "CsrfResponse",
     "ErrorResponse",
     "Farm",
+    "FarmInspectionOverviewItem",
     "FarmCreateRequest",
     "FarmUpdateRequest",
     "Field",
@@ -56,6 +57,7 @@ EXPECTED_METHODS = {
     "/api/v1/organizations/{organization_id}/members": {"get"},
     "/api/v1/farms": {"get", "post"},
     "/api/v1/farms/{farm_id}": {"delete", "get", "patch"},
+    "/api/v1/farms/{farm_id}/inspection-overview": {"get"},
     "/api/v1/farms/{farm_id}/fields": {"get", "post"},
     "/api/v1/fields/{field_id}": {"delete", "get", "patch"},
     "/api/v1/fields/{field_id}/satellite/search-latest": {"post"},
@@ -89,6 +91,7 @@ EXPECTED_RESPONSES = {
     ("/api/v1/farms", "get"): {"200", "401", "404", "422"},
     ("/api/v1/farms", "post"): {"201", "401", "403", "404", "422", "429"},
     ("/api/v1/farms/{farm_id}", "get"): {"200", "401", "404", "422"},
+    ("/api/v1/farms/{farm_id}/inspection-overview", "get"): {"200", "401", "404", "422"},
     ("/api/v1/farms/{farm_id}", "patch"): {"200", "401", "403", "404", "422", "429"},
     ("/api/v1/farms/{farm_id}", "delete"): {"204", "401", "403", "404", "422", "429"},
     ("/api/v1/farms/{farm_id}/fields", "get"): {"200", "401", "404", "422"},
@@ -211,6 +214,10 @@ OWNER_SCOPE_ASSERTIONS = {
     ("/api/v1/farms/{farm_id}", "get"): {
         "x-organization-scope": ("farm owner",),
         "x-validation": ("non-owner",),
+    },
+    ("/api/v1/farms/{farm_id}/inspection-overview", "get"): {
+        "x-organization-scope": ("visible farm", "non-owned farms return 404"),
+        "x-validation": ("persisted", "never calls satellite provider"),
     },
     ("/api/v1/farms/{farm_id}", "patch"): {
         "x-organization-scope": ("owner", "organization owner"),
@@ -522,6 +529,33 @@ class FoundationContractTests(unittest.TestCase):
         self.assertIn("common", validation)
         self.assertIn("field-grid", validation)
         self.assertIn("not_assessable", validation)
+
+    def test_farm_inspection_overview_is_cached_only_and_non_diagnostic(self):
+        schema = self.document["components"]["schemas"]["FarmInspectionOverviewItem"]
+        self.assertEqual(
+            schema["properties"]["status"]["enum"],
+            ["NEEDS_INSPECTION", "MEASURED", "NOT_ASSESSABLE", "FIRST_OBSERVATION", "NO_ANALYSIS"],
+        )
+        self.assertEqual(schema["properties"]["needs_inspection"], {"type": "boolean"})
+        self.assertIn("null", schema["properties"]["ndvi_delta"]["type"])
+        self.assertIn("null", schema["properties"]["changed_area_rai"]["type"])
+        self.assertIn("null", schema["properties"]["common_support_ratio"]["type"])
+        self.assertNotIn("health", json.dumps(schema).lower())
+        self.assertNotIn("disease", json.dumps(schema).lower())
+
+        operation = self.document["paths"]["/api/v1/farms/{farm_id}/inspection-overview"]["get"]
+        validation = operation["x-validation"].lower()
+        self.assertIn("persisted", validation)
+        self.assertIn("never calls satellite provider", validation)
+        self.assertIn("latest two cached analyses", validation)
+        self.assertEqual(
+            operation["responses"]["200"]["content"]["application/json"]["schema"],
+            {
+                "type": "array",
+                "items": {"$ref": "#/components/schemas/FarmInspectionOverviewItem"},
+            },
+        )
+        self.assertNotIn("x-rate-limit", operation)
 
     def test_standard_error_schema_is_structural(self):
         error_response = self.document["components"]["schemas"]["ErrorResponse"]
