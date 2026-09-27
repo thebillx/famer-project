@@ -1,6 +1,6 @@
 # AGRISCOPE-V2-FARM-INSPECTION-OVERVIEW-001
 
-Status: IN_PROGRESS
+Status: VALIDATED_PENDING_MERGE
 
 ## Objective
 
@@ -70,3 +70,16 @@ All other paths are read-only.
 ## Delivery
 
 Work from clean origin/main in the isolated worktree `/Users/bill/final-project-inspection-overview` on branch `codex/inspection-overview-002`. Preserve the dirty primary checkout unchanged.
+
+
+## Validation evidence — 2026-09-27
+
+- Delivery base: `473accf7e17ea17a74fdcdd526fcdc9bb4e8fad4` (`origin/main` at branch creation).
+- Delivery branch/worktree: `codex/inspection-overview-002` at `/Users/bill/final-project-inspection-overview`; the dirty primary checkout was not modified.
+- Local OpenAPI/contract validation: 24/24 PASS.
+- Ruff on `apps/api`, `packages`, and `tests`: PASS.
+- Python compileall over the modified backend/test boundary: PASS.
+- GitHub Actions CI run 46 for commit `ad5e322ca1e4a836adc41b6703935765edc519fa`: validation PASS, integration PASS, browser-regression PASS.
+- Browser coverage includes farm-list ordering, map priority synchronization, inspector trend evidence, overview failure fallback, and terminal-auth hiding.
+- Integration coverage proves current-geometry-only cached evidence, all five overview states, foreign/non-owner/disabled denial, and no provider work from the overview path.
+- No migration, dependency, provider algorithm, change threshold, diagnosis, background job, or persistence expansion was introduced.
