@@ -7,6 +7,7 @@ import { Button } from "./Button";
 import { FormInput } from "./Primitives";
 
 type LngLat = [number, number];
+type EntryMode = "map" | "coordinates";
 
 const DEFAULT_STYLE_URL = "https://tiles.openfreemap.org/styles/liberty";
 const THAILAND_CENTER: LngLat = [100.5232, 13.7367];
@@ -30,19 +31,35 @@ function closedPolygon(points: LngLat[]): GeoJsonPolygon {
   return { type: "Polygon", coordinates: [[...points, points[0]]] };
 }
 
+function drawingInstruction(mode: EntryMode, pointCount: number) {
+  if (mode === "coordinates") {
+    return pointCount >= 3
+      ? "ขอบเขตพร้อมบันทึก คุณยังเพิ่มพิกัดหรือลากจุดบนแผนที่เพื่อปรับได้"
+      : `กรอกพิกัดด้านล่างอีก ${Math.max(3 - pointCount, 1)} จุดเพื่อสร้างขอบเขต`;
+  }
+  if (pointCount === 0) return "แตะบนแผนที่เพื่อเพิ่มจุดที่ 1";
+  if (pointCount === 1) return "แตะบนแผนที่เพื่อเพิ่มจุดที่ 2";
+  if (pointCount === 2) return "เพิ่มอีก 1 จุดเพื่อสร้างขอบเขต";
+  return "ขอบเขตพร้อมบันทึก เพิ่มจุดต่อหรือลากหมุดเพื่อปรับได้";
+}
+
 export function FieldMap({
   initialGeometry,
   onGeometryChange,
+  onPointCountChange,
   editable = false
 }: {
   initialGeometry?: GeoJsonPolygon;
   onGeometryChange?: (geometry: GeoJsonPolygon | null) => void;
+  onPointCountChange?: (count: number) => void;
   editable?: boolean;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<Map | null>(null);
   const markersRef = useRef<Marker[]>([]);
   const dragStateRef = useRef({ dragging: false, markerDragging: false });
+  const entryModeRef = useRef<EntryMode>("map");
+  const [entryMode, setEntryMode] = useState<EntryMode>("map");
   const [mapLoaded, setMapLoaded] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
   const [locationStatus, setLocationStatus] = useState<string | null>(null);
@@ -54,6 +71,12 @@ export function FieldMap({
     initialGeometry ? (initialGeometry.coordinates[0].slice(0, -1) as LngLat[]) : []
   );
   const styleUrl = process.env.NEXT_PUBLIC_MAP_STYLE_URL ?? DEFAULT_STYLE_URL;
+
+  const changeEntryMode = (mode: EntryMode) => {
+    entryModeRef.current = mode;
+    setEntryMode(mode);
+    setCoordinateError(null);
+  };
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -75,7 +98,7 @@ export function FieldMap({
       }, 0);
     });
     map.on("click", (event) => {
-      if (!editable) return;
+      if (!editable || entryModeRef.current !== "map") return;
       if (dragStateRef.current.dragging || dragStateRef.current.markerDragging) return;
       const target = event.originalEvent.target as HTMLElement | null;
       if (target?.closest(".maplibregl-ctrl, .maplibregl-marker")) return;
@@ -108,6 +131,7 @@ export function FieldMap({
   }, []);
 
   useEffect(() => {
+    onPointCountChange?.(points.length);
     onGeometryChange?.(points.length >= 3 ? closedPolygon(points) : null);
     const map = mapRef.current;
     if (!map || !map.loaded()) return;
@@ -116,7 +140,11 @@ export function FieldMap({
     markersRef.current = [];
     if (editable) {
       points.forEach((point, index) => {
-        const marker = new maplibregl.Marker({ color: "#173f35", draggable: true })
+        const element = document.createElement("div");
+        element.className = "as-field-vertex-marker";
+        element.textContent = String(index + 1);
+        element.setAttribute("aria-hidden", "true");
+        const marker = new maplibregl.Marker({ element, draggable: true })
           .setLngLat(point)
           .addTo(map);
         marker.on("dragstart", () => {
@@ -146,7 +174,7 @@ export function FieldMap({
         markersRef.current.push(marker);
       });
     }
-  }, [editable, onGeometryChange, points]);
+  }, [editable, mapLoaded, onGeometryChange, onPointCountChange, points]);
 
   function renderGeometry(map: Map, currentPoints: LngLat[]) {
     const geometry = currentPoints.length >= 3 ? closedPolygon(currentPoints) : null;
@@ -194,7 +222,7 @@ export function FieldMap({
       setLocationStatus("เบราว์เซอร์นี้ไม่รองรับการระบุตำแหน่ง");
       return;
     }
-    setLocationStatus("กำลังค้นหาตำแหน่ง...");
+    setLocationStatus("กำลังค้นหาตำแหน่ง…");
     navigator.geolocation.getCurrentPosition(
       (position) => {
         const point: LngLat = [position.coords.longitude, position.coords.latitude];
@@ -246,11 +274,48 @@ export function FieldMap({
     if (map) {
       map.jumpTo({ center: point, zoom: Math.max(map.getZoom(), 16) });
     }
+    window.requestAnimationFrame(() => {
+      document.getElementById("field-coordinate-latitude")?.focus();
+    });
+  }
+
+  function removePoint(index: number) {
+    setCoordinateError(null);
+    setPoints((current) => current.filter((_, currentIndex) => currentIndex !== index));
   }
 
   return (
     <section className="space-y-3">
-      <div className="relative overflow-hidden rounded-[var(--as-radius-xl)] border border-[var(--as-border)] bg-[var(--as-surface-map)] shadow-[var(--as-shadow-lg)]">
+      {editable ? (
+        <div className="rounded-[var(--as-radius-lg)] border border-[var(--as-border)] bg-[var(--as-surface)] p-2 shadow-[var(--as-shadow-sm)]">
+          <p className="px-2 pb-2 text-sm font-bold text-[var(--as-ink)]">เลือกวิธีกำหนดขอบเขต</p>
+          <div className="grid grid-cols-2 gap-2" role="group" aria-label="วิธีกำหนดขอบเขตแปลง">
+            <button
+              type="button"
+              className="as-field-entry-mode"
+              aria-pressed={entryMode === "map"}
+              onClick={() => changeEntryMode("map")}
+            >
+              <strong>วาดบนแผนที่</strong>
+              <span>แตะตามมุมของแปลง</span>
+            </button>
+            <button
+              type="button"
+              className="as-field-entry-mode"
+              aria-pressed={entryMode === "coordinates"}
+              onClick={() => changeEntryMode("coordinates")}
+            >
+              <strong>กรอกพิกัด</strong>
+              <span>ละติจูด / ลองจิจูด</span>
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      <div
+        className="relative overflow-hidden rounded-[var(--as-radius-xl)] border border-[var(--as-border)] bg-[var(--as-surface-map)] shadow-[var(--as-shadow-lg)]"
+        data-entry-mode={editable ? entryMode : undefined}
+      >
         <div
           ref={containerRef}
           className="bg-[var(--as-surface-map)]"
@@ -260,21 +325,22 @@ export function FieldMap({
           data-vertex-count={points.length}
           data-map-bounds={editable ? "97.34,5.61,105.64,20.47" : undefined}
         />
-        <div className="pointer-events-none absolute left-3 right-3 top-3 flex flex-wrap items-center justify-between gap-3">
-          <div className="pointer-events-auto flex flex-wrap gap-2 rounded-2xl border border-[var(--as-border)] bg-white/90 p-1.5 shadow-[var(--as-shadow-sm)] backdrop-blur">
-            <span className={`as-pill ${editable ? "text-[var(--as-primary)]" : ""}`}>
-              <span className="as-dot" aria-hidden="true" />
-              {editable ? "Draw mode" : "Saved boundary"}
-            </span>
-            <span className="as-pill">Vertices: {points.length}</span>
-          </div>
-          <div className="pointer-events-auto rounded-2xl border border-[var(--as-border)] bg-white/90 px-3 py-2 text-xs font-bold text-[var(--as-ink-muted)] shadow-[var(--as-shadow-sm)] backdrop-blur">
-            MapLibre
+        <div className="pointer-events-none absolute left-3 right-3 top-3 flex flex-wrap items-start justify-between gap-3">
+          <div className="max-w-[min(82%,34rem)] rounded-2xl border border-[var(--as-border)] bg-white/94 px-3 py-2 shadow-[var(--as-shadow-sm)] backdrop-blur">
+            <p className="text-xs font-bold text-[var(--as-primary)]">
+              {editable ? `กำหนดขอบเขต · ${points.length} จุด` : "ขอบเขตที่บันทึกแล้ว"}
+            </p>
+            {editable ? (
+              <p role="status" className="mt-1 text-xs leading-5 text-[var(--as-ink-muted)]">
+                {drawingInstruction(entryMode, points.length)}
+              </p>
+            ) : null}
           </div>
         </div>
+
         {!mapLoaded ? (
           <div className="absolute bottom-4 left-4 rounded-[var(--as-radius-md)] bg-white px-3 py-2 text-sm font-semibold text-[var(--as-primary)] shadow-[var(--as-shadow-sm)]">
-            กำลังโหลดแผนที่...
+            กำลังโหลดแผนที่…
           </div>
         ) : null}
         {mapError ? (
@@ -288,15 +354,16 @@ export function FieldMap({
             onClick={locateMe}
             className="absolute bottom-4 right-4 min-h-11 rounded-[var(--as-radius-sm)] border border-[var(--as-border)] bg-white/92 px-4 text-sm font-bold text-[var(--as-primary)] shadow-[var(--as-shadow-sm)] backdrop-blur transition hover:bg-[var(--as-surface-soft)]"
           >
-            ใช้ตำแหน่งฉัน
+            ไปที่ตำแหน่งฉัน
           </button>
         ) : null}
         {locationStatus ? (
-          <div className="absolute bottom-4 right-36 rounded-[var(--as-radius-sm)] border border-[var(--as-border)] bg-white/92 px-3 py-2 text-sm text-[var(--as-ink-muted)] shadow-[var(--as-shadow-sm)]">
+          <div className="absolute bottom-16 right-4 max-w-xs rounded-[var(--as-radius-sm)] border border-[var(--as-border)] bg-white/94 px-3 py-2 text-sm text-[var(--as-ink-muted)] shadow-[var(--as-shadow-sm)]">
             {locationStatus}
           </div>
         ) : null}
       </div>
+
       {editable ? (
         <div className="space-y-3">
           {coordinateError ? (
@@ -307,18 +374,20 @@ export function FieldMap({
               {coordinateError}
             </p>
           ) : null}
-          <details className="rounded-[var(--as-radius-lg)] border border-[var(--as-border)] bg-white/80 p-4 shadow-[var(--as-shadow-sm)]">
-            <summary className="min-h-11 cursor-pointer font-bold text-[var(--as-primary)]">
-              เพิ่มจุดด้วยพิกัด
-            </summary>
-            <div className="mt-3 space-y-4">
-              <p className="text-sm text-[var(--as-ink-muted)]">
-                กรอกพิกัด WGS84 แบบทศนิยมตามลำดับรอบขอบเขตอย่างน้อย 3 จุด ภายในกรอบพื้นที่ให้บริการประเทศไทยโดยประมาณ
-                ระบบจะปิดรูปแปลงให้อัตโนมัติเมื่อบันทึก
+
+          {entryMode === "coordinates" ? (
+            <section
+              className="rounded-[var(--as-radius-lg)] border border-[var(--as-border)] bg-[var(--as-surface)] p-4 shadow-[var(--as-shadow-sm)]"
+              aria-label="เพิ่มจุดด้วยพิกัด"
+            >
+              <h2 className="font-bold text-[var(--as-primary)]">เพิ่มจุดด้วยพิกัด</h2>
+              <p className="mt-2 text-sm leading-6 text-[var(--as-ink-muted)]">
+                กรอก WGS84 แบบทศนิยมตามลำดับรอบขอบเขตอย่างน้อย 3 จุด ระบบจะปิดรูปให้อัตโนมัติเมื่อบันทึก
               </p>
-              <form className="space-y-3" noValidate onSubmit={addCoordinatePoint}>
+              <form className="mt-4 space-y-3" noValidate onSubmit={addCoordinatePoint}>
                 <div className="grid gap-3 md:grid-cols-2">
                   <FormInput
+                    id="field-coordinate-latitude"
                     label="ละติจูด"
                     type="number"
                     inputMode="decimal"
@@ -327,7 +396,7 @@ export function FieldMap({
                     max={THAILAND_BOUNDS[1][1]}
                     value={latitudeInput}
                     onChange={(event) => setLatitudeInput(event.target.value)}
-                    hint="ช่วง 5.61 ถึง 20.47 — ตัวอย่าง 18.7901"
+                    hint="เช่น 18.7901"
                     aria-required="true"
                   />
                   <FormInput
@@ -339,27 +408,46 @@ export function FieldMap({
                     max={THAILAND_BOUNDS[1][0]}
                     value={longitudeInput}
                     onChange={(event) => setLongitudeInput(event.target.value)}
-                    hint="ช่วง 97.34 ถึง 105.64 — ตัวอย่าง 98.9801"
+                    hint="เช่น 98.9801"
                     aria-required="true"
                   />
                 </div>
                 <Button type="submit" variant="secondary" size="sm">
-                  เพิ่มจุดพิกัด
+                  เพิ่มจุดที่ {points.length + 1}
                 </Button>
               </form>
+
               {points.length ? (
-                <ol aria-label="รายการจุดพิกัด" className="grid gap-2 text-sm text-[var(--as-ink-muted)] md:grid-cols-2">
+                <ol aria-label="รายการจุดพิกัด" className="mt-4 grid gap-2 text-sm text-[var(--as-ink-muted)]">
                   {points.map(([longitude, latitude], index) => (
-                    <li key={`${longitude}-${latitude}-${index}`} className="rounded-[var(--as-radius-sm)] bg-[var(--as-surface-soft)] px-3 py-2">
-                      <span className="font-bold text-[var(--as-ink)]">จุด {index + 1}</span>
-                      {`: ละติจูด ${latitude.toFixed(6)}, ลองจิจูด ${longitude.toFixed(6)}`}
+                    <li
+                      key={`${longitude}-${latitude}-${index}`}
+                      className="flex min-h-11 items-center justify-between gap-3 rounded-[var(--as-radius-sm)] bg-[var(--as-surface-soft)] px-3 py-2"
+                    >
+                      <span>
+                        <strong className="text-[var(--as-ink)]">จุด {index + 1}</strong>
+                        {` · ${latitude.toFixed(6)}, ${longitude.toFixed(6)}`}
+                      </span>
+                      <button
+                        type="button"
+                        className="min-h-11 min-w-11 rounded-[var(--as-radius-sm)] px-2 font-bold text-[var(--as-danger)] hover:bg-[var(--as-danger-soft)]"
+                        aria-label={`ลบจุดที่ ${index + 1}`}
+                        onClick={() => removePoint(index)}
+                      >
+                        ลบ
+                      </button>
                     </li>
                   ))}
                 </ol>
               ) : null}
-            </div>
-          </details>
-          <div className="flex flex-wrap items-center gap-2 rounded-[var(--as-radius-lg)] border border-[var(--as-border)] bg-white/80 p-2 shadow-[var(--as-shadow-sm)]">
+            </section>
+          ) : (
+            <p className="rounded-[var(--as-radius-md)] bg-[var(--as-surface-soft)] px-4 py-3 text-sm leading-6 text-[var(--as-ink-muted)]">
+              แตะตามมุมของแปลงอย่างน้อย 3 จุด คุณสามารถลากหมายเลขบนแผนที่เพื่อปรับตำแหน่งได้
+            </p>
+          )}
+
+          <div className="flex flex-wrap items-center gap-2 rounded-[var(--as-radius-lg)] border border-[var(--as-border)] bg-[var(--as-surface)] p-2 shadow-[var(--as-shadow-sm)]">
             <Button
               type="button"
               variant="secondary"
@@ -370,11 +458,11 @@ export function FieldMap({
               }}
               disabled={!points.length}
             >
-              Undo
+              ย้อนกลับ 1 จุด
             </Button>
             <Button
               type="button"
-              variant="danger"
+              variant="ghost"
               size="sm"
               onClick={() => {
                 setCoordinateError(null);
@@ -382,10 +470,10 @@ export function FieldMap({
               }}
               disabled={!points.length}
             >
-              Delete polygon
+              ล้างขอบเขต
             </Button>
             <span className="self-center text-sm text-[var(--as-ink-muted)]">
-              Click the map to add vertices. Drag markers to edit before saving.
+              {points.length >= 3 ? "ขอบเขตพร้อมบันทึก" : `ต้องมีอย่างน้อย 3 จุด · ตอนนี้ ${points.length} จุด`}
             </span>
           </div>
         </div>

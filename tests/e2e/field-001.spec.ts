@@ -25,11 +25,11 @@ test("farmer creates farm, draws field, saves, and sees it after reload", async 
   await expect(page).toHaveURL(/\/farms$/);
 
   await page.getByRole("link", { name: "สร้างฟาร์มแรก", exact: true }).click();
-  await page.getByLabel("Farm name").fill("North Farm");
-  await page.getByLabel("Province").fill("Chiang Mai");
-  await page.getByRole("button", { name: "Save farm" }).click();
-  await expect(page.getByRole("heading", { name: "North Farm" })).toBeVisible();
-  const farmId = new URL(page.url()).pathname.split("/").at(-1);
+  await page.getByLabel("ชื่อฟาร์ม").fill("North Farm");
+  await page.getByLabel("จังหวัด").fill("Chiang Mai");
+  await page.getByRole("button", { name: "บันทึกและเพิ่มแปลง" }).click();
+  await expect(page).toHaveURL(/\/farms\/[^/]+\/fields\/new/);
+  const farmId = new URL(page.url()).pathname.split("/")[2];
   expect(farmId).toBeTruthy();
   const bypassResult = await page.evaluate(async (currentFarmId) => {
     const csrfToken = document.cookie
@@ -64,13 +64,12 @@ test("farmer creates farm, draws field, saves, and sees it after reload", async 
   }, farmId);
   expect(bypassResult).toEqual({ status: 422, errorCode: "invalid_geometry", fieldCount: 0 });
 
-  await page.getByRole("link", { name: "เพิ่มแปลงแรก", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Draw field" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "เพิ่มแปลงใน North Farm" })).toBeVisible();
   const map = page.locator(".maplibregl-canvas");
   const mapContainer = page.getByLabel("Field map");
   await expect(mapContainer).toHaveAttribute("data-map-style-url", /tiles\.openfreemap\.org|style/);
   await expect(mapContainer).toHaveAttribute("data-map-bounds", "97.34,5.61,105.64,20.47");
-  await expect(page.getByText("กำลังโหลดแผนที่...", { exact: true })).toBeHidden();
+  await expect(page.getByText("กำลังโหลดแผนที่…", { exact: true })).toBeHidden();
   const box = await map.boundingBox();
   expect(box).not.toBeNull();
   if (!box) return;
@@ -83,49 +82,41 @@ test("farmer creates farm, draws field, saves, and sees it after reload", async 
   await page.mouse.move(box.x + box.width * 0.52, box.y + box.height * 0.52, { steps: 4 });
   await page.mouse.up();
   await expect(mapContainer).toHaveAttribute("data-vertex-count", "2");
-  const coordinatePanel = page.locator("details").filter({ hasText: "เพิ่มจุดด้วยพิกัด" });
-  await expect(coordinatePanel).not.toHaveAttribute("open", "");
-  await page.getByRole("button", { name: "Delete polygon" }).click();
+  await page.getByRole("button", { name: /กรอกพิกัด/ }).click();
+  const coordinatePanel = page.getByLabel("เพิ่มจุดด้วยพิกัด");
+  await expect(coordinatePanel).toBeVisible();
+  await page.getByRole("button", { name: "ล้างขอบเขต" }).click();
   await expect(mapContainer).toHaveAttribute("data-vertex-count", "0");
 
-  await coordinatePanel.getByText("เพิ่มจุดด้วยพิกัด", { exact: true }).click();
   const latitude = page.getByLabel("ละติจูด");
   const longitude = page.getByLabel("ลองจิจูด");
-  await expect(page.getByText("ช่วง 5.61 ถึง 20.47 — ตัวอย่าง 18.7901", { exact: true })).toBeVisible();
-  await expect(page.getByText("ช่วง 97.34 ถึง 105.64 — ตัวอย่าง 98.9801", { exact: true })).toBeVisible();
+  await expect(page.getByText("เช่น 18.7901", { exact: true })).toBeVisible();
+  await expect(page.getByText("เช่น 98.9801", { exact: true })).toBeVisible();
   const outsideCoordinates = [
     ["13", "97.3399"],
     ["13", "105.6401"],
     ["5.6099", "100"],
     ["20.4701", "100"]
   ];
-  for (const [index, [lat, lng]] of outsideCoordinates.entries()) {
+  for (const [lat, lng] of outsideCoordinates) {
     await latitude.fill(lat);
     await longitude.fill(lng);
-    await page.getByRole("button", { name: "เพิ่มจุดพิกัด" }).click();
+    await page.getByRole("button", { name: /เพิ่มจุดที่ \d+/ }).click();
     await expect(
       page.getByText("พิกัดต้องอยู่ในกรอบพื้นที่ให้บริการประเทศไทยโดยประมาณ", { exact: true })
     ).toBeVisible();
     await expect(mapContainer).toHaveAttribute("data-vertex-count", "0");
-    if (index === 0) {
-      await coordinatePanel.getByText("เพิ่มจุดด้วยพิกัด", { exact: true }).click();
-      await expect(coordinatePanel).not.toHaveAttribute("open", "");
-      await expect(
-        page.getByText("พิกัดต้องอยู่ในกรอบพื้นที่ให้บริการประเทศไทยโดยประมาณ", { exact: true })
-      ).toBeVisible();
-      await coordinatePanel.getByText("เพิ่มจุดด้วยพิกัด", { exact: true }).click();
-    }
   }
 
   await latitude.fill("18.7901");
   await longitude.fill("98.9801");
   await longitude.press("Enter");
   await expect(mapContainer).toHaveAttribute("data-vertex-count", "1");
-  await expect(page.getByText("จุด 1: ละติจูด 18.790100, ลองจิจูด 98.980100")).toBeVisible();
+  await expect(page.getByText("จุด 1 · 18.790100, 98.980100")).toBeVisible();
 
   await latitude.fill("18.7901");
   await longitude.fill("98.9801");
-  await page.getByRole("button", { name: "เพิ่มจุดพิกัด" }).click();
+  await page.getByRole("button", { name: /เพิ่มจุดที่ \d+/ }).click();
   await expect(page.getByText("พิกัดนี้ถูกเพิ่มแล้ว", { exact: true })).toBeVisible();
   await expect(mapContainer).toHaveAttribute("data-vertex-count", "1");
 
@@ -136,10 +127,10 @@ test("farmer creates farm, draws field, saves, and sees it after reload", async 
   ]) {
     await latitude.fill(lat);
     await longitude.fill(lng);
-    await page.getByRole("button", { name: "เพิ่มจุดพิกัด" }).click();
+    await page.getByRole("button", { name: /เพิ่มจุดที่ \d+/ }).click();
   }
   await expect(mapContainer).toHaveAttribute("data-vertex-count", "4");
-  await page.getByRole("button", { name: "Save field" }).click();
+  await page.getByRole("button", { name: "บันทึกแปลง" }).click();
 
   await expect.poll(() => submittedGeometry).toEqual({
     type: "Polygon",
@@ -152,7 +143,7 @@ test("farmer creates farm, draws field, saves, and sees it after reload", async 
     ]]
   });
 
-  await expect(page.getByRole("button", { name: /^Field 1/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^แปลง 1/ })).toBeVisible();
   await expect(page.getByText(/ตร\.ม\. \/ .* ไร่/)).toBeVisible();
   await page.getByRole("button", { name: "ตรวจสอบภาพดาวเทียมล่าสุด" }).click();
   await expect(page.getByText("พบภาพล่าสุด")).toBeVisible();
@@ -171,10 +162,10 @@ test("farmer creates farm, draws field, saves, and sees it after reload", async 
   await expect(ndviSummary).toContainText("agriscope-ndvi-summary-v1");
   await expect(ndviSummary).toContainText("ไม่ใช่การวินิจฉัย");
   expect(ndviRequests).toBe(1);
-  await page.getByText("Product / item ID").click();
+  await page.getByText("รหัสภาพต้นทาง").click();
   await expect(page.getByText("S2A_MSIL2A_20260730T034541_E2E")).toBeVisible();
   await page.reload();
-  await expect(page.getByRole("button", { name: /^Field 1/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^แปลง 1/ })).toBeVisible();
   await expect(page.getByText(/ตร\.ม\. \/ .* ไร่/)).toBeVisible();
   await expect(page.getByText("พบภาพล่าสุด")).toBeVisible();
   await expect(page.getByText("Sentinel-2 Level-2A", { exact: true })).toBeVisible();
@@ -183,4 +174,55 @@ test("farmer creates farm, draws field, saves, and sees it after reload", async 
   expect(previewRequests).toBe(1);
   expect(ndviRequests).toBe(1);
   await expect(page.locator(".maplibregl-canvas")).toBeVisible();
+});
+
+
+test("farmer can create a field using the map-only path on mobile", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const email = `field-map-${Date.now()}@example.com`;
+
+  await page.goto("/login");
+  await page.getByLabel("อีเมล").fill(email);
+  await page.getByLabel("รหัสผ่าน").fill("StrongPass12345");
+  await page.getByLabel("ชื่อของคุณ").fill("Map Farmer");
+  await page.getByLabel("ชื่อองค์กร").fill("Map Org");
+  await page.locator("form").getByRole("button", { name: "สร้างบัญชี" }).click();
+  await expect(page).toHaveURL(/\/farms$/);
+
+  await page.getByRole("link", { name: "สร้างฟาร์มแรก", exact: true }).click();
+  await page.getByLabel("ชื่อฟาร์ม").fill("Mobile Farm");
+  await page.getByLabel("จังหวัด").fill("เชียงใหม่");
+  await page.getByRole("button", { name: "บันทึกและเพิ่มแปลง" }).click();
+  await expect(page).toHaveURL(/\/farms\/[^/]+\/fields\/new/);
+
+  await page.getByLabel("ชื่อแปลง").fill("แปลงแผนที่");
+  await expect(page.getByRole("button", { name: /วาดบนแผนที่/ })).toHaveAttribute("aria-pressed", "true");
+
+  const mapContainer = page.getByLabel("Field map");
+  const map = page.locator(".maplibregl-canvas");
+  await expect(page.getByText("กำลังโหลดแผนที่…", { exact: true })).toBeHidden();
+  const box = await map.boundingBox();
+  expect(box).not.toBeNull();
+  if (!box) return;
+
+  for (const position of [
+    { x: box.width * 0.35, y: box.height * 0.35 },
+    { x: box.width * 0.65, y: box.height * 0.35 },
+    { x: box.width * 0.65, y: box.height * 0.65 },
+    { x: box.width * 0.35, y: box.height * 0.65 }
+  ]) {
+    await map.click({ position });
+  }
+
+  await expect(mapContainer).toHaveAttribute("data-vertex-count", "4");
+  await expect(page.getByText("พร้อมบันทึกแปลง", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "บันทึกแปลง" })).toBeEnabled();
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
+    .toBe(true);
+
+  await page.getByRole("button", { name: "บันทึกแปลง" }).click();
+  await expect(page.getByRole("button", { name: /^แปลงแผนที่/ })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("button", { name: /^แปลงแผนที่/ })).toBeVisible();
 });

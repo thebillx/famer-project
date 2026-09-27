@@ -122,7 +122,7 @@ export function SatelliteStatusCard({
     <Card premium className="p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <Badge tone="satellite">Sentinel metadata</Badge>
+          <Badge tone="satellite">ข้อมูลดาวเทียม</Badge>
           <h2 className="mt-3 text-xl font-bold text-[var(--as-ink)]">ภาพดาวเทียมล่าสุด</h2>
           <p className="mt-1 text-sm text-[var(--as-ink-muted)]">ค้นหาเฉพาะข้อมูล Sentinel-2 Level-2A จากแปลงที่บันทึกไว้</p>
         </div>
@@ -163,7 +163,7 @@ export function SatelliteStatusCard({
               <Info label="เวลาที่ค้นหา" value={formatThaiDate(result.searched_at)} />
             </div>
             <details className="text-sm text-[var(--as-ink-muted)]">
-              <summary className="cursor-pointer font-semibold text-[var(--as-primary)]">Product / item ID</summary>
+              <summary className="cursor-pointer font-semibold text-[var(--as-primary)]">รหัสภาพต้นทาง</summary>
               <p className="mt-1 break-all">{result.acquisition.item_id}</p>
             </details>
             <div className="border-t border-[var(--as-border)] pt-4">

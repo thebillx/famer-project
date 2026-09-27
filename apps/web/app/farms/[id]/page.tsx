@@ -44,15 +44,11 @@ const thaiDate = (value: string) =>
 
 function inspectionListLabel(item: FarmInspectionOverviewItem | undefined) {
   if (!item) return "กำลังอ่านหลักฐาน…";
-  if (item.status === "NEEDS_INSPECTION") return "ควรตรวจ " + (item.changed_area_rai?.toFixed(2) ?? "0.00") + " ไร่";
-  if (item.status === "MEASURED") {
-    if (item.direction === "increased") return "NDVI ล่าสุดเพิ่มขึ้น";
-    if (item.direction === "decreased") return "NDVI ล่าสุดลดลง";
-    return "NDVI ล่าสุดคงที่";
-  }
-  if (item.status === "NOT_ASSESSABLE") return "ข้อมูลเปรียบเทียบยังไม่พอ";
-  if (item.status === "FIRST_OBSERVATION") return "มีผลวัด 1 ครั้ง";
-  return "ยังไม่มีผลวัด";
+  if (item.status === "NEEDS_INSPECTION") return "ควรตรวจ · " + (item.changed_area_rai?.toFixed(2) ?? "0.00") + " ไร่";
+  if (item.status === "MEASURED") return "มีผลเปรียบเทียบ";
+  if (item.status === "NOT_ASSESSABLE") return "ข้อมูลยังไม่พอ";
+  if (item.status === "FIRST_OBSERVATION") return "รอข้อมูลเปรียบเทียบ";
+  return "รอข้อมูล";
 }
 
 function inspectionTitle(item: FarmInspectionOverviewItem | undefined) {
@@ -149,6 +145,10 @@ export default function FarmDetailPage() {
     () => (inspectionOverview.data ?? []).filter((item) => item.needs_inspection).map((item) => item.field_id),
     [inspectionOverview.data]
   );
+  const evidenceFieldCount = useMemo(
+    () => (inspectionOverview.data ?? []).filter((item) => item.status !== "NO_ANALYSIS").length,
+    [inspectionOverview.data]
+  );
   const selectedField = fields.isSuccess
     ? fields.data.find((field) => field.id === selectedFieldId) ?? null
     : null;
@@ -190,6 +190,7 @@ export default function FarmDetailPage() {
       || !overviewSettled
       || fieldSearch.trim()
     ) return;
+    if (window.matchMedia("(max-width: 720px)").matches) return;
     queryClient.setQueryData(DEFAULT_SELECTION_KEY, true);
     setSelectedFieldId((current) => current ?? (
       inspectionOverview.isSuccess
@@ -277,6 +278,27 @@ export default function FarmDetailPage() {
                 ? `ค้นหาแปลง · ${visibleFields.length} จาก ${fields.data?.length ?? 0} แปลง`
                 : `${fields.data?.length ?? 0} แปลง`}
             </p>
+            {inspectionOverview.isSuccess && fields.data?.length ? (
+              <section
+                className={styles.inspectionOverview}
+                data-has-priority={priorityFieldIds.length ? "true" : "false"}
+                aria-label="สรุปพื้นที่ควรตรวจ"
+              >
+                <span className={styles.eyebrow}>ภาพรวมล่าสุด</span>
+                <strong>
+                  {priorityFieldIds.length
+                    ? `${priorityFieldIds.length} แปลงควรตรวจ`
+                    : evidenceFieldCount
+                      ? "ยังไม่มีแปลงที่เข้าเกณฑ์ควรตรวจ"
+                      : "ยังไม่มีผลวัดสำหรับจัดลำดับ"}
+                </strong>
+                <p>
+                  {priorityFieldIds.length
+                    ? "ระบบจัดลำดับจากผลเปรียบเทียบที่บันทึกไว้ แตะรายการด้านล่างเพื่อดูรายละเอียด"
+                    : "สถานะนี้อ้างอิงเฉพาะข้อมูลภาพและผลวัดที่บันทึกไว้ในระบบ"}
+                </p>
+              </section>
+            ) : null}
             {fields.data?.length ? (
               <label className={styles.searchLabel}>
                 <span>ค้นหาแปลง</span>
@@ -353,13 +375,12 @@ export default function FarmDetailPage() {
               <p className={styles.meta}>ยังไม่มีขอบเขตแปลงที่บันทึกไว้ในฟาร์มนี้</p>
             ) : null}
             {permission.canManage ? (
-              <Link href={`/farms/${farm.data.id}/fields/new`} aria-label="เพิ่มแปลง" className={styles.railAddLink}>
-                + เพิ่มแปลง
-              </Link>
-            ) : null}
-            {permission.canManage && !fields.isPending && !fields.isError && !fields.data?.length ? (
-              <Link href={`/farms/${farm.data.id}/fields/new`} aria-label="เพิ่มแปลงแรก" className={styles.railAddLink}>
-                + เพิ่มแปลงแรก
+              <Link
+                href={`/farms/${farm.data.id}/fields/new`}
+                aria-label={fields.data?.length ? "เพิ่มแปลง" : "เพิ่มแปลงแรก"}
+                className={styles.railAddLink}
+              >
+                {fields.data?.length ? "+ เพิ่มแปลง" : "+ เพิ่มแปลงแรก"}
               </Link>
             ) : null}
             <Link href="/farms" className={styles.railBackLink}>← กลับรายการฟาร์ม</Link>

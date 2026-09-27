@@ -243,7 +243,7 @@ test("successful empty state keeps manager and viewer actions role-gated", async
     await expect(page.getByText("กำลังโหลดแปลงที่บันทึกไว้...")).toHaveCount(0);
     await expect(page.getByRole("list", { name: "แปลงที่บันทึกไว้" })).toHaveCount(0);
     const expected = role === "field_manager" ? 1 : 0;
-    await expect(page.getByRole("link", { name: "เพิ่มแปลง", exact: true })).toHaveCount(expected);
+    await expect(page.getByRole("link", { name: "เพิ่มแปลง", exact: true })).toHaveCount(0);
     await expect(page.getByRole("link", { name: "เพิ่มแปลงแรก", exact: true })).toHaveCount(expected);
     await context.close();
   }
