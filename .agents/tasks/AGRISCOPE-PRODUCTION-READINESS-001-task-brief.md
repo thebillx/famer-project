@@ -1,6 +1,6 @@
 # AGRISCOPE-PRODUCTION-READINESS-001
 
-Status: IN_PROGRESS
+Status: VALIDATED_PENDING_MERGE
 
 ## Objective
 
@@ -76,3 +76,19 @@ All other paths are read-only.
 - Integration proves ready=503 when the database check fails and live remains 200.
 - Existing observation/change/overview tests remain green.
 - Ruff, Python unit/contract, integration, production web build, browser regression, and git diff --check through repository CI.
+
+
+## Validation evidence — 2026-09-28
+
+- Implementation commit: `49cdd2af50f8b961b61aa851cf2b002e110bb0eb`.
+- Local Python compileall over the modified backend/test boundary: PASS.
+- Local contract suite: 25/25 PASS.
+- GitHub Actions CI #53 on the implementation commit:
+  - validation: PASS
+  - integration: PASS
+  - browser-regression: PASS
+- Integration validation proves:
+  - two cached analyses at one acquisition time do not become a comparison pair;
+  - one known incompatible cached raster pair becomes per-field `NOT_ASSESSABLE` while valid farm evidence remains available;
+  - database readiness failure returns 503 without exposing the underlying exception while liveness remains 200.
+- No provider, algorithm, threshold, migration, dependency, diagnosis, rate-limit, or deployment-environment change was introduced.
