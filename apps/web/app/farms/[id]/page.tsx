@@ -190,8 +190,8 @@ export default function FarmDetailPage() {
       || !overviewSettled
       || fieldSearch.trim()
     ) return;
-    queryClient.setQueryData(DEFAULT_SELECTION_KEY, true);
     if (window.matchMedia("(max-width: 720px)").matches) return;
+    queryClient.setQueryData(DEFAULT_SELECTION_KEY, true);
     setSelectedFieldId((current) => current ?? (
       inspectionOverview.isSuccess
         ? orderedFields[0]?.id ?? fields.data[0].id

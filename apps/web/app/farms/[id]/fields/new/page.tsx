@@ -124,7 +124,7 @@ export default function NewFieldPage() {
             </div>
 
             <div className="sticky bottom-3 z-30">
-              <div className="mx-auto flex max-w-4xl flex-col gap-3 rounded-[var(--as-radius-lg)] border border-[var(--as-border-strong)] bg-[var(--as-surface)]/95 p-3 shadow-[var(--as-shadow-lg)] backdrop-blur sm:flex-row sm:items-center sm:justify-between">
+              <div className="mx-auto flex max-w-4xl flex-col gap-3 rounded-[var(--as-radius-lg)] border border-[var(--as-border-strong)] bg-[var(--as-surface)] p-3 shadow-[var(--as-shadow-lg)] backdrop-blur sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0">
                   <p className="text-sm font-bold text-[var(--as-ink)]">
                     {pointCount >= 3 && name.trim() ? "พร้อมบันทึกแปลง" : "ยังบันทึกไม่ได้"}
