@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from apps.api.agriscope_api.core.config import validate_settings
+from apps.api.agriscope_api.core.errors import ApiException
 from apps.api.agriscope_api.db.session import check_database
 
 try:
@@ -26,9 +27,14 @@ if router:
         settings = request.app.state.settings
         issues = validate_settings(settings)
         if issues:
-            return {"status": "not_ready"}
-        database_ready = await check_database(request.app.state.db_engine)
-        return {"status": "ready" if database_ready else "not_ready"}
+            raise ApiException("not_ready", "Service is not ready", 503)
+        try:
+            database_ready = await check_database(request.app.state.db_engine)
+        except Exception:
+            database_ready = False
+        if not database_ready:
+            raise ApiException("not_ready", "Service is not ready", 503)
+        return {"status": "ready"}
 
     @router.get("/health/dependencies")
     async def dependencies(request: Request) -> dict[str, str]:

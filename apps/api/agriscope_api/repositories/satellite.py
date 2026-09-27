@@ -254,7 +254,7 @@ class SatelliteRepository(TenantScopedRepository):
         result = await self.session.execute(
             text(
                 """
-                WITH ranked AS (
+                WITH eligible AS (
                   SELECT analysis.observation_id, analysis.field_id, analysis.organization_id,
                          analysis.acquired_at, analysis.algorithm_version,
                          analysis.geometry_hash, analysis.ndvi_mean, analysis.ndvi_min,
@@ -263,9 +263,9 @@ class SatelliteRepository(TenantScopedRepository):
                          analysis.raster_tiff, analysis.raster_crs, analysis.raster_bounds,
                          analysis.raster_width, analysis.raster_height,
                          row_number() OVER (
-                           PARTITION BY analysis.field_id
-                           ORDER BY analysis.acquired_at DESC, analysis.observation_id DESC
-                         ) AS analysis_rank
+                           PARTITION BY analysis.field_id, analysis.acquired_at
+                           ORDER BY analysis.observation_id DESC
+                         ) AS same_time_rank
                   FROM field_observation_analyses analysis
                   JOIN fields f
                     ON f.id = analysis.field_id
@@ -286,6 +286,18 @@ class SatelliteRepository(TenantScopedRepository):
                     AND f.status = 'active'
                     AND farm.status = 'active'
                     AND (m.role = 'organization_owner' OR farm.owner_user_id = :user_id)
+                ),
+                ranked AS (
+                  SELECT observation_id, field_id, organization_id, acquired_at,
+                         algorithm_version, geometry_hash, ndvi_mean, ndvi_min, ndvi_max,
+                         ndvi_stddev, sample_count, valid_sample_count, valid_pixel_ratio,
+                         raster_tiff, raster_crs, raster_bounds, raster_width, raster_height,
+                         row_number() OVER (
+                           PARTITION BY field_id
+                           ORDER BY acquired_at DESC, observation_id DESC
+                         ) AS analysis_rank
+                  FROM eligible
+                  WHERE same_time_rank = 1
                 )
                 SELECT observation_id, field_id, organization_id, acquired_at,
                        algorithm_version, geometry_hash, ndvi_mean, ndvi_min, ndvi_max,

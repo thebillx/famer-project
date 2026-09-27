@@ -308,12 +308,35 @@ class SatelliteService:
                 )
                 continue
 
-            comparison = _change_geometry(
-                previous.raster_tiff,
-                latest.raster_tiff,
-                field.geometry,
-                minimum_common_support_ratio=self.settings.satellite_comparison_min_common_support_ratio,
-            )
+            try:
+                comparison = _change_geometry(
+                    previous.raster_tiff,
+                    latest.raster_tiff,
+                    field.geometry,
+                    minimum_common_support_ratio=self.settings.satellite_comparison_min_common_support_ratio,
+                )
+            except ApiException as exc:
+                if exc.code not in {"incompatible_observations", "comparison_not_assessable"}:
+                    raise
+                items.append(
+                    FarmInspectionOverviewItem(
+                        field_id=field.id,
+                        status="NOT_ASSESSABLE",
+                        needs_inspection=False,
+                        latest_observation_id=latest.observation_id,
+                        latest_acquired_at=latest.acquired_at,
+                        latest_ndvi_mean=float(latest.ndvi_mean),
+                        previous_observation_id=previous.observation_id,
+                        previous_acquired_at=previous.acquired_at,
+                        previous_ndvi_mean=float(previous.ndvi_mean),
+                        ndvi_delta=None,
+                        direction=None,
+                        changed_area_rai=None,
+                        common_support_ratio=None,
+                    )
+                )
+                continue
+
             if not comparison.assessable:
                 items.append(
                     FarmInspectionOverviewItem(
