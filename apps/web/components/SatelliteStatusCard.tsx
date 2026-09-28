@@ -46,6 +46,13 @@ export function SatelliteStatusCard({
     retry: false
   });
   const result = search.data ?? latest.data;
+  const demoAvailable =
+    result?.status === "available" && result.acquisition.provider === "agriscope-demo";
+  const cachedRealAvailable =
+    result?.status === "available" &&
+    result.acquisition.provider === "cdse_stac" &&
+    result.message_th === "พบ Sentinel-2 จริงที่เก็บไว้ล่วงหน้าสำหรับสาธิต";
+  const offlineDemoAvailable = demoAvailable || cachedRealAvailable;
   const acquisitionId = result?.status === "available" ? result.acquisition.item_id : null;
   const requestError = search.error ?? (search.data ? null : latest.error);
   const unavailable = search.isError || (!search.data && latest.isError) || result?.status === "temporarily_unavailable";
@@ -122,18 +129,34 @@ export function SatelliteStatusCard({
     <Card premium className="p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <Badge tone="satellite">ข้อมูลดาวเทียม</Badge>
-          <h2 className="mt-3 text-xl font-bold text-[var(--as-ink)]">ภาพดาวเทียมล่าสุด</h2>
-          <p className="mt-1 text-sm text-[var(--as-ink-muted)]">ค้นหาเฉพาะข้อมูล Sentinel-2 Level-2A จากแปลงที่บันทึกไว้</p>
+          <Badge tone="satellite">
+            {demoAvailable ? "ข้อมูลสาธิต" : cachedRealAvailable ? "Sentinel-2 จริง" : "ข้อมูลดาวเทียม"}
+          </Badge>
+          <h2 className="mt-3 text-xl font-bold text-[var(--as-ink)]">
+            {demoAvailable
+              ? "หลักฐานสาธิตที่บันทึกไว้"
+              : cachedRealAvailable
+                ? "หลักฐาน Sentinel-2 จริงที่เก็บไว้ล่วงหน้า"
+                : "ภาพดาวเทียมล่าสุด"}
+          </h2>
+          <p className="mt-1 text-sm text-[var(--as-ink-muted)]">
+            {demoAvailable
+              ? "ข้อมูลจำลองสำหรับการสาธิต ไม่ใช่ภาพ Sentinel-2 จริง"
+              : cachedRealAvailable
+                ? "ข้อมูลจริงจาก Sentinel-2 Level-2A ที่คำนวณและเก็บไว้ก่อนการสาธิต"
+                : "ค้นหาเฉพาะข้อมูล Sentinel-2 Level-2A จากแปลงที่บันทึกไว้"}
+          </p>
         </div>
-        <Button
-          type="button"
-          variant="secondary"
-          onClick={() => search.mutate()}
-          disabled={search.isPending || previewPending || ndviPending}
-        >
-          {search.isPending ? "กำลังตรวจสอบ..." : "ตรวจสอบภาพดาวเทียมล่าสุด"}
-        </Button>
+        {!latest.isLoading && !offlineDemoAvailable ? (
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => search.mutate()}
+            disabled={search.isPending || previewPending || ndviPending}
+          >
+            {search.isPending ? "กำลังตรวจสอบ..." : "ตรวจสอบภาพดาวเทียมล่าสุด"}
+          </Button>
+        ) : null}
       </div>
 
       <div className="mt-5 rounded-[var(--as-radius-lg)] border border-[var(--as-border)] bg-[var(--as-blue-soft)] p-4" aria-live="polite">
@@ -146,26 +169,82 @@ export function SatelliteStatusCard({
         {!unavailable && result?.status === "available" ? (
           <div className="space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <p className="text-lg font-bold text-[var(--as-ink)]">พบภาพล่าสุด</p>
-              <span className="as-pill text-[var(--as-satellite)]">มีข้อมูลประกอบภาพล่าสุด</span>
+              <p className="text-lg font-bold text-[var(--as-ink)]">
+                {demoAvailable
+                  ? "พบข้อมูลสาธิตล่าสุด"
+                  : cachedRealAvailable
+                    ? "พร้อมเดโม่ด้วย Sentinel-2 จริง"
+                    : "พบภาพล่าสุด"}
+              </p>
+              <span className="as-pill text-[var(--as-satellite)]">
+                {demoAvailable
+                  ? "ข้อมูลจำลอง · ไม่ใช่ภาพจริง"
+                  : cachedRealAvailable
+                    ? "ข้อมูลจริง · เก็บไว้ล่วงหน้า"
+                    : "มีข้อมูลประกอบภาพล่าสุด"}
+              </span>
             </div>
             <div className="grid gap-3 md:grid-cols-2">
-              <Info label="วันที่ดาวเทียมบันทึกภาพ" value={formatThaiDate(result.acquisition.acquired_at)} />
               <Info
-                label="ปริมาณเมฆตามข้อมูลประกอบภาพ"
+                label={
+                  demoAvailable
+                    ? "วันที่ข้อมูลสาธิต"
+                    : cachedRealAvailable
+                      ? "วันที่ Sentinel-2 บันทึกข้อมูล"
+                      : "วันที่ดาวเทียมบันทึกภาพ"
+                }
+                value={formatThaiDate(result.acquisition.acquired_at)}
+              />
+              <Info
+                label={demoAvailable ? "ค่าปริมาณเมฆจำลอง" : "ปริมาณเมฆตามข้อมูลประกอบภาพ"}
                 value={
                   result.acquisition.cloud_cover_percent === null
                     ? "ไม่มีข้อมูลเมฆ"
                     : `${result.acquisition.cloud_cover_percent.toFixed(1)}%`
                 }
               />
-              <Info label="แหล่งข้อมูล" value="Sentinel-2 Level-2A" />
-              <Info label="เวลาที่ค้นหา" value={formatThaiDate(result.searched_at)} />
+              <Info
+                label="แหล่งข้อมูล"
+                value={
+                  demoAvailable
+                    ? "ข้อมูลสาธิต (ค่าจำลอง)"
+                    : cachedRealAvailable
+                      ? "Sentinel-2 Level-2A · ข้อมูลจริงที่เก็บไว้ล่วงหน้า"
+                      : "Sentinel-2 Level-2A"
+                }
+              />
+              <Info
+                label={offlineDemoAvailable ? "เวลาที่เตรียมข้อมูล" : "เวลาที่ค้นหา"}
+                value={formatThaiDate(result.searched_at)}
+              />
             </div>
             <details className="text-sm text-[var(--as-ink-muted)]">
-              <summary className="cursor-pointer font-semibold text-[var(--as-primary)]">รหัสภาพต้นทาง</summary>
+              <summary className="cursor-pointer font-semibold text-[var(--as-primary)]">
+                {demoAvailable ? "รหัสข้อมูลสาธิต" : cachedRealAvailable ? "รหัส Sentinel-2 ต้นทาง" : "รหัสภาพต้นทาง"}
+              </summary>
               <p className="mt-1 break-all">{result.acquisition.item_id}</p>
             </details>
+            {demoAvailable ? (
+              <div className="border-t border-[var(--as-border)] pt-4">
+                <p className="font-semibold text-[var(--as-ink)]">
+                  ข้อมูลสาธิตนี้ใช้ค่าจำลองที่บันทึกไว้ในระบบ
+                </p>
+                <p className="mt-2 text-sm text-[var(--as-ink-muted)]">
+                  เปิดพื้นที่ทำงานของแปลงเพื่อดู NDVI และการเปรียบเทียบ ระบบจะไม่ขอภาพสีจริงหรือเรียกผู้ให้บริการดาวเทียมจากข้อมูลชุดนี้
+                </p>
+              </div>
+            ) : cachedRealAvailable ? (
+              <div className="border-t border-[var(--as-border)] pt-4">
+                <p className="font-semibold text-[var(--as-ink)]">
+                  ใช้ Sentinel-2 จริงและผล NDVI ที่คำนวณเก็บไว้ก่อนการสาธิต
+                </p>
+                <p className="mt-2 text-sm leading-6 text-[var(--as-ink-muted)]">
+                  เปิดพื้นที่ทำงานของแปลงเพื่อดูประวัติ NDVI และการเปรียบเทียบจาก cache
+                  โดยไม่เรียก CDSE ระหว่าง flow หลัก ส่วนขอบเขตนี้เป็นหน้าต่างวิเคราะห์
+                  ไม่ใช่ขอบเขตกรรมสิทธิ์หรือข้อมูลเจ้าของที่ดิน
+                </p>
+              </div>
+            ) : (
             <div className="border-t border-[var(--as-border)] pt-4">
               <div className="flex flex-wrap gap-3">
                 <Button
@@ -243,6 +322,7 @@ export function SatelliteStatusCard({
                 </section>
               ) : null}
             </div>
+            )}
           </div>
         ) : null}
         {!unavailable && result?.status === "no_data" ? (

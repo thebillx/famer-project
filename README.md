@@ -11,10 +11,36 @@ prescribe chemicals from satellite data.
 ## Current capabilities
 
 - Authentication, organizations, tenant-scoped farms, and field boundaries.
+- Field creation by map drawing or WGS84 latitude/longitude points.
 - PostgreSQL/PostGIS geometry storage and server-authoritative area.
-- Latest Sentinel-2 Level-2A catalogue metadata discovery.
-- Remote-sensing formulas, quality policy, and deterministic provider fixtures.
-- Thai-first public UI and authenticated UI foundations.
+- Sentinel-2 observation discovery and bounded historical backfill.
+- Cached NDVI analysis, raster visualization, spatial comparison, and farm-level inspection prioritization.
+- Thai-first map-first UI with desktop and mobile browser regression coverage.
+
+## Local demo
+
+The recommended presentation path uses **real Sentinel-2 Level-2A data cached ahead
+of time**. Configure CDSE credentials once and prefetch real observation analyses:
+
+```bash
+npm run demo:prefetch-real
+```
+
+The real demo target is a privacy-safe analysis window around a publicly documented
+agricultural research location. It is explicitly not a cadastral or ownership boundary.
+
+Start the local demo with:
+
+```bash
+npm run demo
+```
+
+The launcher starts the local database, applies migrations, preserves any prefetched
+real Sentinel-2 cache, refreshes a clearly labelled synthetic fallback, and starts the
+API and web app.
+
+See [docs/demo.md](docs/demo.md) for the real-cached workflow, fallback walkthrough,
+and privacy boundary.
 
 ## Focused validation
 

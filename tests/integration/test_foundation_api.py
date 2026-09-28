@@ -5,6 +5,9 @@ from datetime import UTC, datetime, timedelta
 import json
 from decimal import Decimal
 import os
+from pathlib import Path
+import subprocess
+import sys
 import threading
 from urllib.parse import unquote, urlsplit
 from uuid import UUID, uuid4
@@ -44,6 +47,7 @@ from packages.geospatial.agriscope_geospatial.field_geometry import geometry_fin
 
 TEST_DATABASE_ENV = "AGRISCOPE_TEST_DATABASE_URL"
 APP_ORIGIN = "http://localhost:3000"
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 
 
 def _test_database_config() -> tuple[str, dict[str, str | int]]:
@@ -2415,3 +2419,298 @@ def test_farm_inspection_overview_isolates_incompatible_field_rasters(client: Te
     assert isolated["ndvi_delta"] is None
     assert isolated["changed_area_rai"] is None
     assert isolated["common_support_ratio"] is None
+
+
+def test_demo_seed_refuses_production_environment():
+    env = os.environ.copy()
+    env["APP_ENV"] = "production"
+    result = subprocess.run(
+        [sys.executable, "scripts/demo_seed.py", "--quiet"],
+        cwd=REPOSITORY_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert result.returncode != 0
+    assert "Refusing to seed demo data" in result.stderr
+
+
+def test_demo_seed_is_idempotent_and_demo_evidence_stays_cached(client: TestClient):
+    env = os.environ.copy()
+    env["APP_ENV"] = "test"
+    env["DATABASE_URL"] = os.environ["DATABASE_URL"]
+
+    for _ in range(2):
+        result = subprocess.run(
+            [sys.executable, "scripts/demo_seed.py", "--quiet"],
+            cwd=REPOSITORY_ROOT,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+        )
+        assert result.returncode == 0, result.stderr
+
+    with _connect() as conn:
+        assert conn.execute(
+            "SELECT count(*) FROM users WHERE email='demo@agriscope.local'"
+        ).fetchone()[0] == 1
+        assert conn.execute(
+            "SELECT count(*) FROM organizations WHERE slug='agriscope-demo'"
+        ).fetchone()[0] == 1
+        assert conn.execute(
+            "SELECT count(*) FROM farms WHERE name='สวนสาธิตเชียงใหม่ · ข้อมูลจำลอง'"
+        ).fetchone()[0] == 1
+        assert conn.execute(
+            """
+            SELECT count(*)
+            FROM fields field
+            JOIN farms farm ON farm.id=field.farm_id
+            WHERE farm.name='สวนสาธิตเชียงใหม่ · ข้อมูลจำลอง'
+              AND field.status='active'
+            """
+        ).fetchone()[0] == 4
+        assert conn.execute(
+            "SELECT count(*) FROM field_acquisitions WHERE provider='agriscope-demo'"
+        ).fetchone()[0] == 7
+        assert conn.execute(
+            "SELECT count(*) FROM field_observation_analyses"
+        ).fetchone()[0] == 7
+
+    _prime_csrf(client)
+    login = client.post(
+        "/api/v1/auth/login",
+        json={"email": "demo@agriscope.local", "password": "DemoPass12345"},
+    )
+    assert login.status_code == 204, login.text
+
+    farms = client.get("/api/v1/farms")
+    assert farms.status_code == 200, farms.text
+    farm = next(
+        item
+        for item in farms.json()
+        if item["name"] == "สวนสาธิตเชียงใหม่ · ข้อมูลจำลอง"
+    )
+    fields_response = client.get(f"/api/v1/farms/{farm['id']}/fields")
+    assert fields_response.status_code == 200, fields_response.text
+    fields = fields_response.json()
+    assert len(fields) == 4
+
+    overview_response = client.get(
+        f"/api/v1/farms/{farm['id']}/inspection-overview"
+    )
+    assert overview_response.status_code == 200, overview_response.text
+    assert {item["status"] for item in overview_response.json()} == {
+        "NEEDS_INSPECTION",
+        "MEASURED",
+        "NOT_ASSESSABLE",
+        "FIRST_OBSERVATION",
+    }
+
+    inspect_field = next(
+        item for item in fields if item["name"].startswith("แปลงเหนือ")
+    )
+    history_response = client.get(
+        f"/api/v1/fields/{inspect_field['id']}/observations"
+    )
+    assert history_response.status_code == 200, history_response.text
+    history = history_response.json()
+    assert len(history) == 2
+    assert all(item["source"] == "ข้อมูลสาธิต" for item in history)
+    assert all(item["imagery_available"] is False for item in history)
+    assert all(item["analysis_ready"] is True for item in history)
+
+    class FailOnProviderUse:
+        def __getattr__(self, name):
+            raise AssertionError(f"demo cache attempted provider method: {name}")
+
+    client.app.state.cdse_process_provider = FailOnProviderUse()
+
+    legacy_preview = client.get(
+        f"/api/v1/fields/{inspect_field['id']}/satellite/preview"
+    )
+    assert legacy_preview.status_code == 422
+    assert legacy_preview.json()["error"]["code"] == "demo_preview_unavailable"
+
+    legacy_summary = client.get(
+        f"/api/v1/fields/{inspect_field['id']}/satellite/ndvi-summary"
+    )
+    assert legacy_summary.status_code == 422
+    assert legacy_summary.json()["error"]["code"] == "demo_cached_analysis_only"
+
+    preview = client.get(
+        f"/api/v1/fields/{inspect_field['id']}/observations/"
+        f"{history[0]['observation_id']}/preview"
+    )
+    assert preview.status_code == 422
+    assert preview.json()["error"]["code"] == "demo_preview_unavailable"
+
+    latest, previous = history[0], history[1]
+    summary = client.get(
+        f"/api/v1/fields/{inspect_field['id']}/observations/"
+        f"{latest['observation_id']}/ndvi-summary"
+    )
+    assert summary.status_code == 200, summary.text
+    assert summary.json()["observation_id"] == latest["observation_id"]
+
+    raster = client.get(
+        f"/api/v1/fields/{inspect_field['id']}/observations/"
+        f"{latest['observation_id']}/ndvi-raster"
+    )
+    assert raster.status_code == 200, raster.text
+    assert raster.json()["observation_id"] == latest["observation_id"]
+
+    change = client.get(
+        f"/api/v1/fields/{inspect_field['id']}/change",
+        params={
+            "before": previous["observation_id"],
+            "after": latest["observation_id"],
+        },
+    )
+    assert change.status_code == 200, change.text
+    assert change.json()["status"] == "USABLE"
+    assert change.json()["changed_area_rai"] > 0
+
+
+def test_real_demo_prefetch_refuses_production_and_missing_credentials():
+    env = os.environ.copy()
+    env["DATABASE_URL"] = os.environ["DATABASE_URL"]
+    env["APP_ENV"] = "production"
+    env["CDSE_CLIENT_ID"] = ""
+    env["CDSE_CLIENT_SECRET"] = ""
+
+    production = subprocess.run(
+        [sys.executable, "scripts/demo_prefetch_real.py"],
+        cwd=REPOSITORY_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert production.returncode != 0
+    assert "Refusing real demo prefetch" in production.stderr
+
+    env["APP_ENV"] = "test"
+    missing_credentials = subprocess.run(
+        [sys.executable, "scripts/demo_prefetch_real.py"],
+        cwd=REPOSITORY_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert missing_credentials.returncode != 0
+    assert "CDSE_CLIENT_ID and CDSE_CLIENT_SECRET are required" in missing_credentials.stderr
+
+
+def test_real_cached_demo_reuses_real_sentinel_analysis_without_provider_calls(
+    client: TestClient,
+):
+    registered = _register(client, "real-cache-demo@example.com")
+    farm = _create_farm(client, registered["organization"]["id"], "Real Cached Demo")
+    field = _create_field(
+        client,
+        farm["id"],
+        "หน้าต่างวิเคราะห์ · ไม่ใช่ขอบเขตกรรมสิทธิ์",
+    )
+
+    with _connect() as conn:
+        before_id = _cached_overview_analysis(
+            conn,
+            field=field,
+            acquired_at=datetime(2026, 9, 10, 3, tzinfo=UTC),
+            value=0.66,
+            item_id="REAL_CACHE_BEFORE",
+        )
+        after_id = _cached_overview_analysis(
+            conn,
+            field=field,
+            acquired_at=datetime(2026, 9, 20, 3, tzinfo=UTC),
+            value=0.43,
+            item_id="REAL_CACHE_AFTER",
+        )
+        metadata = json.dumps(
+            {
+                "demo_cached_real": True,
+                "demo_privacy_note": (
+                    "analysis window only; not a cadastral boundary or ownership claim"
+                ),
+            }
+        )
+        conn.execute(
+            """
+            UPDATE field_acquisitions
+            SET provider_metadata = provider_metadata || %s::jsonb
+            WHERE id IN (%s, %s)
+            """,
+            (metadata, before_id, after_id),
+        )
+
+    latest = client.get(f"/api/v1/fields/{field['id']}/satellite/latest")
+    assert latest.status_code == 200, latest.text
+    assert latest.json()["acquisition"]["provider"] == CDSE_STAC_PROVIDER
+    assert (
+        latest.json()["message_th"]
+        == "พบ Sentinel-2 จริงที่เก็บไว้ล่วงหน้าสำหรับสาธิต"
+    )
+
+    history_response = client.get(f"/api/v1/fields/{field['id']}/observations")
+    assert history_response.status_code == 200, history_response.text
+    history = history_response.json()
+    assert len(history) == 2
+    assert all(item["source"] == "Sentinel-2 · เก็บไว้ล่วงหน้า" for item in history)
+    assert all(item["imagery_available"] is False for item in history)
+    assert all(item["analysis_ready"] is True for item in history)
+
+    class FailOnProviderUse:
+        def __getattr__(self, name):
+            raise AssertionError(f"real cached demo attempted provider method: {name}")
+
+    client.app.state.cdse_process_provider = FailOnProviderUse()
+
+    legacy_preview = client.get(f"/api/v1/fields/{field['id']}/satellite/preview")
+    assert legacy_preview.status_code == 409
+    assert legacy_preview.json()["error"]["code"] == "demo_cached_preview_unavailable"
+
+    legacy_summary = client.get(
+        f"/api/v1/fields/{field['id']}/satellite/ndvi-summary"
+    )
+    assert legacy_summary.status_code == 409
+    assert legacy_summary.json()["error"]["code"] == "demo_cached_analysis_only"
+
+    current, previous = history[0], history[1]
+    preview = client.get(
+        f"/api/v1/fields/{field['id']}/observations/"
+        f"{current['observation_id']}/preview"
+    )
+    assert preview.status_code == 409
+    assert preview.json()["error"]["code"] == "demo_cached_preview_unavailable"
+
+    summary = client.get(
+        f"/api/v1/fields/{field['id']}/observations/"
+        f"{current['observation_id']}/ndvi-summary"
+    )
+    assert summary.status_code == 200, summary.text
+    assert summary.json()["observation_id"] == current["observation_id"]
+
+    raster = client.get(
+        f"/api/v1/fields/{field['id']}/observations/"
+        f"{current['observation_id']}/ndvi-raster"
+    )
+    assert raster.status_code == 200, raster.text
+
+    change = client.get(
+        f"/api/v1/fields/{field['id']}/change",
+        params={
+            "before": previous["observation_id"],
+            "after": current["observation_id"],
+        },
+    )
+    assert change.status_code == 200, change.text
+    assert change.json()["status"] == "USABLE"
+    assert change.json()["changed_area_rai"] > 0
