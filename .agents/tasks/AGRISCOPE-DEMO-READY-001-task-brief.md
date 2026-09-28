@@ -1,6 +1,6 @@
 # AGRISCOPE-DEMO-READY-001
 
-Status: IN_PROGRESS
+Status: VALIDATED_PENDING_MERGE
 
 ## Objective
 
@@ -135,3 +135,18 @@ All other paths are read-only.
 - Existing integration/browser regressions remain green.
 - Bash syntax and `git diff --check` pass.
 - CI validation / integration / browser regression all pass.
+
+
+## Validation evidence — 2026-09-28
+
+- Synthetic demo baseline commit: `b22fc29f802c2a15d8b23dd4cabfb77c28db1f3a`.
+- Provider-fixture compatibility correction: `ef7bc3d2b515f9b97071752fa023fca7a3423fe5`; CI #57 PASS on validation, integration, and browser regression.
+- Real cached Sentinel-2 demo implementation: `b8aee48130145426210c362090b82dc42bb690e5`.
+- CI #58 on the real-cache implementation: validation PASS, integration PASS, browser-regression PASS.
+- Local Python compileall on modified backend/scripts/tests: PASS.
+- Local contract suite: 26/26 PASS.
+- Contract suite validates both demo launchers with `bash -n`.
+- Governed `git diff --check`: PASS.
+- Real cached integration coverage proves cached observation summary/raster/change paths do not invoke the provider and that cached real preview/legacy live actions fail closed.
+- Browser coverage proves real cached evidence is labelled as real Sentinel-2 stored ahead of the demo, hides live-provider actions, and states the AOI is not an ownership boundary.
+- No real CDSE cache is claimed yet because local `CDSE_CLIENT_ID` and `CDSE_CLIENT_SECRET` are not configured. The prefetch workflow is ready for an owner-configured local credential environment.
