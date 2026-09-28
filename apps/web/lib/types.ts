@@ -126,7 +126,7 @@ export type Observation = {
   field_id: string;
   acquired_at: string;
   cloud_percent: number | null;
-  source: "Sentinel-2" | "ข้อมูลสาธิต";
+  source: "Sentinel-2" | "Sentinel-2 · เก็บไว้ล่วงหน้า" | "ข้อมูลสาธิต";
   status: "USABLE" | "POOR_QUALITY" | "UNAVAILABLE";
   imagery_available: boolean;
   geometry_hash: string | null;

@@ -80,7 +80,8 @@ AgriScope demo is starting:
   Email:    demo@agriscope.local
   Password: DemoPass12345
 
-Seeded satellite evidence is synthetic and labelled "ข้อมูลสาธิต".
+Recommended demo: open "พื้นที่สาธิตแม่เหียะ · Sentinel-2 จริง" if real data was prefetched.
+Fallback demo: "สวนสาธิตเชียงใหม่ · ข้อมูลจำลอง" remains labelled "ข้อมูลสาธิต".
 Press Ctrl-C to stop API and web processes.
 EOF
 

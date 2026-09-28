@@ -562,9 +562,19 @@ class FoundationContractTests(unittest.TestCase):
     def test_local_demo_entrypoint_is_bounded_and_explicit(self):
         package = json.loads((REPOSITORY_ROOT / "package.json").read_text(encoding="utf-8"))
         self.assertEqual(package["scripts"]["demo"], "bash scripts/demo.sh")
+        self.assertEqual(
+            package["scripts"]["demo:prefetch-real"],
+            "bash scripts/demo_prefetch_real.sh",
+        )
 
         launcher = (REPOSITORY_ROOT / "scripts/demo.sh").read_text(encoding="utf-8")
+        real_launcher = (
+            REPOSITORY_ROOT / "scripts/demo_prefetch_real.sh"
+        ).read_text(encoding="utf-8")
         seed = (REPOSITORY_ROOT / "scripts/demo_seed.py").read_text(encoding="utf-8")
+        prefetch = (
+            REPOSITORY_ROOT / "scripts/demo_prefetch_real.py"
+        ).read_text(encoding="utf-8")
         demo_module = (
             REPOSITORY_ROOT / "apps/api/agriscope_api/demo.py"
         ).read_text(encoding="utf-8")
@@ -572,23 +582,49 @@ class FoundationContractTests(unittest.TestCase):
         self.assertIn('APP_ENV:-development', launcher)
         self.assertIn("Refusing to seed demo data when APP_ENV=production", seed)
         self.assertIn("Demo seeding is forbidden when APP_ENV=production", demo_module)
+        self.assertIn("Real demo prefetch is forbidden when APP_ENV=production", demo_module)
+        self.assertIn("Refusing real demo prefetch when APP_ENV=production", prefetch)
+        self.assertIn("CDSE_CLIENT_ID", real_launcher)
+        self.assertIn("CDSE_CLIENT_SECRET", real_launcher)
+        self.assertIn("demo_cached_real", prefetch)
         self.assertIn("docker compose up -d postgres", launcher)
         self.assertIn("scripts/demo_seed.py --quiet", launcher)
-        commands = [line.strip() for line in launcher.splitlines()]
+
+        commands = [
+            line.strip()
+            for script in (launcher, real_launcher)
+            for line in script.splitlines()
+        ]
         self.assertFalse(any(line.startswith("npm install") for line in commands))
         self.assertFalse(any(line.startswith("npm ci") for line in commands))
         self.assertFalse(any(line.startswith("pip install") for line in commands))
         self.assertFalse(any(line.startswith("pip3 install") for line in commands))
+
         self.assertIn('provider=DEMO_PROVIDER', demo_module)
         self.assertIn('DEMO_PROVIDER = "agriscope-demo"', demo_module)
-
-        syntax = subprocess.run(
-            ["bash", "-n", str(REPOSITORY_ROOT / "scripts/demo.sh")],
-            capture_output=True,
-            text=True,
-            check=False,
+        self.assertIn(
+            'REAL_DEMO_FARM_NAME = "พื้นที่สาธิตแม่เหียะ · Sentinel-2 จริง"',
+            demo_module,
         )
-        self.assertEqual(syntax.returncode, 0, syntax.stderr)
+        self.assertIn(
+            'REAL_DEMO_FIELD_NAME = "หน้าต่างวิเคราะห์แม่เหียะ A · ไม่ใช่ขอบเขตกรรมสิทธิ์"',
+            demo_module,
+        )
+        self.assertIn(
+            "analysis window only; not a cadastral boundary or ownership claim",
+            demo_module,
+        )
+        self.assertNotIn("title_deed", demo_module)
+        self.assertNotIn("owner_name", demo_module)
+
+        for script in ("scripts/demo.sh", "scripts/demo_prefetch_real.sh"):
+            syntax = subprocess.run(
+                ["bash", "-n", str(REPOSITORY_ROOT / script)],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(syntax.returncode, 0, syntax.stderr)
 
     def test_health_readiness_contract_distinguishes_ready_and_not_ready(self):
         ready = self.document["paths"]["/health/ready"]["get"]

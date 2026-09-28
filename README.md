@@ -19,17 +19,28 @@ prescribe chemicals from satellite data.
 
 ## Local demo
 
-After project dependencies are installed, start the deterministic local demo with:
+The recommended presentation path uses **real Sentinel-2 Level-2A data cached ahead
+of time**. Configure CDSE credentials once and prefetch real observation analyses:
+
+```bash
+npm run demo:prefetch-real
+```
+
+The real demo target is a privacy-safe analysis window around a publicly documented
+agricultural research location. It is explicitly not a cadastral or ownership boundary.
+
+Start the local demo with:
 
 ```bash
 npm run demo
 ```
 
-The launcher starts the local database, applies migrations, seeds clearly labelled
-synthetic demo evidence, and starts the API and web app. It prints the local demo
-sign-in details and URL.
+The launcher starts the local database, applies migrations, preserves any prefetched
+real Sentinel-2 cache, refreshes a clearly labelled synthetic fallback, and starts the
+API and web app.
 
-See [docs/demo.md](docs/demo.md) for the walkthrough and safety boundaries.
+See [docs/demo.md](docs/demo.md) for the real-cached workflow, fallback walkthrough,
+and privacy boundary.
 
 ## Focused validation
 

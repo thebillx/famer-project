@@ -470,3 +470,48 @@ test("map lifecycle keeps the latest selection and exposes style failure without
   await expect(page.getByRole("heading", { name: "โหลดแผนที่พื้นฐานไม่สำเร็จ" })).toBeVisible();
   await expect(page.getByText("กำลังโหลดแผนที่...")).toHaveCount(0);
 });
+
+
+test("real cached Sentinel-2 demo is labelled real and hides live-provider actions", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const providerRequests: string[] = [];
+  page.on("request", (request) => {
+    if (
+      request.url().includes("/satellite/search-latest")
+      || request.url().includes("/satellite/preview")
+      || request.url().includes("/satellite/ndvi-summary")
+    ) {
+      providerRequests.push(request.url());
+    }
+  });
+
+  await mockWorkspace(page, {
+    latestResponse: {
+      field_id: fields[1].id,
+      status: "available",
+      acquisition: {
+        provider: "cdse_stac",
+        collection: "sentinel-2-l2a",
+        item_id: "S2_REAL_CACHED_DEMO_ITEM",
+        acquired_at: "2026-09-20T03:00:00Z",
+        cloud_cover_percent: 12.5
+      },
+      searched_at: "2026-09-28T05:00:00Z",
+      message_th: "พบ Sentinel-2 จริงที่เก็บไว้ล่วงหน้าสำหรับสาธิต"
+    }
+  });
+
+  await page.goto(`/farms/${farm.id}`);
+  await page.getByRole("button", { name: /A02/ }).click();
+
+  const inspector = page.getByLabel("รายละเอียดแปลงที่เลือก");
+  await expect(inspector.getByText("หลักฐาน Sentinel-2 จริงที่เก็บไว้ล่วงหน้า")).toBeVisible();
+  await expect(inspector.getByText("ข้อมูลจริง · เก็บไว้ล่วงหน้า")).toBeVisible();
+  await expect(inspector.getByText("Sentinel-2 Level-2A · ข้อมูลจริงที่เก็บไว้ล่วงหน้า")).toBeVisible();
+  await expect(inspector.getByText("รหัส Sentinel-2 ต้นทาง")).toBeVisible();
+  await expect(inspector.getByRole("button", { name: "ตรวจสอบภาพดาวเทียมล่าสุด" })).toHaveCount(0);
+  await expect(inspector.getByRole("button", { name: "ดูภาพสีจริงของแปลง" })).toHaveCount(0);
+  await expect(inspector.getByRole("button", { name: "ดูสรุป NDVI" })).toHaveCount(0);
+  await expect(inspector).toContainText("ไม่ใช่ขอบเขตกรรมสิทธิ์หรือข้อมูลเจ้าของที่ดิน");
+  expect(providerRequests).toEqual([]);
+});

@@ -219,7 +219,13 @@ class SatelliteService:
                     row.field_id,
                     row.acquired_at,
                     cloud,
-                    "ข้อมูลสาธิต" if getattr(row, "provider", None) == "agriscope-demo" else "Sentinel-2",
+                    (
+                        "ข้อมูลสาธิต"
+                        if _is_synthetic_demo(row)
+                        else "Sentinel-2 · เก็บไว้ล่วงหน้า"
+                        if _is_real_demo_cached(row)
+                        else "Sentinel-2"
+                    ),
                     status,
                     imagery_available,
                     stored_geometry_hash,
@@ -408,11 +414,17 @@ class SatelliteService:
     async def get_observation_preview(self, *, user_id: UUID, field_id: UUID,
         observation_id: UUID, authorized_field: FieldRecord | None = None) -> SatellitePreviewResponse:
         field, observation, _ = await self._observation_context(user_id, field_id, observation_id, authorized_field)
-        if getattr(observation, "provider", None) == "agriscope-demo":
+        if _is_synthetic_demo(observation):
             raise ApiException(
                 "demo_preview_unavailable",
                 "Synthetic demo observations do not include true-colour imagery",
                 422,
+            )
+        if _is_real_demo_cached(observation):
+            raise ApiException(
+                "demo_cached_preview_unavailable",
+                "Real demo evidence is cached as NDVI data; true-colour imagery is not cached",
+                409,
             )
         provider = self._process_provider()
         try:
@@ -446,6 +458,12 @@ class SatelliteService:
         )
         if cached is not None:
             return cached
+        if _is_synthetic_demo(observation) or _is_real_demo_cached(observation):
+            raise ApiException(
+                "demo_cached_analysis_missing",
+                "Demo evidence is configured for cached analysis only",
+                409,
+            )
         provider = self._process_provider()
         try:
             summary = await provider.summarize_ndvi(field.geometry, acquired_at=observation.acquired_at, exact_observation=True)
@@ -646,7 +664,9 @@ class SatelliteService:
             searched_at=acquisition.searched_at if acquisition else None,
             message_th=(
                 "พบข้อมูลสาธิตล่าสุด"
-                if acquisition and getattr(acquisition, "provider", None) == "agriscope-demo"
+                if acquisition and _is_synthetic_demo(acquisition)
+                else "พบ Sentinel-2 จริงที่เก็บไว้ล่วงหน้าสำหรับสาธิต"
+                if acquisition and _is_real_demo_cached(acquisition)
                 else "พบภาพดาวเทียมล่าสุด"
                 if acquisition
                 else "ยังไม่มีผลการค้นหาดาวเทียมที่บันทึกไว้"
@@ -676,11 +696,17 @@ class SatelliteService:
                 "Search for satellite metadata before requesting a preview",
                 409,
             )
-        if getattr(acquisition, "provider", None) == "agriscope-demo":
+        if _is_synthetic_demo(acquisition):
             raise ApiException(
                 "demo_preview_unavailable",
                 "Synthetic demo observations do not include true-colour imagery",
                 422,
+            )
+        if _is_real_demo_cached(acquisition):
+            raise ApiException(
+                "demo_cached_preview_unavailable",
+                "Real demo evidence is cached as NDVI data; true-colour imagery is not cached",
+                409,
             )
         process_provider = self.process_provider or CdseProcessClient(
             client_id=self.settings.cdse_client_id,
@@ -751,11 +777,17 @@ class SatelliteService:
                 "Search for satellite metadata before requesting NDVI statistics",
                 409,
             )
-        if getattr(acquisition, "provider", None) == "agriscope-demo":
+        if _is_synthetic_demo(acquisition):
             raise ApiException(
                 "demo_cached_analysis_only",
                 "Synthetic demo NDVI is available through the cached observation workspace",
                 422,
+            )
+        if _is_real_demo_cached(acquisition):
+            raise ApiException(
+                "demo_cached_analysis_only",
+                "Real demo NDVI is available through the cached observation workspace",
+                409,
             )
         geometry_hash = geometry_fingerprint(field.geometry)
         repository = SatelliteRepository(
@@ -894,7 +926,8 @@ class SatelliteService:
         stored_geometry_hash = acquisition_geometry_hash(observation)
         imagery_available = (
             observation.search_status == "available"
-            and getattr(observation, "provider", None) != "agriscope-demo"
+            and not _is_synthetic_demo(observation)
+            and not _is_real_demo_cached(observation)
         )
         return status, imagery_available, stored_geometry_hash
 
@@ -939,9 +972,25 @@ def cloud_decimal_to_float(value: Decimal | None) -> float | None:
     return float(value) if value is not None else None
 
 
+def _provider_metadata(observation: AcquisitionRecord) -> dict[str, Any]:
+    metadata = getattr(observation, "provider_metadata", None)
+    return metadata if isinstance(metadata, dict) else {}
+
+
+def _is_synthetic_demo(observation: AcquisitionRecord) -> bool:
+    return getattr(observation, "provider", None) == "agriscope-demo"
+
+
+def _is_real_demo_cached(observation: AcquisitionRecord) -> bool:
+    return (
+        getattr(observation, "provider", None) == "cdse_stac"
+        and _provider_metadata(observation).get("demo_cached_real") is True
+    )
+
+
 def acquisition_geometry_hash(observation: AcquisitionRecord) -> str | None:
-    metadata = observation.provider_metadata
-    value = metadata.get("geometry_hash") if isinstance(metadata, dict) else None
+    metadata = _provider_metadata(observation)
+    value = metadata.get("geometry_hash")
     if not isinstance(value, str) or len(value) != 64:
         return None
     try:

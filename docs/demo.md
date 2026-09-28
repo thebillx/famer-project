@@ -1,63 +1,142 @@
 # AgriScope Local Demo
 
-Local walkthrough instructions for the deterministic demo dataset.
-## Goal
+AgriScope has two local demo paths:
 
-The local demo proves the product flow without requiring live satellite-provider availability:
+1. **Real cached Sentinel-2 (recommended)** — real CDSE observations and real NDVI are prefetched once and stored before the presentation.
+2. **Synthetic fallback** — deterministic data labelled **ข้อมูลสาธิต** for offline/failure fallback and edge-case demonstrations.
 
-- sign in to a real local account;
-- open a seeded farm with four saved field boundaries;
-- see farm-level states for inspection, measurable comparison, insufficient data, and first observation;
-- inspect cached observation history;
-- view cached NDVI and spatial comparison;
-- create another field by drawing on the map or entering WGS84 coordinates.
+The core presentation should use the real cached path when it has been prefetched successfully.
 
-Seeded satellite evidence is synthetic and is labelled **ข้อมูลสาธิต**. It is not presented as a real Sentinel-2 preview.
+## Demo identity
 
-## Start
+Local demo only:
+
+- Email: `demo@agriscope.local`
+- Password: `DemoPass12345`
+- Organization: `AgriScope Demo`
+
+Demo seed and prefetch commands refuse `APP_ENV=production`.
+
+## Privacy-safe real demo area
+
+The real demo does not use a named private farmer, customer record, title deed, or cadastral parcel.
+
+The target is a small rectangular **analysis window** around a publicly documented agricultural research location in the Mae Hia agricultural research/demonstration area in Chiang Mai.
+
+User-facing names:
+
+- Farm: **พื้นที่สาธิตแม่เหียะ · Sentinel-2 จริง**
+- Field: **หน้าต่างวิเคราะห์แม่เหียะ A · ไม่ใช่ขอบเขตกรรมสิทธิ์**
+
+The polygon is intentionally not presented as a legal parcel or ownership boundary. Do not add a natural-person owner name, phone number, house address, title-deed number, parcel identifier, customer ID, or another identifier that could link the geometry to an individual.
+
+Public context used to choose the area:
+
+- Chiang Mai University describes the Mae Hia agricultural research/demonstration centre as a research, teaching, training, and agricultural technology-transfer facility:
+  https://www.cmu.ac.th/th/faculty/agriculture/service
+- Published research has documented agricultural study locations inside the Mae Hia research centre. The built-in AOI is a bounded analysis window around a published research-site coordinate, not a copied parcel boundary.
+
+This convention reduces privacy risk for the demo; it is not a legal determination about a specific dataset.
+
+## One-time real Sentinel-2 prefetch
 
 Prerequisites:
 
-- Docker with Compose support.
-- Node.js and npm versions required by the repository.
-- JavaScript dependencies already installed.
-- Python 3.12 with the repository API/test dependencies.
+- local PostGIS is running and migrations are current;
+- Python 3.12 environment and repository dependencies are already installed;
+- `CDSE_CLIENT_ID` and `CDSE_CLIENT_SECRET` are configured in the shell;
+- internet access to Copernicus Data Space Ecosystem.
 
-From the repository root:
+Run:
+
+```bash
+npm run demo:prefetch-real
+```
+
+Optional bounded parameters can be forwarded:
+
+```bash
+npm run demo:prefetch-real -- --days 180 --count 3
+```
+
+The command:
+
+1. creates or refreshes the privacy-safe Mae Hia analysis window;
+2. searches a bounded Sentinel-2 Level-2A history through CDSE STAC;
+3. attempts real NDVI analysis for usable distinct observations;
+4. caches up to the requested count of successful real analyses;
+5. marks only successfully cached observations as demo-cached real evidence;
+6. verifies at least two cached acquisition times and computes a comparison;
+7. prints dates/status but never prints CDSE credentials.
+
+The provider remains `cdse_stac`. Cached observations are shown as **Sentinel-2 · เก็บไว้ล่วงหน้า**.
+
+True-colour imagery is not cached in this slice, so the core real-cached demo does not request it. The reliable demo path is:
+
+**real Sentinel-2 history → cached real NDVI → cached raster → change comparison → farm prioritization**
+
+## Start the demo
+
+After dependencies are installed:
 
 ```bash
 npm run demo
 ```
 
-The launcher starts local PostGIS, applies migrations, refreshes the deterministic
-demo data, starts FastAPI on port 8000, and starts Next.js on port 3000.
+The launcher:
 
-Open `http://localhost:3000/login`. The launcher prints the local demo sign-in
-details. Press Ctrl-C in that terminal to stop the API and web processes.
+- starts local PostGIS;
+- applies migrations;
+- refreshes the synthetic fallback dataset;
+- preserves real data already prefetched in the database;
+- starts FastAPI on port 8000;
+- starts Next.js on port 3000.
 
-## Suggested walkthrough
+Open:
 
-1. Open **สวนสาธิตเชียงใหม่ · ข้อมูลจำลอง**.
-2. Show **แปลงเหนือ · ควรตรวจ (สาธิต)** as the priority field.
-3. Open that field and switch between NDVI and the NDVI-decrease area.
-4. Show **แปลงกลาง · มีผลเปรียบเทียบ (สาธิต)**.
-5. Show **แปลงใต้ · ข้อมูลยังไม่พอ (สาธิต)**.
-6. Show **แปลงใหม่ · รอข้อมูล (สาธิต)**.
-7. Create a new farm and demonstrate map drawing or coordinate entry.
+```text
+http://localhost:3000/login
+```
 
-The demo observation source is shown as **ข้อมูลสาธิต** and does not request a
-live true-colour preview. Cached NDVI and change evidence use the same application
-contracts as normal observations.
+Press Ctrl-C in the launcher terminal to stop API and web processes.
 
-## Re-running
+## Recommended walkthrough
 
-The seed is idempotent. Running `npm run demo` again refreshes the known local demo
-identity, farm, fields, and cached analyses rather than creating another copy.
+When real cached data has been prefetched:
 
-## Optional live provider use
+1. Sign in with the local demo account.
+2. Open **พื้นที่สาธิตแม่เหียะ · Sentinel-2 จริง**.
+3. Point out that the polygon is an analysis window and not an ownership boundary.
+4. Open **หน้าต่างวิเคราะห์แม่เหียะ A · ไม่ใช่ขอบเขตกรรมสิทธิ์**.
+5. Show the observation history labelled **Sentinel-2 · เก็บไว้ล่วงหน้า**.
+6. Show cached NDVI for two or more real acquisition dates.
+7. Switch to change comparison and explain the common-support/quality guardrails.
+8. Return to the farm view and show the resulting inspection-priority state.
+9. Optionally create a new field using map drawing or WGS84 coordinates.
 
-The seeded demo does not require live CDSE credentials. When valid provider
-credentials are supplied separately, newly searched real fields keep their existing
-live-provider behavior.
+Do not promise that the real data will always produce a “ควรตรวจ” result. The correct real outcome may instead be “มีผลเปรียบเทียบ” or “ข้อมูลยังไม่พอ”.
 
-The local demo is not a production-readiness or security-certification claim.
+## Synthetic fallback
+
+The deterministic fallback farm remains:
+
+**สวนสาธิตเชียงใหม่ · ข้อมูลจำลอง**
+
+It demonstrates:
+
+- **ควรตรวจ**
+- **มีผลเปรียบเทียบ**
+- **ข้อมูลยังไม่พอ**
+- **รอข้อมูล**
+
+Synthetic acquisitions use provider `agriscope-demo`, are labelled **ข้อมูลสาธิต**, and never present a fake true-colour image as real Sentinel-2.
+
+Use this fallback if CDSE prefetch has not been completed or when you need a guaranteed edge-case state.
+
+## Live provider use
+
+Ordinary non-demo fields retain the existing live CDSE behavior when credentials are configured.
+
+A live search during a presentation should be treated as an optional bonus, not the main demo path.
+
+The local demo is not a production-readiness, legal-compliance, or security-certification claim.

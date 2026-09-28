@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Literal
+from uuid import UUID
 
 from sqlalchemy import select
 
@@ -33,6 +34,13 @@ DEMO_PROVINCE = "เชียงใหม่"
 DEMO_PROVIDER = "agriscope-demo"
 DEMO_COLLECTION = "synthetic-demo-v1"
 DEMO_SOURCE_LABEL = "ข้อมูลสาธิต"
+
+REAL_DEMO_FARM_NAME = "พื้นที่สาธิตแม่เหียะ · Sentinel-2 จริง"
+REAL_DEMO_FIELD_NAME = "หน้าต่างวิเคราะห์แม่เหียะ A · ไม่ใช่ขอบเขตกรรมสิทธิ์"
+REAL_DEMO_REFERENCE_LABEL = "พื้นที่วิจัย/สาธิตการเกษตรแม่เหียะ มหาวิทยาลัยเชียงใหม่"
+REAL_DEMO_REFERENCE_URL = "https://www.cmu.ac.th/th/faculty/agriculture/service"
+REAL_DEMO_COORDINATE_REFERENCE = "18°45′56.66″N 98°55′40.13″E (published research-site coordinate)"
+REAL_DEMO_PRIVACY_NOTE = "analysis window only; not a cadastral boundary or ownership claim"
 
 
 MaskKind = Literal["all", "left", "right"]
@@ -61,6 +69,14 @@ class DemoSeedResult:
     field_ids: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class RealDemoTarget:
+    user_id: UUID
+    organization_id: UUID
+    farm_id: UUID
+    field_id: UUID
+
+
 def _rectangle(west: float, south: float, east: float, north: float) -> dict:
     return {
         "type": "Polygon",
@@ -74,6 +90,11 @@ def _rectangle(west: float, south: float, east: float, north: float) -> dict:
             ]
         ],
     }
+
+
+# Approx. 170 x 155 m analysis window around a published research-site coordinate.
+# This is deliberately not copied from a title deed, parcel map, or ownership dataset.
+REAL_DEMO_GEOMETRY = _rectangle(98.9270, 18.7650, 98.9286, 18.7664)
 
 
 DEMO_FIELDS = (
@@ -112,6 +133,13 @@ DEMO_FIELDS = (
             DemoObservationSpec(datetime(2026, 9, 20, 3, tzinfo=UTC), 0.60),
         ),
     ),
+)
+
+REAL_DEMO_FIELD_SPEC = DemoFieldSpec(
+    key="real-mae-hia",
+    name=REAL_DEMO_FIELD_NAME,
+    geometry=REAL_DEMO_GEOMETRY,
+    observations=(),
 )
 
 
@@ -288,6 +316,51 @@ async def _ensure_field(session, *, user: User, farm: Farm, spec: DemoFieldSpec)
     if field is None:
         raise RuntimeError(f"demo field could not be created: {spec.key}")
     return field
+
+
+async def ensure_real_demo_target(session, settings: SettingsSnapshot) -> RealDemoTarget:
+    """Create or refresh the privacy-safe real-Sentinel demo analysis window."""
+
+    if settings.app_env == AppEnvironment.PRODUCTION.value:
+        raise RuntimeError("Real demo prefetch is forbidden when APP_ENV=production")
+
+    user, organization = await _ensure_identity(session)
+    farm = (
+        await session.execute(
+            select(Farm).where(
+                Farm.organization_id == organization.id,
+                Farm.name == REAL_DEMO_FARM_NAME,
+            )
+        )
+    ).scalars().first()
+    if farm is None:
+        farm = Farm(
+            organization_id=organization.id,
+            owner_user_id=user.id,
+            name=REAL_DEMO_FARM_NAME,
+            province=DEMO_PROVINCE,
+            status="active",
+        )
+        session.add(farm)
+        await session.flush()
+    else:
+        farm.owner_user_id = user.id
+        farm.province = DEMO_PROVINCE
+        farm.status = "active"
+
+    field = await _ensure_field(
+        session,
+        user=user,
+        farm=farm,
+        spec=REAL_DEMO_FIELD_SPEC,
+    )
+    await session.flush()
+    return RealDemoTarget(
+        user_id=user.id,
+        organization_id=organization.id,
+        farm_id=farm.id,
+        field_id=field.id,
+    )
 
 
 async def seed_demo(session, settings: SettingsSnapshot) -> DemoSeedResult:

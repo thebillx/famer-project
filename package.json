@@ -19,7 +19,8 @@
     "validate:static": "bash scripts/validate.sh static",
     "validate:integration": "bash scripts/validate.sh integration",
     "validate:browser": "bash scripts/validate.sh browser",
-    "demo": "bash scripts/demo.sh"
+    "demo": "bash scripts/demo.sh",
+    "demo:prefetch-real": "bash scripts/demo_prefetch_real.sh"
   },
   "dependencies": {
     "@hookform/resolvers": "3.10.0",
