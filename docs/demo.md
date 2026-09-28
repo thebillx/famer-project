@@ -42,10 +42,13 @@ This convention reduces privacy risk for the demo; it is not a legal determinati
 
 Prerequisites:
 
-- local PostGIS is running and migrations are current;
+- Docker with Compose support is running;
 - Python 3.12 environment and repository dependencies are already installed;
 - `CDSE_CLIENT_ID` and `CDSE_CLIENT_SECRET` are configured in the shell;
 - internet access to Copernicus Data Space Ecosystem.
+
+The prefetch command starts local PostGIS, waits for it to become ready, and applies
+Alembic migrations before calling CDSE.
 
 Run:
 
