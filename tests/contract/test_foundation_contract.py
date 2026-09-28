@@ -588,6 +588,9 @@ class FoundationContractTests(unittest.TestCase):
         self.assertIn("CDSE_CLIENT_SECRET", real_launcher)
         self.assertIn("demo_cached_real", prefetch)
         self.assertIn("docker compose up -d postgres", launcher)
+        self.assertIn("docker compose up -d postgres", real_launcher)
+        self.assertIn("pg_isready -U agriscope -d agriscope", real_launcher)
+        self.assertIn("apps/api/alembic.ini upgrade head", real_launcher)
         self.assertIn("scripts/demo_seed.py --quiet", launcher)
 
         commands = [
