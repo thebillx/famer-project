@@ -90,10 +90,10 @@ test("renders a public Thai-first landing page without API requests", async ({ p
     if (request.url().includes("/api/v1")) apiRequests.push(request.url());
   });
 
-  const response = await page.goto("/");
+  const response = await page.goto("/overview");
 
   expect(response?.status()).toBe(200);
-  await expect(page).toHaveURL(/\/$/);
+  await expect(page).toHaveURL(/\/overview$/);
   await expect(page).toHaveTitle(/AgriScope Thailand/);
   await expect(page.getByRole("banner")).toBeVisible();
   await expect(page.getByRole("main")).toBeVisible();
@@ -121,7 +121,7 @@ test("renders a public Thai-first landing page without API requests", async ({ p
 });
 
 test("exposes valid CTA destinations and section anchors", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/overview");
 
   await expect(page.getByRole("link", { name: "สมัครใช้งาน" })).toHaveAttribute("href", "/login");
   await expect(page.getByRole("link", { name: "ขอ Demo", exact: true })).toHaveAttribute("href", "/login");
@@ -137,7 +137,7 @@ test("exposes valid CTA destinations and section anchors", async ({ page }) => {
 
 test("keeps keyboard focus visible and honors reduced motion", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.goto("/");
+  await page.goto("/overview");
 
   await page.keyboard.press("Tab");
   await expect(page.getByRole("link", { name: "ข้ามไปยังเนื้อหา" })).toBeFocused();
@@ -153,7 +153,7 @@ test("keeps keyboard focus visible and honors reduced motion", async ({ page }) 
 });
 
 test("uses local Thai display fallbacks and disables the illustrative map scan for reduced motion", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/overview");
 
   const headingFont = await page.getByRole("heading", { level: 1 }).evaluate((element) => getComputedStyle(element).fontFamily);
   expect(headingFont).toContain("Sukhumvit Set");
@@ -200,7 +200,7 @@ test("uses local Thai display fallbacks and disables the illustrative map scan f
 });
 
 test("keeps normal-size section labels and two-tone focus indicators at accessible contrast", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/overview");
 
   for (const label of ["ข้อมูลดาวเทียมเพื่อเกษตรไทย", "เริ่มต้นอย่างเป็นขั้นตอน", "ความสามารถที่มีอยู่วันนี้"]) {
     const context = await computedColorContext(page.getByText(label, { exact: true }));
@@ -236,7 +236,7 @@ test("keeps normal-size section labels and two-tone focus indicators at accessib
 
 test("matches the Canva reference composition at 1336 by 760", async ({ page }) => {
   await page.setViewportSize({ width: 1336, height: 760 });
-  await page.goto("/");
+  await page.goto("/overview");
 
   const header = await page.getByRole("banner").boundingBox();
   const eyebrow = await page.getByText("ข้อมูลดาวเทียมเพื่อเกษตรไทย", { exact: true }).boundingBox();
@@ -296,7 +296,7 @@ test("matches the Canva reference composition at 1336 by 760", async ({ page }) 
 for (const viewport of viewports) {
   test(`has no horizontal page overflow at ${viewport.name}`, async ({ page }) => {
     await page.setViewportSize({ width: viewport.width, height: viewport.height });
-    await page.goto("/");
+    await page.goto("/overview");
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
 
     const dimensions = await page.evaluate(() => ({
@@ -310,7 +310,7 @@ for (const viewport of viewports) {
 test("keeps core content available without JavaScript", async ({ browser }) => {
   const context = await browser.newContext({ javaScriptEnabled: false });
   const page = await context.newPage();
-  const response = await page.goto("/");
+  const response = await page.goto("/overview");
 
   expect(response?.status()).toBe(200);
   await expect(page.getByRole("heading", { level: 1 })).toContainText("เห็นข้อมูลแปลงชัดขึ้น");

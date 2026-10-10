@@ -1,0 +1,20 @@
+// Static, trusted presentation markup from the supplied prototype. No remote HTML.
+export const journeyMarkup = `
+<section id="journey" aria-label="การเดินทางจากวงโคจรสู่แปลงเกษตร">
+<section id="orbit" class="chapter-anchor"><h2 class="sr-only">วงโคจร</h2></section><section id="mission" class="chapter-anchor"><h2 class="sr-only">ภารกิจสำรวจโลก</h2></section><section id="field" class="chapter-anchor"><h2 class="sr-only">แปลงเกษตรตัวอย่าง</h2></section>
+<div class="cinematic-stage">
+<a class="skip" href="#fallback">ข้ามไปดูแปลงตัวอย่าง</a>
+<div id="scene-root" aria-hidden="true"></div><div class="shade" aria-hidden="true"></div>
+<header><a class="brand" href="#orbit" aria-label="AgriScope กลับสู่จุดเริ่มต้น"><span class="brand-mark" aria-hidden="true">◉</span><span>AGRISCOPE<small>EARTH OBSERVATION · THAILAND</small></span></a><nav aria-label="เมนูการเดินทาง"><a href="/login" class="login-link">เข้าสู่ระบบ</a><a href="#mission">ภารกิจสำรวจ</a><a href="#field">แปลงเกษตร</a><button id="motion" hidden type="button" aria-pressed="false">ลดการเคลื่อนไหว</button></nav></header>
+<div class="top-rule" aria-hidden="true"></div>
+
+<div id="narrative" class="narrative"><p id="eyebrow" class="eyebrow">01 / 10 &nbsp; ORBITAL SILENCE</p><h1 id="title">มองเห็นความเปลี่ยนแปลง<br><span>จากวงโคจรถึงแปลงจริง</span></h1><p id="description" class="description">AgriScope เชื่อมภาพถ่ายดาวเทียม Sentinel-2 เข้ากับขอบเขตแปลงจริงของคุณ เพื่อช่วยจัดลำดับการลงพื้นที่ตรวจสอบ</p><a id="begin" href="#mission" class="text-link">เริ่มภารกิจ <span aria-hidden="true">+</span></a></div>
+<div class="instrument-label" id="instrument" aria-hidden="true"><span class="optic-ring"></span><small>MULTISPECTRAL<br>EARTH OBSERVATION</small></div>
+<div class="geo" id="geo"><span class="cross" aria-hidden="true">+</span><p>THAILAND<small>15.87° N · 100.99° E</small></p></div>
+<aside id="field-panel" class="field-panel" aria-label="แปลงตัวอย่าง"><p class="eyebrow">FIELD A–204 / ข้อมูลสาธิต</p><h2>แปลงนาตัวอย่าง</h2><p class="field-location">จ.สุพรรณบุรี</p><div class="metrics"><div><b>18.4<small>ไร่</small></b><span>พื้นที่แปลง</span></div><div><b>0.71</b><span>NDVI เฉลี่ย</span></div></div><div class="field-detail"><span>ภาพ Sentinel-2 L2A</span><span>14 ก.พ. 2569</span></div><div class="field-detail"><span>เมฆปกคลุม</span><span>3.2%</span></div><p class="note">ค่าและพื้นที่เป็นตัวอย่างสาธิต ใช้ช่วยวางแผนลงพื้นที่ ไม่ใช่การวินิจฉัยโรคพืช</p><a class="field-handoff" href="/login">เริ่มติดตามแปลงของคุณ →</a><button id="inspect-field" type="button">ดูแนวโน้มแปลงตัวอย่าง</button><div id="trend" hidden><p>NDVI ตัวอย่าง 3 ช่วงเวลา</p><div class="trend-bars"><span style="--h:58%">0.58</span><span style="--h:64%">0.64</span><span style="--h:71%">0.71</span></div><p class="note">ค่าตัวอย่างประกอบการแสดงผล</p></div></aside>
+<div class="bottom-bar"><span id="bottom-left">SCROLL TO EXPLORE <span class="scroll-line" aria-hidden="true"></span></span><span id="chapter">ORBIT / 01</span><span class="demo-label">ILLUSTRATIVE JOURNEY</span></div>
+<nav id="rail" class="rail" aria-label="เลือกช็อตการเดินทาง"></nav>
+<div id="loading" hidden role="status"><div class="loading-inner"><span>AGRISCOPE</span><p>กำลังเตรียมภาพโลกและภารกิจสำรวจ</p><div class="loading-track"><i id="loading-progress"></i></div></div></div>
+<section id="fallback" tabindex="-1"><p class="eyebrow">AGRISCOPE · EARTH OBSERVATION</p><h1>มองเห็นความเปลี่ยนแปลง<br>จากวงโคจรถึงแปลงจริง</h1><p id="fallback-reason">ติดตามแปลงเกษตรด้วยภาพถ่ายดาวเทียม</p><div class="fallback-steps"><article><b>01 / ขอบเขตแปลง</b><p>กำหนดพื้นที่แปลงเกษตรที่คุณต้องการติดตาม</p></article><article><b>02 / ภาพดาวเทียม</b><p>พิจารณาภาพ Sentinel-2 พร้อมข้อมูลเมฆและคุณภาพภาพ</p></article><article><b>03 / แนวโน้มพืชพรรณ</b><p>ใช้ NDVI ช่วยจัดลำดับแปลงที่ควรลงพื้นที่ตรวจสอบ</p></article></div><p class="note">ข้อมูลเป็นตัวอย่างสาธิต ไม่ใช่การวินิจฉัยโรคพืช</p><a class="text-link" href="/login">เริ่มติดตามแปลงของคุณ →</a><button id="resume" hidden type="button">เปิดประสบการณ์ 3D</button></section>
+<output id="diagnostics" hidden></output></div></section>
+`;
