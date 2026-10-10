@@ -97,11 +97,11 @@ async function mockWorkspace(page: Page, options: WorkspaceMock = {}) {
   return counts;
 }
 
-test("manager sees truthful Thai farm data in response order without fabricated content", async ({ page }) => {
+test("manager sees truthful Thai farm data in response order without fabricated content", async ({ page, baseURL }) => {
   const externalRequests: string[] = [];
   page.on("request", (request) => {
     const url = new URL(request.url());
-    if (!["http://localhost:3000", "http://localhost:8000"].includes(url.origin)) {
+    if (![new URL(baseURL ?? "http://localhost:3000").origin, "http://localhost:8000"].includes(url.origin)) {
       externalRequests.push(request.url());
     }
   });
