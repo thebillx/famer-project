@@ -39,6 +39,28 @@ def material(name, color, metal=0, rough=.7, coat=0):
     bsdf.inputs["Metallic"].default_value = metal
     bsdf.inputs["Roughness"].default_value = rough
     bsdf.inputs["Coat Weight"].default_value = coat
+    if name.startswith(("Dry earth", "Field tracks", "Rice field", "Rice rows", "Tree foliage", "Tree bark")):
+        # The editable Blender scene keeps physically restrained surface grain.
+        # The web renderer applies a scale-matched procedural equivalent because
+        # the compact runtime mesh format intentionally carries no bitmap maps.
+        geometry = m.node_tree.nodes.new("ShaderNodeNewGeometry")
+        noise = m.node_tree.nodes.new("ShaderNodeTexNoise")
+        noise.inputs["Scale"].default_value = 7.0 if "Rows" not in name else 11.0
+        noise.inputs["Detail"].default_value = 2.2
+        noise.inputs["Roughness"].default_value = .68
+        m.node_tree.links.new(geometry.outputs["Position"], noise.inputs["Vector"])
+        bump = m.node_tree.nodes.new("ShaderNodeBump")
+        bump.inputs["Strength"].default_value = .14
+        bump.inputs["Distance"].default_value = .009 if "Tree" not in name else .025
+        m.node_tree.links.new(noise.outputs["Fac"], bump.inputs["Height"])
+        m.node_tree.links.new(bump.outputs["Normal"], bsdf.inputs["Normal"])
+        roughness = m.node_tree.nodes.new("ShaderNodeMapRange")
+        roughness.inputs["From Min"].default_value = .18
+        roughness.inputs["From Max"].default_value = .82
+        roughness.inputs["To Min"].default_value = max(.58, rough - .12)
+        roughness.inputs["To Max"].default_value = min(.99, rough + .06)
+        m.node_tree.links.new(noise.outputs["Fac"], roughness.inputs["Value"])
+        m.node_tree.links.new(roughness.outputs["Result"], bsdf.inputs["Roughness"])
     m["metalness"] = metal
     m["roughness"] = rough
     m["clearcoat"] = coat
@@ -52,16 +74,17 @@ dark = material("Instrument carbon", (.014, .021, .027), .5, .34)
 cells = material("Photovoltaic cells", (.008, .029, .058), .65, .27, .42)
 glass = material("Recessed optical glass", (.005, .025, .029), .26, .14, .9)
 copper = material("Harness copper", (.24, .10, .035), .75, .37)
-soil = material("Dry earth", (.17, .15, .105), 0, .96)
-track = material("Field tracks", (.25, .22, .16), 0, .93)
-water = material("Irrigation water", (.032, .068, .066), .08, .31, .12)
-foliage = material("Tree foliage", (.11, .145, .066), 0, .96)
+soil = material("Dry earth", (.13, .084, .046), 0, .96)
+track = material("Field tracks", (.23, .16, .088), 0, .94)
+water = material("Irrigation water", (.025, .085, .082), .08, .24, .12)
+foliage = material("Tree foliage", (.22, .30, .095), 0, .96)
+foliage_light = material("Tree foliage · sunlit leaves", (.34, .43, .145), 0, .94)
 bark = material("Tree bark", (.12, .083, .049), 0, .96)
 greens = [material(f"Rice field {i}", c, 0, .92) for i, c in enumerate([
-    (.17, .19, .086), (.155, .181, .076), (.202, .203, .091),
-    (.142, .171, .078), (.184, .192, .084), (.151, .174, .07),
+    (.105, .19, .058), (.12, .205, .063), (.16, .205, .061),
+    (.094, .164, .049), (.18, .216, .072), (.11, .179, .052),
 ])]
-crop = material("Rice rows", (.082, .145, .044), 0, .97)
+crop = material("Rice rows", (.11, .174, .051), 0, .97)
 
 
 def collection(name):
@@ -270,6 +293,28 @@ def local_point(cx, cz, lx, lz, angle):
             cz + lx * math.sin(angle) + lz * math.cos(angle))
 
 
+SAMPLE_BOUNDS = (-2.50, 2.45, -2.30, 2.27)
+
+
+def overlaps_sample(cx, cz, half_x, half_z, angle, clearance=.32):
+    """SAT clearance between a rotated parcel and the unchanged sample footprint."""
+    sx0, sx1, sz0, sz1 = SAMPLE_BOUNDS
+    scx, scz = (sx0 + sx1) / 2, (sz0 + sz1) / 2
+    shx, shz = (sx1 - sx0) / 2 + clearance, (sz1 - sz0) / 2 + clearance
+    dx, dz = cx - scx, cz - scz
+    cosine, sine = abs(math.cos(angle)), abs(math.sin(angle))
+    # Sample axes, then the candidate parcel's two rotated axes.
+    separated_x = abs(dx) >= half_x * cosine + half_z * sine + shx
+    separated_z = abs(dz) >= half_x * sine + half_z * cosine + shz
+    parcel_x = abs(dx * math.cos(angle) + dz * math.sin(angle))
+    parcel_z = abs(-dx * math.sin(angle) + dz * math.cos(angle))
+    sample_on_parcel_x = shx * cosine + shz * sine
+    sample_on_parcel_z = shx * sine + shz * cosine
+    separated_parcel_x = parcel_x >= half_x + sample_on_parcel_x
+    separated_parcel_z = parcel_z >= half_z + sample_on_parcel_z
+    return not (separated_x or separated_z or separated_parcel_x or separated_parcel_z)
+
+
 def crop_plot(cx, cz, half_x, half_z, mat, angle, row_count):
     """A softly irregular, deterministic plot with curved rows in its local frame."""
     nx, nz = 12, 12
@@ -279,9 +324,9 @@ def crop_plot(cx, cz, half_x, half_z, mat, angle, row_count):
         for i in range(nx + 1):
             ux = i / nx * 2 - 1
             edge = max(abs(ux), abs(vz))
-            wobble = (math.sin(vz * 4.1 + cx * .31 + math.sin(ux * 2.1)) * .11
-                      + math.sin(ux * 5.1 + cz * .27) * .075
-                      + math.sin((ux + vz) * 7.3 + cx * .13) * .035)
+            wobble = (math.sin(vz * 4.1 + cx * .31 + math.sin(ux * 2.1)) * .045
+                      + math.sin(ux * 5.1 + cz * .27) * .030
+                      + math.sin((ux + vz) * 7.3 + cx * .13) * .015)
             edge_weight = max(0, (edge - .38) / .62)
             scale = 1 + wobble * edge_weight
             # Cut back parcel corners and soften long straight sides. This uses
@@ -302,94 +347,215 @@ def crop_plot(cx, cz, half_x, half_z, mat, angle, row_count):
     row_v, row_f = [], []
     for row in range(row_count):
         row_margin = .14
-        base = -half_z + row_margin + (row + terrain_random.uniform(-.14, .14)) * (2 * half_z - 2 * row_margin) / row_count
+        base = -half_z + row_margin + (row + terrain_random.uniform(-.12, .12)) * (2 * half_z - 2 * row_margin) / row_count
         start = len(row_v)
         for step in range(5):
             t = step / 4
             lx = -half_x + .14 + t * (2 * half_x - .28)
             bend = .036 * math.sin(t * math.pi * 2 + row * .63 + cx) + .016 * math.sin(t * math.pi * 5 + cz)
-            for side in (-.009, .009):
-                x, z = local_point(cx, cz, lx, base + bend + side, angle)
-                row_v.append((x, height(x, z) + .016, z))
+            # Broader, low crop ridges remain legible in the wide descent view;
+            # their shallow crown still reads as planted ground, not toy rails.
+            for lateral, crown in ((-.045, 0), (0, .024), (.045, 0)):
+                x, z = local_point(cx, cz, lx, base + bend + lateral, angle)
+                row_v.append((x, height(x, z) + .015 + crown, z))
         for step in range(4):
-            a = start + step * 2
-            row_f.append((a, a + 2, a + 3, a + 1))
+            a = start + step * 3
+            b = a + 3
+            # This strip's points advance along local X, then across local Z.
+            # Reversing the winding keeps the evaluated normals facing up after
+            # the Blender-to-runtime axis conversion.
+            row_f.extend(((a, a + 1, b + 1), (a, b + 1, b),
+                          (a + 1, a + 2, b + 2), (a + 1, b + 2, b + 1)))
     if row_f:
         mesh_obj("Curved planting ridges", row_v, row_f, crop, land, True)
 
 
 patch("Continuous agricultural ground", -18, 18, -18, 18, soil, segments=48, lift=-.004)
+# Neighboring paddies follow the measured sample footprint with a narrow,
+# uniform clearance. These make the focal parcel part of a cultivated landscape
+# instead of leaving an empty 3×3 hole in the surrounding scene.
+nearby_plots = []
+for side in (-1, 1):
+    for z in (-1.15, 1.05):
+        nearby_plots.append((side * 3.88 + terrain_random.uniform(-.06, .06),
+                             z + terrain_random.uniform(-.07, .07),
+                             .88 + terrain_random.uniform(-.06, .05),
+                             .73 + terrain_random.uniform(-.05, .06),
+                             side * terrain_random.uniform(-.16, .16)))
+for side in (-1, 1):
+    for x in (-1.48, 0.0, 1.48):
+        nearby_plots.append((x + terrain_random.uniform(-.04, .04),
+                             side * 3.55 + terrain_random.uniform(-.05, .05),
+                             .69 + terrain_random.uniform(-.04, .04),
+                             .68 + terrain_random.uniform(-.04, .04),
+                             terrain_random.uniform(-.10, .10)))
+for index, (x, z, half_x, half_z, angle) in enumerate(nearby_plots):
+    if overlaps_sample(x, z, half_x, half_z, angle):
+        continue
+    crop_plot(x, z, half_x, half_z, greens[index % len(greens)], angle,
+              terrain_random.randint(8, 10))
 for ix in range(-4, 5):
     for iz in range(-4, 5):
         # Broad, staggered parcels follow a loose landscape rhythm instead of a
         # repeated tile grid. The fixed seed retains exact rebuilds.
-        if terrain_random.random() < .14 or (abs(ix) <= 1 and abs(iz) <= 1):
+        if terrain_random.random() < .08:
             continue
-        x = ix * 3.82 + (iz % 2) * .76 + .31 * math.sin(iz * .71 + ix * .39) + terrain_random.uniform(-.48, .48)
-        z = iz * 3.73 + .29 * math.sin(ix * .57 - iz * .31) + terrain_random.uniform(-.48, .48)
-        half_x = 1.08 + terrain_random.random() * .38
-        half_z = .91 + terrain_random.random() * .37
-        angle = terrain_random.uniform(-.72, .72) + .07 * math.sin(ix * .6 + iz * .38)
-        rows = terrain_random.randint(8, 14)
+        x = ix * 3.48 + (iz % 2) * .62 + .25 * math.sin(iz * .71 + ix * .39) + terrain_random.uniform(-.30, .30)
+        z = iz * 3.46 + .25 * math.sin(ix * .57 - iz * .31) + terrain_random.uniform(-.30, .30)
+        half_x = 1.40 + terrain_random.random() * .30
+        half_z = 1.15 + terrain_random.random() * .25
+        angle = terrain_random.uniform(-.64, .64) + .07 * math.sin(ix * .6 + iz * .38)
+        if overlaps_sample(x, z, half_x, half_z, angle):
+            continue
+        rows = terrain_random.randint(9, 12)
         crop_plot(x, z, half_x, half_z, greens[(ix * 3 + iz * 7) % len(greens)], angle, rows)
 # One continuous sample field: boundary and comparison cover the same geometry.
 patch("AgriScope sample field", -2.50, 2.45, -2.30, 2.27, greens[1], segments=18)
 for j in range(37):
     z = -2.23 + j * .12
     patch("Sample planting row", -2.47, 2.42, z - .009, z + .009, crop, segments=(12, 1), lift=.016)
-for z in [-3.66, 3.64]:
-    patch("Farm access track", -16, 16, z - .07, z + .07, track, segments=(40, 1), lift=.022)
-def canal_ribbon(name, side, mat, width, lift):
+for lane, z in enumerate([-5.05]):
+    # This winding service path crosses the irrigation channel between parcel
+    # rows, clear of both the sample field and its immediately adjoining plots.
     v, f = [], []
     steps = 128
     for i in range(steps + 1):
-        z = -16 + 32 * i / steps
-        center = -4.42 + .09 * math.sin(z * .19) + .035 * math.sin(z * .53 + .7)
-        if side == 0:
-            edges = (-width / 2, width / 2)
-        else:
-            bank = center + side * (.10 + width / 2)
-            edges = (-width / 2, width / 2)
-        for offset in edges:
-            x = center + offset if side == 0 else bank + offset
-            v.append((x, height(x, z) + lift, z))
+        x = -16 + 32 * i / steps
+        center = z + .075 * math.sin(x * .21 + lane * 1.7) + .027 * math.sin(x * .63 - lane)
+        width = .13 * (1 + .12 * math.sin(x * .41 + lane * .9))
+        for side in (-1, 1):
+            px = x
+            pz = center + side * width
+            v.append((px, height(px, pz) + .022, pz))
     for i in range(steps):
         a = i * 2
-        f.append((a, a + 2, a + 3, a + 1))
+        f.append((a, a + 1, a + 3, a + 2))
+    mesh_obj("Winding farm access path", v, f, track, land, True)
+def canal_ribbon(name, side, mat, width, lift):
+    v, f = [], []
+    steps = 160
+    for i in range(steps + 1):
+        z = -16 + 32 * i / steps
+        center = -4.42 + .16 * math.sin(z * .19) + .055 * math.sin(z * .53 + .7)
+        local_width = width * (.90 + .10 * math.sin(z * .31 + .4))
+        if side == 0:
+            edges = (-local_width / 2, 0, local_width / 2)
+        else:
+            bank = center + side * (.10 + local_width / 2)
+            edges = (-width / 2, width / 2)
+        for edge_index, offset in enumerate(edges):
+            x = center + offset if side == 0 else bank + offset
+            y = height(x, z) + lift
+            if side == 0:
+                y += -.046 if edge_index == 1 else -.018
+            v.append((x, y, z))
+    for i in range(steps):
+        if side == 0:
+            a = i * 3
+            b = a + 3
+            f.extend(((a, b, b + 1, a + 1), (a + 1, b + 1, b + 2, a + 2)))
+        else:
+            a = i * 2
+            f.append((a, a + 2, a + 3, a + 1))
     mesh_obj(name, v, f, mat, land, True)
 
 
-canal_ribbon("Meandering irrigation canal", 0, water, .20, .024)
+canal_ribbon("Meandering irrigation canal", 0, water, .28, .018)
 for side in (-1, 1):
-    canal_ribbon("Uneven canal bank", side, track, .06, .032)
+    canal_ribbon("Raised canal bank", side, track, .15, .035)
 
-def canopy_blob(parent, name, center, scale, rng):
-    bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=3, radius=1, location=to_blender(center))
+def tapered_branch(parent, name, start, end, base_radius, tip_radius, mat=bark, sides=8):
+    a, b = Vector(to_blender(start)), Vector(to_blender(end))
+    direction = b - a
+    bpy.ops.mesh.primitive_cone_add(vertices=sides, radius1=base_radius, radius2=tip_radius,
+                                    depth=direction.length, location=(a + b) / 2)
     obj = bpy.context.object
     obj.name = name
-    obj.scale = scale
-    for vertex in obj.data.vertices:
-        vertex.co *= .76 + rng.random() * .50
-    for polygon in obj.data.polygons:
-        polygon.use_smooth = True
-    obj.data.materials.append(foliage)
+    obj.rotation_euler = direction.to_track_quat("Z", "Y").to_euler()
+    obj.data.materials.append(mat)
     move_collection(obj, parent)
+    return obj
 
 
-# Three clearly distinct silhouettes share the same two material batches at runtime.
+def add_leaf(base, direction, length, width, material, batches, roll=0):
+    """Build a thin, pointed leaf with a raised midrib and two visible faces."""
+    origin = Vector(base)
+    axis = Vector(direction).normalized()
+    across = Vector((-axis.z, .16, axis.x)).normalized()
+    if across.length < .1:
+        across = Vector((1, 0, 0))
+    side = axis.cross(across).normalized()
+    across = (across * math.cos(roll) + side * math.sin(roll)).normalized()
+    lift = Vector((0, .035 * length, 0))
+    points = [origin,
+              origin + axis * (length * .40) - across * width,
+              origin + axis * (length * .62) + lift,
+              origin + axis * (length * .40) + across * width,
+              origin + axis * length]
+    group = batches.setdefault(material.name, {"material": material, "vertices": [], "faces": []})
+    offset = len(group["vertices"])
+    group["vertices"].extend(tuple(point) for point in points)
+    top = [(0, 1, 2), (0, 2, 3), (1, 4, 2), (2, 4, 3)]
+    group["faces"].extend(tuple(offset + i for i in face) for face in top)
+    group["faces"].extend(tuple(offset + i for i in reversed(face)) for face in top)
+
+
+# Three branched silhouettes at a believable crop-edge scale. Batched leaves
+# grow along tapering limbs; no sphere crowns or individual runtime plant calls.
 tree_specs = [
-    ("Round canopy", .94, [((.02, 1.06, .01), (.49, .32, .43)), ((-.28, 1.02, .06), (.36, .30, .37)), ((.30, .97, -.14), (.37, .31, .34)), ((.02, 1.30, -.08), (.34, .29, .36))]),
-    ("Tall canopy", 1.12, [((.01, 1.25, .02), (.37, .38, .31)), ((-.22, 1.20, .09), (.31, .34, .27)), ((.24, 1.31, -.10), (.31, .39, .27)), ((.04, 1.56, -.02), (.30, .31, .27))]),
-    ("Open crown", 1.10, [((-.27, 1.39, .10), (.34, .31, .35)), ((.27, 1.40, -.13), (.33, .32, .30)), ((.03, 1.62, .04), (.32, .30, .34))]),
+    {"name": "Broad irregular crown", "trunk": 1.02, "spread": (.59, .55), "height": (.80, 1.48), "branches": 8, "leaf_density": 1.0},
+    {"name": "Tall layered crown", "trunk": 1.28, "spread": (.45, .42), "height": (1.14, 1.90), "branches": 7, "leaf_density": .94},
+    {"name": "Airy forked crown", "trunk": 1.17, "spread": (.62, .54), "height": (1.05, 1.82), "branches": 7, "leaf_density": .74},
 ]
-for variant_index, (name, trunk_height, blobs) in enumerate(tree_specs):
+for variant_index, spec in enumerate(tree_specs):
     parent = tree_variants[variant_index]
     rng = random.Random(730 + variant_index)
-    tube("Visible tapered trunk", (0, 0, 0), (0, trunk_height, 0), .035, bark, parent, sides=9)
-    for index, (center, scale) in enumerate(blobs):
-        if index < len(blobs) - 1:
-            tube("Forked branch", (0, trunk_height * .42, 0), center, .012, bark, parent, sides=7)
-        canopy_blob(parent, "Varied leaf crown", center, scale, rng)
+    trunk_height = spec["trunk"]
+    tapered_branch(parent, "Tapered central trunk", (0, 0, 0), (0, trunk_height, 0), .071, .029, sides=9)
+    leaf_batches = {}
+    for index in range(spec["branches"]):
+        azimuth = index * math.tau / spec["branches"] + rng.uniform(-.22, .22)
+        spread = rng.uniform(.68, 1.0)
+        start_height = trunk_height * rng.uniform(.48, .82)
+        end = (math.cos(azimuth) * spec["spread"][0] * spread,
+               rng.uniform(*spec["height"]),
+               math.sin(azimuth) * spec["spread"][1] * spread)
+        start = (0, start_height, 0)
+        tapered_branch(parent, "Tapered primary limb", start, end, .030, .008, sides=7)
+        split = rng.uniform(.56, .78)
+        fork_start = tuple(start[k] + (end[k] - start[k]) * split for k in range(3))
+        fork_angle = azimuth + rng.choice((-1, 1)) * rng.uniform(.42, .70)
+        fork_end = (end[0] + math.cos(fork_angle) * .17,
+                    end[1] + rng.uniform(.08, .22),
+                    end[2] + math.sin(fork_angle) * .17)
+        tapered_branch(parent, "Forked secondary limb", fork_start, fork_end, .013, .004, sides=6)
+        for step in range(1, 6):
+            t = step / 6
+            center = tuple(start[k] + (end[k] - start[k]) * t for k in range(3))
+            for side in (-1, 1):
+                for layer in range(3):
+                    leaf_angle = azimuth + side * rng.uniform(.42, 1.26) + rng.uniform(-.36, .36)
+                    leaf_direction = (math.cos(leaf_angle) * .58 + math.cos(azimuth) * .34,
+                                      rng.uniform(.48, .90),
+                                      math.sin(leaf_angle) * .58 + math.sin(azimuth) * .34)
+                    length = rng.uniform(.26, .40) * spec["leaf_density"]
+                    leaf_origin = (center[0] + math.cos(leaf_angle) * rng.uniform(.025, .075),
+                                   center[1] + rng.uniform(-.035, .035),
+                                   center[2] + math.sin(leaf_angle) * rng.uniform(.025, .075))
+                    shade = foliage_light if rng.random() > .48 else foliage
+                    add_leaf(leaf_origin, leaf_direction, length, length * rng.uniform(.40, .60), shade, leaf_batches, rng.uniform(-math.pi, math.pi))
+        # A small, upward-facing terminal spray breaks the repeated radial outline.
+        for _ in range(5):
+            leaf_angle = azimuth + rng.uniform(-1.15, 1.15)
+            direction = (math.cos(leaf_angle) * rng.uniform(.36, .72),
+                         rng.uniform(.60, .95),
+                         math.sin(leaf_angle) * rng.uniform(.36, .72))
+            length = rng.uniform(.27, .40) * spec["leaf_density"]
+            shade = foliage_light if rng.random() > .48 else foliage
+            add_leaf(end, direction, length, length * rng.uniform(.40, .60), shade, leaf_batches, rng.uniform(-math.pi, math.pi))
+    for foliage_index, leaf_batch in enumerate(leaf_batches.values()):
+        mesh_obj("Batched pointed leaves", leaf_batch["vertices"], leaf_batch["faces"],
+                 leaf_batch["material"], parent, False)
 
 
 def export_collection(coll, filename, include_data=False, destination=OUT):

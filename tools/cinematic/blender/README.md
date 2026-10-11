@@ -7,13 +7,18 @@ asset is involved. Earth textures and the Thai font retain their existing credit
 
 The generator writes three compact material-batched mesh containers into
 `apps/web/public/cinematic/models/`. Their combined transfer size is about
-3.98 MiB before HTTP compression. Seven spacecraft materials preserve folded
+3.71 MiB before HTTP compression. Seven spacecraft materials preserve folded
 thermal blankets, hinges, individually modeled solar cells, a recessed lens,
-radiator fins, harnesses, telemetry dish and thrusters. Land includes real raised
-planting rows, staggered and proportion-varied plots, curved crop ridges,
-meandering canal banks, one unchanged sample plot and three instanced tree
-silhouettes. The tree variants share one JSON file and two material batches per
-silhouette. Geometry uses fixed seeds for reproducible output.
+radiator fins, harnesses, telemetry dish and thrusters. Land includes raised
+planting beds, staggered and proportion-varied parcels cleared against the
+sample field's actual footprint, adjacent paddies placed around the unchanged
+sample field, a winding service path connected across a recessed irrigation
+channel with raised banks, and three instanced branched tree silhouettes.
+Planting rows retain upward-facing normals through the Blender-to-runtime axis
+conversion. Tree variants share one JSON file with tapered bark and batched,
+pointed foliage in shaded and sunlit material batches. Terrain uses procedural
+roughness and multi-scale color grain in Blender and the web shader. Geometry
+uses fixed seeds for reproducible output.
 
 Use Blender 4.5 LTS from https://www.blender.org/download/lts/:
 
@@ -42,8 +47,9 @@ within 0.0006 scene units across the 36-unit landscape and 0.0002 scene units ac
 These units describe original artwork and do not assert agricultural area.
 
 The browser uses the supplied local Three.js 0.170.0 runtime. Terrain detail and
-curvature blend as the camera descends, without overlapping transparent Earth
-surfaces. All transforms, lighting states and evidence overlays are derived from
+curvature blend as the camera descends; the Earth surface clears at progress
+0.555 so geographic map texture cannot show through gaps between the synthetic
+parcels. All transforms, lighting states and evidence overlays are derived from
 scroll progress. Runtime tree placement is seeded and batched by material.
 
 ```sh

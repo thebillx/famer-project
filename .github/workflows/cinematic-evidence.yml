@@ -136,6 +136,13 @@ jobs:
           CINEMATIC_URL: http://127.0.0.1:5184/
         run: node tests/cinematic/capture-evidence.mjs
 
+      - name: Capture visual reference frames
+        if: always()
+        env:
+          CI: "true"
+          CINEMATIC_EVIDENCE: evidence/reference
+        run: node tests/cinematic/capture-reference.mjs "$CINEMATIC_EVIDENCE"
+
       - name: Upload review evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

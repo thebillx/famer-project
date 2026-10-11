@@ -114,14 +114,19 @@ export function mountJourney(root){
   spacecraft.quaternion.copy(attitude).slerp(nadir,smooth(.235,.38,p));spacecraft.visible=p<.50;
   const descent=smooth(.41,.56,p),detail=smooth(.395,.50,p);
   const agriculturalLight=smooth(.43,.57,p);
-  sun.intensity=2.35-.70*agriculturalLight;fill.intensity=.76+.80*agriculturalLight;hemisphere.intensity=.68+.50*agriculturalLight;
-  scene.fog.density=.0008+descent*.011;scene.fog.color.set(0x11263a).lerp(new THREE.Color(0x496774),descent);
-  scene.background.set(0x060d15).lerp(new THREE.Color(0x496774),descent);
+  sun.intensity=2.35-.70*agriculturalLight;fill.intensity=.76+1.02*agriculturalLight;hemisphere.intensity=.68+.62*agriculturalLight;
+  // Keep the far edge atmospheric, but let the nearby parcels retain warm soil
+  // and crop contrast instead of disappearing into a grey fog wash.
+  scene.fog.density=.0006+descent*.0042;scene.fog.color.set(0x101c29).lerp(new THREE.Color(0x293f3d),descent);
+  scene.background.set(0x060d15).lerp(new THREE.Color(0x1a3038),descent);
   stars.material.opacity=.78*(1-smooth(.36,.49,p));stars.visible=p<.51;
   terrain.visible=p>=.405;terrain.userData.localDetail.value=detail;
   const flatten=terrain.userData.update(p);
   terrain.userData.boundary.visible=p>=.50;terrain.userData.boundary.material.transparent=true;terrain.userData.boundary.material.opacity=smooth(.50,.56,p);
-  earth.userData.surface.visible=p<.60;
+  // Let the spherical basemap leave as the camera commits to the local terrain.
+  // Keeping it underneath the flattening mesh produces stray geographic green
+  // islands through gaps between synthetic plots in shots 5–6.
+  earth.userData.surface.visible=p<.555;
   earth.userData.atmosphere.material.uniforms.opacity.value=1-smooth(.41,.53,p);
   earth.userData.clouds.visible=p<.49;earth.userData.clouds.material.opacity=.30*(1-smooth(.35,.49,p));
   earth.userData.clouds.rotation.y=.008*smooth(.20,.49,p);
