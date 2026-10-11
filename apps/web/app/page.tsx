@@ -13,9 +13,9 @@ export default function HomePage() {
     <div className={styles.page}>
       <main id="main-content">
         <CinematicJourney />
-        <LandingSections />
+        <LandingSections compact />
       </main>
-      <LandingFooter />
+      <LandingFooter compact />
     </div>
   );
 }

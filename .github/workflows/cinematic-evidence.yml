@@ -1,0 +1,86 @@
+name: Cinematic review evidence
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - ".github/workflows/cinematic-evidence.yml"
+      - "apps/web/app/page.tsx"
+      - "apps/web/app/login/page.tsx"
+      - "apps/web/components/cinematic/**"
+      - "apps/web/components/landing/**"
+      - "apps/web/public/cinematic/**"
+      - "docs/product/cinematic-*"
+      - "tests/cinematic/**"
+      - "tests/e2e/cinematic-flow-002.spec.ts"
+      - "tools/cinematic/**"
+
+permissions:
+  contents: read
+
+jobs:
+  cinematic-evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out exact PR head
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "24.19.0"
+
+      - name: Verify checked-out source
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+
+      - name: Install pinned JavaScript dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Install Chromium runtime
+        run: npx playwright install --with-deps chromium
+
+      - name: Verify video trim and duration tools
+        run: command -v ffmpeg && command -v ffprobe
+
+      - name: Validate cinematic meshes, terrain and timeline
+        run: |
+          node tests/cinematic/blender-assets.mjs
+          node tests/cinematic/terrain.mjs
+          node tests/cinematic/timeline.mjs
+
+      - name: Start the existing Next.js application
+        run: |
+          npm run dev --workspace apps/web -- --hostname 127.0.0.1 --port 5184 > /tmp/agriscope-next.log 2>&1 &
+          echo $! > /tmp/agriscope-next.pid
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:5184/ > /dev/null; then exit 0; fi
+            sleep 2
+          done
+          cat /tmp/agriscope-next.log
+          exit 1
+
+      - name: Capture ten-shot desktop and mobile review evidence
+        env:
+          CI: "true"
+          CINEMATIC_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          CINEMATIC_EVIDENCE: evidence
+          CINEMATIC_EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+          CINEMATIC_SOFTWARE_WEBGL: "1"
+          CINEMATIC_URL: http://127.0.0.1:5184/
+        run: node tests/cinematic/capture-evidence.mjs
+
+      - name: Upload review evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: agriscope-cinematic-evidence-${{ github.event.pull_request.head.sha }}
+          path: evidence/
+          if-no-files-found: warn
+          retention-days: 30

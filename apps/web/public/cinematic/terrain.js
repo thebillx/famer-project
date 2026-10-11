@@ -1,35 +1,56 @@
 import * as THREE from './vendor.js';
-import {batchStatic} from './batch.js';
-import {seededRandom} from './timeline.js';
-export function buildTerrain(){
- const g=new THREE.Group();g.name='stylized field demonstration';const r=seededRandom(21);
- function h(x,z){return -(x*x+z*z)/80+.05+Math.sin(x*.52)*Math.sin(z*.43)*.035;}
- const geo=new THREE.CircleGeometry(16,96);geo.rotateX(-Math.PI/2);const a=geo.attributes.position;for(let i=0;i<a.count;i++)a.setY(i,h(a.getX(i),a.getZ(i))-.04);geo.computeVertexNormals();
- const base=new THREE.Mesh(geo,new THREE.MeshStandardMaterial({color:0x536647,roughness:1}));base.receiveShadow=true;g.add(base);
- const rowMaterial=new THREE.MeshStandardMaterial({color:0x345837,roughness:1});
- const colors=[0x749258,0x547747,0x8e9b55,0x557647,0x71824a,0x345d45];
- const fieldMaterials=colors.map(color=>new THREE.MeshStandardMaterial({color,roughness:.95}));
- const pathmat=new THREE.MeshStandardMaterial({color:0xb5a97d,roughness:1});
- for(let ix=-5;ix<=5;ix++)for(let iz=-5;iz<=5;iz++){
-  const x=ix*2.65,z=iz*2.45;if(Math.hypot(x,z)>13)continue;
-  const geo=new THREE.PlaneGeometry(2.52,2.31,3,3);geo.rotateX(-Math.PI/2);const p=geo.attributes.position;for(let i=0;i<p.count;i++)p.setY(i,h(x+p.getX(i),z+p.getZ(i)));geo.computeVertexNormals();
-  const field=new THREE.Mesh(geo,fieldMaterials[Math.floor(r()*colors.length)]);field.position.set(x,0,z);field.receiveShadow=true;g.add(field);
-  for(let j=0;j<9;j++){const rowgeo=new THREE.PlaneGeometry(2.50,.025,4,1);rowgeo.rotateX(-Math.PI/2);const p=rowgeo.attributes.position,zz=z-1.05+j*.26;for(let i=0;i<p.count;i++)p.setY(i,h(x+p.getX(i),zz)+.013);const row=new THREE.Mesh(rowgeo,rowMaterial);row.position.set(x,0,zz);g.add(row);}
+import {decodeMeshAsset} from './mesh-assets.js';
+import {seededRandom,smooth} from './timeline.js';
+
+export function fieldHeight(x,z){return -(x*x+z*z)/80+.05+Math.sin(x*.52)*Math.sin(z*.43)*.035;}
+
+function detail(material,transition){
+ material.onBeforeCompile=shader=>{
+  shader.uniforms.fieldFlatten=transition.flatten;shader.uniforms.localDetail=transition.detail;shader.uniforms.globeMap=transition.map;shader.uniforms.globeRotation=transition.rotation;
+  shader.vertexShader=shader.vertexShader.replace('#include <common>','#include <common>\nuniform float fieldFlatten;\nvarying vec3 agriculturalPosition;\nvarying vec3 geographicNormal;').replace('#include <beginnormal_vertex>','#include <beginnormal_vertex>\nobjectNormal.xz*=1.-fieldFlatten;objectNormal=normalize(objectNormal);').replace('#include <begin_vertex>','#include <begin_vertex>\nagriculturalPosition = position;\ntransformed.y+=dot(position.xz,position.xz)/80.*fieldFlatten;\ngeographicNormal = normalize(normalMatrix*vec3(position.x,position.y+40.,position.z));');
+  shader.fragmentShader=shader.fragmentShader.replace('#include <common>','#include <common>\nvarying vec3 agriculturalPosition;\nvarying vec3 geographicNormal;\nuniform float localDetail;\nuniform sampler2D globeMap;\nuniform mat3 globeRotation;\nfloat fieldNoise(vec2 p){return fract(sin(dot(p,vec2(12.9898,78.233)))*43758.5453);}')
+   .replace('#include <normal_fragment_begin>','#include <normal_fragment_begin>\nnormal=normalize(mix(geographicNormal,normal,localDetail));')
+   .replace('#include <roughnessmap_fragment>','#include <roughnessmap_fragment>\nroughnessFactor=mix(.87,roughnessFactor,localDetail);')
+   .replace('#include <metalnessmap_fragment>','#include <metalnessmap_fragment>\nmetalnessFactor*=localDetail;')
+   .replace('#include <color_fragment>','#include <color_fragment>\nfloat fieldPatch=fieldNoise(agriculturalPosition.xz*1.7);\nfloat grain=fieldNoise(floor(agriculturalPosition.xz*45.));\nfloat soilVariation=sin(agriculturalPosition.x*9.3+sin(agriculturalPosition.z*8.1));\ndiffuseColor.rgb *= .78 + .31*fieldPatch + .10*grain + .025*soilVariation;\nvec3 earthDirection=normalize(globeRotation*vec3(agriculturalPosition.x,agriculturalPosition.y+40.,agriculturalPosition.z));\nvec2 earthUV=vec2(fract(atan(earthDirection.z,-earthDirection.x)/6.2831853),asin(earthDirection.y)/3.14159265+.5);\nvec3 geographicColor=texture2D(globeMap,earthUV).rgb;\ndiffuseColor.rgb=mix(geographicColor,diffuseColor.rgb,localDetail);');
+ };
+ material.customProgramCacheKey=()=> 'agriscope-blender-field-detail-v3';
+}
+
+export function buildTerrain(assets,{mobile=false,day=null,rotation=new THREE.Matrix3()}={}){
+ const group=decodeMeshAsset(assets.farmland);group.name='Blender agricultural landscape · synthetic demonstration';
+ const transition={detail:{value:day?0:1},flatten:{value:0},map:{value:day},rotation:{value:rotation}};
+ for(const mesh of group.children){mesh.castShadow=false;if(day)detail(mesh.material,transition);}
+ const prototypes=(assets.tree.variants||[assets.tree]).map((_,index)=>decodeMeshAsset(assets.tree,index));
+ const random=seededRandom(21),count=mobile?20:36,dummy=new THREE.Object3D();
+ const transforms=prototypes.map(()=>[]),trees=[];
+ for(let i=0;i<count;i++){
+  let x=(random()-.5)*30,z=(random()-.5)*30;
+  if(Math.abs(x)<3.2&&Math.abs(z)<3.2)x+=5;
+  dummy.position.set(x,fieldHeight(x,z),z);dummy.rotation.y=random()*Math.PI*2;dummy.scale.setScalar(.7+random()*.5);dummy.updateMatrix();
+  transforms[i%prototypes.length].push(dummy.matrix.clone());
  }
- // Irrigation channel and raised farm tracks.
- function surfaceStrip(width,length,x,z,mat,segments=24){const geo=new THREE.PlaneGeometry(width,length,segments,segments);geo.rotateX(-Math.PI/2);const p=geo.attributes.position;for(let i=0;i<p.count;i++)p.setY(i,h(x+p.getX(i),z+p.getZ(i))+.02);geo.computeVertexNormals();const m=new THREE.Mesh(geo,mat);m.position.set(x,0,z);m.receiveShadow=true;g.add(m);}
- surfaceStrip(.27,24,-4,0,new THREE.MeshPhysicalMaterial({color:0x46817c,roughness:.24,metalness:.38}));
- for(const z of [-3.6,3.65])surfaceStrip(15,.15,0,z,pathmat,16);
- const verts=[[-2.5,-2.3],[2.45,-2.3],[2.45,2.27],[-2.5,2.27]];
- const pts=verts.map(([x,z])=>new THREE.Vector3(x,h(x,z)+.04,z));pts.push(pts[0].clone());
- const boundary=new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts,false,'catmullrom',0),80,.018,6,false),new THREE.MeshBasicMaterial({color:0xf4d5a1}));g.add(boundary);
- // Scattered tree canopies are instances, not hundreds of individual draw calls.
- const trees=new THREE.InstancedMesh(new THREE.IcosahedronGeometry(.16,1),new THREE.MeshStandardMaterial({color:0x244c36,roughness:1}),255);
- const trunks=new THREE.InstancedMesh(new THREE.CylinderGeometry(.023,.04,.32,6),new THREE.MeshStandardMaterial({color:0x6e5940,roughness:1}),85);const dummy=new THREE.Object3D();
- for(let i=0;i<85;i++){let x=(r()-.5)*25,z=(r()-.5)*25;if(Math.abs(x)<3&&Math.abs(z)<3)x+=5;
-  dummy.position.set(x,h(x,z)+.16,z);dummy.scale.setScalar(1);dummy.updateMatrix();trunks.setMatrixAt(i,dummy.matrix);
-  for(let j=0;j<3;j++){dummy.position.set(x+(r()-.5)*.2,h(x,z)+.3+r()*.15,z+(r()-.5)*.2);dummy.scale.set(.9+r()*.5,.8+r()*.4,.9+r()*.5);dummy.updateMatrix();trees.setMatrixAt(i*3+j,dummy.matrix);}
- }trees.castShadow=trunks.castShadow=true;g.add(trees,trunks);
- const beacon=new THREE.Mesh(new THREE.TorusGeometry(.35,.012,6,64),new THREE.MeshBasicMaterial({color:0xf4d5a1}));beacon.rotation.x=-Math.PI/2;beacon.position.y=.12;g.add(beacon);
- g.userData.boundary=boundary;return batchStatic(g);
+ for(let variant=0;variant<prototypes.length;variant++)for(const part of prototypes[variant].children){
+  const placement=transforms[variant],instances=new THREE.InstancedMesh(part.geometry,part.material,placement.length);instances.name=`${part.name} · silhouette ${variant+1}`;instances.castShadow=instances.receiveShadow=true;
+  placement.forEach((matrix,i)=>instances.setMatrixAt(i,matrix));group.add(instances);trees.push({instances,placement});
+ }
+ const vertices=[[-2.5,-2.3],[2.45,-2.3],[2.45,2.27],[-2.5,2.27]],points=[];
+ for(let edge=0;edge<4;edge++){
+  const [ax,az]=vertices[edge],[bx,bz]=vertices[(edge+1)%4];
+  for(let i=0;i<24;i++){const t=i/24,x=ax+(bx-ax)*t,z=az+(bz-az)*t;points.push(new THREE.Vector3(x,fieldHeight(x,z)+.052,z));}
+ }
+ const boundary=new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(points,true,'centripetal'),256,.014,6,true),new THREE.MeshBasicMaterial({color:0xf1c88a}));
+ boundary.material.onBeforeCompile=shader=>{shader.uniforms.fieldFlatten=transition.flatten;shader.vertexShader=shader.vertexShader.replace('#include <common>','#include <common>\nuniform float fieldFlatten;').replace('#include <begin_vertex>','#include <begin_vertex>\ntransformed.y+=dot(position.xz,position.xz)/80.*fieldFlatten;');};
+ boundary.name='Sample field boundary';group.add(boundary);group.userData.boundary=boundary;group.userData.localDetail=transition.detail;
+ group.userData.update=p=>{
+  const flatten=.92*smooth(.465,.59,p);transition.flatten.value=flatten;
+  const matrix=new THREE.Matrix4();
+  for(const {instances,placement} of trees){
+   instances.visible=p>=.465;
+   placement.forEach((source,i)=>{matrix.copy(source);const e=matrix.elements;e[13]+=(e[12]*e[12]+e[14]*e[14])/80*flatten;instances.setMatrixAt(i,matrix);});
+   instances.instanceMatrix.needsUpdate=true;
+  }
+  return flatten;
+ };
+ return group;
 }
