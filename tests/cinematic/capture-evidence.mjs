@@ -286,6 +286,7 @@ try{
     if(!viewport.mobile)for(const index of [2,5])await measureFrames(page,points[index],false);
     await makeContactSheet(page,viewport.name,shots);
     if(!viewport.mobile&&!checkpointsOnly){
+      await ready(page);
       await seek(page,.86);
       await page.locator('#inspect-field').click();
       assert.equal(await page.locator('#sample-status').textContent(),'ข้อมูลยังไม่พอ');
