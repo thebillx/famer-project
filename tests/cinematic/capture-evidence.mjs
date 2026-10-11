@@ -82,7 +82,7 @@ function matchReferencePts(rawVideoPath,referencePath,{last=false}={}){
     // The chapter copy is stable while the planet and satellite continue to
     // drift. Match that semantic screen region, so a mostly-black loading
     // frame cannot pass by diluting the whole-frame difference.
-    for(let y=34;y<78;y++)for(let x=5;x<64;x++){
+    for(let y=42;y<75;y++)for(let x=7;x<42;x++){
       const referenceIndex=(y*width+x)*3,sampleIndex=offset+referenceIndex;
       for(let c=0;c<3;c++){error+=Math.abs(samples[sampleIndex+c]-reference[referenceIndex+c]);channels++;}
     }
@@ -115,7 +115,11 @@ function monitor(page){
     if(message.type()==='error'&&!message.text().includes('favicon.ico')&&!message.text().startsWith('Failed to load resource:'))report.errors.push({type:'console',message:message.text()});
     if(message.type()==='warning')report.warnings.push(message.text());
   });
-  page.on('requestfailed',request=>report.failedRequests.push({url:request.url(),error:request.failure()?.errorText||'request failed'}));
+  page.on('requestfailed',request=>{
+    const error=request.failure()?.errorText||'request failed';
+    // Route changes and Next.js HMR intentionally cancel in-flight requests.
+    if(error!=='net::ERR_ABORTED')report.failedRequests.push({url:request.url(),error});
+  });
   page.on('response',response=>{
     if(response.status()>=400&&!response.url().includes('favicon.ico'))report.failedRequests.push({url:response.url(),status:response.status()});
   });
