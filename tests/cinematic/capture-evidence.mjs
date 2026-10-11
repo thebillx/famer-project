@@ -284,9 +284,7 @@ try{
       captures.push({shot:index+1,progress:snapshot.p,renderer:{mode:snapshot.mode,gpu:snapshot.gpu||null,drawCalls:snapshot.drawCalls,triangles:snapshot.triangles,softwareWebGL},assets:{model:snapshot.model,land:snapshot.land}});
     }
     if(!viewport.mobile)for(const index of [2,5])await measureFrames(page,points[index],false);
-    await makeContactSheet(page,viewport.name,shots);
     if(!viewport.mobile&&!checkpointsOnly){
-      await ready(page);
       await seek(page,.86);
       await page.locator('#inspect-field').click();
       assert.equal(await page.locator('#sample-status').textContent(),'ข้อมูลยังไม่พอ');
@@ -295,7 +293,6 @@ try{
       await page.locator('#inspect-field').click();
     }
     if(viewport.mobile){
-      await ready(page);
       await seek(page,.86);
       assert.equal((await page.evaluate(()=>window.__agriscope.snapshot())).evidence.delta,-.26,'The valid example retains its synthetic change result.');
       await page.locator('#inspect-field').click();
@@ -339,6 +336,7 @@ try{
       }
       mobileInteractionReport={insufficientData:{status:'NOT_ASSESSABLE',before:'—',after:'—',delta:null,validExampleRestored:true},chapterNavigation:{targetShot:7},registrationCta};
     }
+    await makeContactSheet(page,viewport.name,shots);
     report.viewports.push({name:viewport.name,width:viewport.width,height:viewport.height,mobileEmulation:viewport.mobile,shots:10});
     await context.close();
   }
