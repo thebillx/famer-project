@@ -161,18 +161,24 @@ try{
   ];
   const motionStartedAt=Date.now();
   for(const stage of sequence){await animateToProgress(motionPage,stage.to,stage.move);await motionPage.waitForTimeout(stage.hold);}
+  await motionPage.waitForFunction(()=>{const state=window.__agriscope.snapshot();return state.p<.0003&&state.shot===1;},null,{timeout:10000});
+  const finalOrbitSnapshot=await motionPage.evaluate(()=>window.__agriscope.snapshot());
   const motionEndedAt=Date.now();
   const motionVideo=motionPage.video();
   await motionContext.close();motionContext=undefined;
   const rawVideoPath=await motionVideo.path();
   const trimStartSeconds=(motionStartedAt-recordingStartedAt)/1000;
   const requestedDurationSeconds=(motionEndedAt-motionStartedAt)/1000;
-  execFileSync('ffmpeg',['-hide_banner','-loglevel','error','-y','-ss',String(trimStartSeconds),'-i',rawVideoPath,'-t',String(requestedDurationSeconds),'-an','-c:v','libvpx-vp9','-crf','32','-b:v','0',videoPath],{stdio:'pipe'});
+  const outputDurationLimitSeconds=44;
+  const playbackSpeedMultiplier=Math.max(1,requestedDurationSeconds/outputDurationLimitSeconds);
+  assert.ok(playbackSpeedMultiplier<=1.25,`Motion capture was too slow to preserve a slow journey; required playback speed multiplier ${playbackSpeedMultiplier.toFixed(2)} exceeds 1.25.`);
+  const ptsScale=1/playbackSpeedMultiplier;
+  execFileSync('ffmpeg',['-hide_banner','-loglevel','error','-y','-ss',String(trimStartSeconds),'-i',rawVideoPath,'-t',String(requestedDurationSeconds),'-vf',`setpts=(PTS-STARTPTS)*${ptsScale}`,'-an','-c:v','libvpx-vp9','-crf','32','-b:v','0',videoPath],{stdio:'pipe'});
   actualMotionDurationSeconds=Number(execFileSync('ffprobe',['-v','error','-show_entries','format=duration','-of','default=noprint_wrappers=1:nokey=1',videoPath],{encoding:'utf8'}).trim());
   assert.ok(Number.isFinite(actualMotionDurationSeconds),'ffprobe must return the final recording duration.');
   assert.ok(actualMotionDurationSeconds>=30&&actualMotionDurationSeconds<=45,`Motion recording must be 30–45 seconds; received ${actualMotionDurationSeconds.toFixed(2)} seconds.`);
   await rm(rawVideoDir,{recursive:true,force:true});
-  report.motion={path:'motion/agriscope-forward-reverse.webm',durationSeconds:actualMotionDurationSeconds,sequence:'Slow forward descent; pauses at descent, boundary, NDVI, summary and handoff; reverse to boundary then orbit.'};
+  report.motion={path:'motion/agriscope-forward-reverse.webm',durationSeconds:actualMotionDurationSeconds,captureWindowSeconds:requestedDurationSeconds,playbackSpeedMultiplier,finalEndpoint:{shot:finalOrbitSnapshot.shot,progress:finalOrbitSnapshot.p},sequence:'Slow forward descent; pauses at descent, boundary, NDVI, summary and handoff; reverse to boundary then orbit.'};
   report.rendererSamples=captures;
   report.status=report.errors.length===0&&report.failedRequests.length===0?'PASS':'FAIL';
   if(report.status==='FAIL')process.exitCode=1;
@@ -186,13 +192,17 @@ try{
   const checkedOutSha=execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'}).trim();
   if(hashes.length===0)hashes=await sourceHashes().catch(error=>[{error:String(error)}]);
   const softwareReported=report.rendererSamples?.some(sample=>/swiftshader|software|llvmpipe/i.test(sample.renderer.gpu||''))??softwareWebGL;
+  const motionDescription=report.motion
+    ? `Playwright Chromium recording with setup removed; the complete forward/reverse journey was ${report.motion.playbackSpeedMultiplier>1?`uniformly retimed ${report.motion.playbackSpeedMultiplier.toFixed(3)}×`:'not retimed'}; ffprobe measured ${actualMotionDurationSeconds??'unavailable'} seconds.`
+    : 'Playwright Chromium recording was not completed.';
   const reviewInfo={
     checkedOutSha,
     baseSha:baseSha||null,
     sourceAndAssetHashes:hashes,
     viewportSizes:viewports.map(({name,width,height,mobile})=>({name,width,height,mobileEmulation:mobile})),
     motionDurationSeconds:actualMotionDurationSeconds,
-    captureMethod:{screenshots:'Playwright Chromium screenshots at the ten existing seekCheckpoint shot positions; contact sheets composed from those PNGs in Chromium.',motion:`Playwright Chromium recording trimmed to the requestAnimationFrame-driven forward/reverse journey; ffprobe measured ${actualMotionDurationSeconds??'unavailable'} seconds after trimming and setup removal.`},
+    captureMethod:{screenshots:'Playwright Chromium screenshots at the ten existing seekCheckpoint shot positions; contact sheets composed from those PNGs in Chromium.',motion:motionDescription},
+    playbackSpeedMultiplier:report.motion?.playbackSpeedMultiplier??null,
     renderingLimitations:[`Renderer mode: ${softwareReported?'software WebGL / SwiftShader':'see renderer metadata; hardware acceleration was not benchmarked'}.`,'Small-mobile dimensions are browser viewport/touch emulation, not a physical device.','Journey values are synthetic public examples; no private data or live satellite service is used.'],
   };
   await writeFile(join(output,'browser-report.json'),JSON.stringify(report,null,2)+'\n');
