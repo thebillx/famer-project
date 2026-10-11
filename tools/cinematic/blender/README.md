@@ -14,8 +14,10 @@ planting beds, staggered and proportion-varied parcels cleared against the
 sample field's actual footprint, adjacent paddies placed around the unchanged
 sample field, connected shallow irrigation runs with separate raised banks,
 two access spurs and low track crossings, and three instanced branched tree
-silhouettes. Runtime materials add role-specific procedural detail to soil,
-crop, track and water. These meshes are synthetic illustration and do not
+silhouettes. The compact export keeps Blender base color, metalness, roughness
+and clearcoat. The existing browser loader adds role-based procedural detail
+for spacecraft finishes, foliage, soil, crops, tracks and canal water without
+UV maps or third-party surface textures. These meshes are synthetic illustration and do not
 represent surveyed ownership or real irrigation.
 Planting rows retain upward-facing normals through the Blender-to-runtime axis
 conversion. Tree variants share one JSON file with tapered bark and batched,

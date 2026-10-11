@@ -54,6 +54,7 @@ jobs:
 
       - name: Validate cinematic meshes, terrain and timeline
         run: |
+          node tests/cinematic/runtime-materials.mjs
           node tests/cinematic/blender-assets.mjs
           node tests/cinematic/terrain.mjs
           node tests/cinematic/timeline.mjs
