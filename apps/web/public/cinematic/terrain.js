@@ -5,39 +5,40 @@ import {seededRandom,smooth} from './timeline.js';
 export function fieldHeight(x,z){return -(x*x+z*z)/80+.05+Math.sin(x*.52)*Math.sin(z*.43)*.035;}
 
 function detail(material,transition,role){
- const surfaceKind=role.includes('water')?4:role.includes('tracks')||role.includes('bank')?3:role.includes('rows')?2:role.includes('Rice field')?1:0;
+ const surfaceKind=role.includes('Wet channel')?5:role.includes('water')?4:role.includes('tracks')||role.includes('bank')?3:role.includes('rows')?2:role.includes('Rice field')?1:0;
  material.onBeforeCompile=shader=>{
   shader.uniforms.fieldFlatten=transition.flatten;shader.uniforms.localDetail=transition.detail;shader.uniforms.globeMap=transition.map;shader.uniforms.globeRotation=transition.rotation;shader.uniforms.surfaceKind={value:surfaceKind};
   shader.vertexShader=shader.vertexShader.replace('#include <common>','#include <common>\nuniform float fieldFlatten;\nvarying vec3 agriculturalPosition;\nvarying vec3 geographicNormal;').replace('#include <beginnormal_vertex>','#include <beginnormal_vertex>\nobjectNormal.xz*=1.-fieldFlatten;objectNormal=normalize(objectNormal);').replace('#include <begin_vertex>','#include <begin_vertex>\nagriculturalPosition = position;\ntransformed.y+=dot(position.xz,position.xz)/80.*fieldFlatten;\ngeographicNormal = normalize(normalMatrix*vec3(position.x,position.y+40.,position.z));');
   shader.fragmentShader=shader.fragmentShader.replace('#include <common>','#include <common>\nvarying vec3 agriculturalPosition;\nvarying vec3 geographicNormal;\nuniform float localDetail;\nuniform float surfaceKind;\nuniform sampler2D globeMap;\nuniform mat3 globeRotation;\nfloat fieldHash(vec2 p){return fract(sin(dot(p,vec2(12.9898,78.233)))*43758.5453);}\nfloat fieldNoise(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(fieldHash(i),fieldHash(i+vec2(1.,0.)),f.x),mix(fieldHash(i+vec2(0.,1.)),fieldHash(i+vec2(1.,1.)),f.x),f.y);}')
    .replace('#include <normal_fragment_begin>','#include <normal_fragment_begin>\nnormal=normalize(mix(geographicNormal,normal,localDetail));')
-   .replace('#include <roughnessmap_fragment>','#include <roughnessmap_fragment>\nroughnessFactor=mix(.87,roughnessFactor,localDetail);\nfloat surfaceRoughness=fieldNoise(agriculturalPosition.xz*8.5);\nfloat waterRoughness=roughnessFactor+(surfaceRoughness-.5)*.10;\nroughnessFactor=surfaceKind>3.5?clamp(waterRoughness,.10,.27):clamp(roughnessFactor+(surfaceRoughness-.5)*.18,.48,.99);')
+   .replace('#include <roughnessmap_fragment>','#include <roughnessmap_fragment>\nroughnessFactor=mix(.87,roughnessFactor,localDetail);\nfloat surfaceRoughness=fieldNoise(agriculturalPosition.xz*.68);\nif(surfaceKind>4.5)roughnessFactor=clamp(roughnessFactor+(surfaceRoughness-.5)*.07,.78,.97);\nelse if(surfaceKind>3.5)roughnessFactor=clamp(roughnessFactor+(surfaceRoughness-.5)*.04,.08,.24);\nelse roughnessFactor=clamp(roughnessFactor+(surfaceRoughness-.5)*.07,.48,.99);')
    .replace('#include <metalnessmap_fragment>','#include <metalnessmap_fragment>\nmetalnessFactor*=localDetail;')
-   .replace('#include <color_fragment>','#include <color_fragment>\nfloat fieldPatch=fieldNoise(agriculturalPosition.xz*.21);\nfloat soilVariation=fieldNoise(agriculturalPosition.xz*1.35);\nfloat fineVariation=fieldNoise(agriculturalPosition.xz*15.);\nfloat furrowLight=sin(agriculturalPosition.x*3.5+sin(agriculturalPosition.z*2.3));\nfloat soilTone=fieldNoise(agriculturalPosition.xz*.48);\nfloat earthyGrain=.78+.17*fieldPatch+.20*soilVariation+.20*fineVariation;\nfloat plantedVariation=.83+.16*fieldPatch+.18*soilVariation+.18*fineVariation+.045*furrowLight;\nfloat trackGrain=.78+.18*soilVariation+.24*fineVariation;\nfloat waterNoise=fieldNoise(agriculturalPosition.xz*23.);\nfloat waterRipple=.79+.12*waterNoise+.09*sin(agriculturalPosition.x*8.+agriculturalPosition.z*5.);\nfloat waterGlint=pow(max(0.,sin(agriculturalPosition.x*3.4+sin(agriculturalPosition.z*2.1))),16.);\nif(surfaceKind<.5){diffuseColor.rgb*=earthyGrain;diffuseColor.rgb*=mix(vec3(.87,.76,.62),vec3(1.08,1.02,.91),soilTone);}\nelse if(surfaceKind<2.5){diffuseColor.rgb*=plantedVariation;diffuseColor.rgb*=vec3(1.+(fieldPatch-.5)*.07,.98+(soilVariation-.5)*.12,.93+(fieldPatch-.5)*.07);}\nelse if(surfaceKind<3.5){diffuseColor.rgb*=trackGrain;diffuseColor.rgb*=vec3(1.08,1.01,.88);}\nelse{diffuseColor.rgb*=waterRipple;diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.036,.050,.029),.12);diffuseColor.rgb+=vec3(.006,.009,.005)*waterGlint;}\nvec3 earthDirection=normalize(globeRotation*vec3(agriculturalPosition.x,agriculturalPosition.y+40.,agriculturalPosition.z));\nvec2 earthUV=vec2(fract(atan(earthDirection.z,-earthDirection.x)/6.2831853),asin(earthDirection.y)/3.14159265+.5);\nvec3 geographicColor=texture2D(globeMap,earthUV).rgb;\ndiffuseColor.rgb=mix(geographicColor,diffuseColor.rgb,localDetail);');
+   .replace('#include <color_fragment>','#include <color_fragment>\nfloat fieldPatch=fieldNoise(agriculturalPosition.xz*.18);\nfloat soilTone=fieldNoise(agriculturalPosition.xz*.62);\nif(surfaceKind<.5){diffuseColor.rgb*=.91+.13*soilTone;diffuseColor.rgb*=mix(vec3(.91,.82,.70),vec3(1.04,1.0,.91),fieldPatch);}\nelse if(surfaceKind<2.5){diffuseColor.rgb*=.92+.12*fieldPatch;diffuseColor.rgb*=vec3(1.+(fieldPatch-.5)*.045,.99+(soilTone-.5)*.07,.96);}\nelse if(surfaceKind<3.5){diffuseColor.rgb*=.91+.12*soilTone;diffuseColor.rgb*=vec3(1.04,1.,.91);}\nelse if(surfaceKind<4.5){float waterRipple=.92+.07*fieldNoise(agriculturalPosition.xz*3.2);float viewFacing=clamp(dot(normalize(geographicNormal),normalize(vViewPosition)),0.,1.);float fresnel=pow(1.-viewFacing,3.);diffuseColor.rgb*=waterRipple;diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.17,.25,.27),fresnel*.72);}\nelse{diffuseColor.rgb*=.68+.12*soilTone;diffuseColor.rgb*=vec3(.80,.86,.78);}\nvec3 earthDirection=normalize(globeRotation*vec3(agriculturalPosition.x,agriculturalPosition.y+40.,agriculturalPosition.z));\nvec2 earthUV=vec2(fract(atan(earthDirection.z,-earthDirection.x)/6.2831853),asin(earthDirection.y)/3.14159265+.5);\nvec3 geographicColor=texture2D(globeMap,earthUV).rgb;\ndiffuseColor.rgb=mix(geographicColor,diffuseColor.rgb,localDetail);');
  };
- material.customProgramCacheKey=()=> `agriscope-blender-field-detail-v5-${surfaceKind}`;
+ material.customProgramCacheKey=()=> `agriscope-blender-field-detail-v6-${surfaceKind}`;
 }
 
 export function buildTerrain(assets,{mobile=false,day=null,rotation=new THREE.Matrix3(),surfaceMaps={}}={}){
  const group=decodeMeshAsset(assets.farmland,0,surfaceMaps);group.name='Blender agricultural landscape · synthetic demonstration';
  const transition={detail:{value:day?0:1},flatten:{value:0},map:{value:day},rotation:{value:rotation}};
  for(const mesh of group.children){mesh.castShadow=mesh.name==='Field tracks';if(day)detail(mesh.material,transition,mesh.name);}
+ const cropRows=group.children.find(mesh=>mesh.name==='Rice rows');
  const prototypes=(assets.tree.variants||[assets.tree]).map((_,index)=>decodeMeshAsset(assets.tree,index,surfaceMaps));
  const random=seededRandom(21),count=mobile?22:34,clusterCount=mobile?8:11,dummy=new THREE.Object3D();
  const transforms=prototypes.map(()=>[]),trees=[];
- const groveAnchors=[[-4.2,-5.8],[4.1,4.2],[-8,-7.2],[8,-7.5],[-7.6,7.3],[12,2],[-12,-10],[-8,-14],[-1,-13],[8,-12],[14,-7],[-14,-1]];
+ const groveAnchors=[[-5.3,4.0],[5.25,4.7],[-9.8,8.2],[10.2,8.8],[-7.2,-7.9],[7.4,-7.8],[-12.8,2.0],[13.2,1.1],[-10.5,-12.8],[-1.2,-12.3],[10.7,-12.0],[-14,-1]];
  let anchor=null;
  for(let i=0;i<count;i++){
   const cluster=Math.floor(i/(count/clusterCount));
   if(!anchor||cluster!==Math.floor((i-1)/(count/clusterCount))){
    const [ax,az]=groveAnchors[cluster];
-   anchor={x:ax+(random()-.5)*1.8,z:az+(random()-.5)*1.8};
+   anchor={x:ax+(random()-.5)*1.15,z:az+(random()-.5)*1.15};
   }
-  const angle=random()*Math.PI*2,radius=.45+random()*1.45;
+  const angle=random()*Math.PI*2,radius=.22+random()*.82;
   let x=THREE.MathUtils.clamp(anchor.x+Math.cos(angle)*radius,-13,13);
   const z=THREE.MathUtils.clamp(anchor.z+Math.sin(angle)*radius,-13,13);
   if(x> -2.95&&x<2.90&&z> -2.75&&z<2.72)x=THREE.MathUtils.clamp(x+(x<0?-4:4),-15.5,15.5);
-  dummy.position.set(x,fieldHeight(x,z),z);dummy.rotation.y=random()*Math.PI*2;dummy.scale.set(.62+random()*.25,.66+random()*.24,.62+random()*.25);dummy.updateMatrix();
+  dummy.position.set(x,fieldHeight(x,z),z);dummy.rotation.y=random()*Math.PI*2;dummy.scale.set(.74+random()*.30,.79+random()*.31,.74+random()*.30);dummy.updateMatrix();
   transforms[i%prototypes.length].push(dummy.matrix.clone());
  }
  for(let variant=0;variant<prototypes.length;variant++)for(const part of prototypes[variant].children){
@@ -54,6 +55,7 @@ export function buildTerrain(assets,{mobile=false,day=null,rotation=new THREE.Ma
  boundary.name='Sample field boundary';group.add(boundary);group.userData.boundary=boundary;group.userData.localDetail=transition.detail;
  group.userData.update=p=>{
   const flatten=.92*smooth(.465,.59,p);transition.flatten.value=flatten;
+  if(cropRows)cropRows.visible=p>=.505;
   const matrix=new THREE.Matrix4();
   for(const {instances,placement} of trees){
    instances.visible=p>=.465;

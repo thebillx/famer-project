@@ -45,22 +45,23 @@ def material(name, color, metal=0, rough=.7, coat=0):
     return m
 
 
-gold = material("MLI · champagne gold", (.43, .25, .074), .86, .34)
-silver = material("Anodized aluminium", (.42, .49, .52), .88, .3)
+gold = material("MLI · champagne gold", (.43, .25, .074), .91, .28)
+silver = material("Anodized aluminium", (.42, .49, .52), .9, .27)
 white = material("Thermal radiator", (.62, .67, .65), .13, .67)
 dark = material("Instrument carbon", (.014, .021, .027), .5, .34)
-cells = material("Photovoltaic cells", (.008, .029, .058), .65, .27, .42)
+cells = material("Photovoltaic cells", (.008, .029, .058), .68, .21, .48)
 glass = material("Recessed optical glass", (.005, .025, .029), .26, .14, .9)
 copper = material("Harness copper", (.24, .10, .035), .75, .37)
 soil = material("Dry earth", (.18, .118, .067), 0, .96)
 track = material("Field tracks", (.24, .16, .095), 0, .94)
+wet_bank = material("Wet channel earth", (.075, .060, .040), 0, .88)
 water = material("Irrigation water", (.026, .041, .027), 0, .18, .48)
-foliage = material("Tree foliage", (.29, .36, .12), 0, .96)
-foliage_light = material("Tree foliage · sunlit leaves", (.40, .49, .18), 0, .94)
+foliage = material("Tree foliage", (.18, .285, .075), 0, .96)
+foliage_light = material("Tree foliage · sunlit leaves", (.285, .385, .105), 0, .94)
 bark = material("Tree bark", (.17, .11, .062), 0, .96)
 greens = [material(f"Rice field {i}", c, 0, .92) for i, c in enumerate([
     (.095, .17, .066), (.13, .19, .073), (.18, .195, .070),
-    (.105, .156, .059), (.17, .21, .082), (.11, .175, .068),
+    (.105, .156, .059), (.17, .21, .082),
 ])]
 crop = material("Rice rows", (.10, .165, .059), 0, .97)
 
@@ -319,13 +320,16 @@ def channel_depth(x, z):
     side = min(abs(x-3.12), abs(x+3.12)) if -5.4 < z < 3.12 else 99
     cross = min(abs(z-2.95), abs(z+2.95)) if abs(x) < 3.32 else 99
     distance = min(side, cross)
-    return .15 * max(0, min(1, (.25-distance)/.10))
+    return .17 * max(0, min(1, (.34-distance)/.18))
 
 
 def ground_mesh():
     xs=sorted(set([i*.5 for i in range(-36,37)]+[v for c in (-3.12,3.12) for v in (c-.25,c-.15,c,c+.15,c+.25)]))
     zs=sorted(set([i*.5 for i in range(-36,37)]+[v for c in (-2.95,2.95) for v in (c-.25,c-.15,c,c+.15,c+.25)]))
-    v=[(x,height(x,z)-.006-channel_depth(x,z),z) for z in zs for x in xs];f=[]
+    # Keep the continuous subsoil clearly below cultivated parcel surfaces.
+    # A sub-centimetre visual offset caused depth interference from the high
+    # descent camera even though the meshes never intersected.
+    v=[(x,height(x,z)-.028-channel_depth(x,z),z) for z in zs for x in xs];f=[]
     for j in range(len(zs)-1):
         for i in range(len(xs)-1):
             a=j*len(xs)+i;f.append((a,a+len(xs),a+len(xs)+1,a+1))
@@ -366,7 +370,11 @@ def planted_parcel(corners,mat,index,sample=False):
     if index%7==0 and not sample:return
     if index%3==1 and not sample:corners=[corners[1],corners[2],corners[3],corners[0]]
     width=math.dist(corners[0],corners[3])
-    rows=max(6,round(width/(.12 if sample else .16)))
+    # The demonstration parcel keeps enough rows to read as cultivated land.
+    # Neighbouring parcels use wider, varied spacing so the aerial view does
+    # not collapse into an implausibly uniform pinstripe grid.
+    spacing=.145 if sample else (.21,.255,.29)[index%3]
+    rows=max(6,round(width/spacing))
     vertices=[];faces=[]
     for row in range(1,rows):
         vv=row/rows;start=len(vertices)
@@ -383,50 +391,84 @@ def planted_parcel(corners,mat,index,sample=False):
 
 
 ground_mesh()
-# Shared, nonuniform parcel corners make one coherent agricultural fabric.
-# A slim bank separates adjacent plots. The central cell is reserved for the
-# identical sample field and connected irrigation loop, rather than nine holes.
-xs=[-18,-12.6,-7.7,-3.45,3.45,8.0,13.1,18]
-zs=[-18,-12.4,-7.1,-3.30,3.30,8.1,13.4,18]
-points={}
-for j,z in enumerate(zs):
-    for i,x in enumerate(xs):
-        fixed=i in (0,3,4,7) or j in (0,3,4,7)
-        points[i,j]=(x if fixed else x+terrain_random.uniform(-.45,.45),z if fixed else z+terrain_random.uniform(-.32,.32))
-for j in range(7):
-    for i in range(7):
-        if i==3 and j==3:continue
-        corners=[points[i,j],points[i+1,j],points[i+1,j+1],points[i,j+1]]
-        inset=[parcel_point(corners,u,v) for u,v in ((.012,.012),(.988,.012),(.988,.988),(.012,.988))]
-        planted_parcel(inset,greens[(i*3+j*5)%len(greens)],i+j*7)
-for j in range(1,7):
-    row=[points[i,j] for i in range(8)]
-    ribbon('Shared parcel bank',row,.075,.055)
-for i in range(1,7):
-    row=[points[i,j] for j in range(8)]
-    ribbon('Shared parcel bank',row,.075,.055)
+# A small number of connected, irregular parcel bands replace the repeated
+# seven-by-seven tile matrix. Adjacent bands share the exact same edge points,
+# while their cross-field divisions drift or merge between bands. This reads
+# as one farm landscape from the descent camera and leaves only the actual
+# sample footprint clear at the centre.
+parcel_index=0
+
+
+def parcel_band(z0,z1,bottom,top):
+    global parcel_index
+    assert len(bottom)==len(top)
+    for i in range(len(bottom)-1):
+        corners=[(bottom[i],z0),(bottom[i+1],z0),(top[i+1],z1),(top[i],z1)]
+        inset=[parcel_point(corners,u,v) for u,v in ((.018,.018),(.982,.018),(.982,.982),(.018,.982))]
+        planted_parcel(inset,greens[(parcel_index*5+i*2)%len(greens)],parcel_index)
+        parcel_index+=1
+    # Dividers terminate at shared band edges instead of continuing as a
+    # rectangular grid across the entire landscape.
+    for i in range(1,len(bottom)-1):
+        mid=((bottom[i]+top[i])*.5+terrain_random.uniform(-.12,.12),(z0+z1)*.5)
+        ribbon('Shared parcel bank',[(bottom[i],z0),mid,(top[i],z1)],.085,.062)
+
+
+top_bands=[
+    (3.45,8.25,[-18,-10.8,-4.4,3.45,10.7,18],[-18,-12.2,-5.1,2.85,9.15,18]),
+    (8.25,13.15,[-18,-12.2,-5.1,2.85,9.15,18],[-18,-9.7,-2.25,6.25,12.9,18]),
+    (13.15,18,[-18,-9.7,-2.25,6.25,12.9,18],[-18,-11.6,-4.6,4.7,11.1,18]),
+]
+bottom_bands=[
+    (-18,-12.7,[-18,-11.8,-4.2,4.5,11.4,18],[-18,-9.8,-2.7,5.8,12.7,18]),
+    (-12.7,-7.35,[-18,-9.8,-2.7,5.8,12.7,18],[-18,-12.8,-6.1,2.4,9.8,18]),
+    (-7.35,-3.45,[-18,-12.8,-6.1,2.4,9.8,18],[-18,-10.5,-3.45,3.45,11.4,18]),
+]
+for band in bottom_bands+top_bands:parcel_band(*band)
+for _,z,_,edge in bottom_bands[:-1]+top_bands[:-1]:
+    ribbon('Shared parcel bank',[(x,z) for x in edge],.09,.064)
+
+# Side parcels close the agricultural fabric around the unchanged field and
+# its irrigation loop. Their single shared cross-bank connects to the outer
+# band network without creating another repeated row.
+for x0,x1 in [(-18,-3.45),(3.45,18)]:
+    split=-.2 if x0<0 else .35
+    for z0,z1 in [(-3.45,split),(split,3.45)]:
+        corners=[(x0,z0),(x1,z0),(x1,z1),(x0,z1)]
+        inset=[parcel_point(corners,u,v) for u,v in ((.018,.018),(.982,.018),(.982,.982),(.018,.982))]
+        planted_parcel(inset,greens[(parcel_index*3)%len(greens)],parcel_index)
+        parcel_index+=1
+    ribbon('Shared parcel bank',[(x0,split),(x1,split)],.09,.064)
 
 IRRIGATION_X=3.12
 IRRIGATION_Z=2.95
 
 def irrigation_branch(axis,coordinate,low,high):
-    v=[];f=[];bank_v=[];bank_f=[];steps=48
+    v=[];f=[];shoulder_v=[];shoulder_f=[];slope_v=[];slope_f=[];steps=48
     for i in range(steps+1):
         t=low+(high-low)*i/steps
-        # Water is recessed; the bank's toe meets the water, the crest is raised.
-        for offset in (-.145,.145):
+        # Water sits above a visible channel toe. Raised dry shoulders and
+        # darker soil slopes create real contact edges from the descent view.
+        for offset in (-.155,.155):
             x,z=(t,coordinate+offset) if axis=='x' else (coordinate+offset,t)
-            v.append((x,height(x,z)-.073,z))
-        for offset,lift in ((-.25,.014),(-.205,.065),(-.145,-.077),(.145,-.077),(.205,.065),(.25,.014)):
+            v.append((x,height(x,z)-.078,z))
+        cross= ((-.34,.012),(-.27,.085),(-.20,.005),(-.155,-.10),
+                (.155,-.10),(.20,.005),(.27,.085),(.34,.012))
+        for offset,lift in cross:
             x,z=(t,coordinate+offset) if axis=='x' else (coordinate+offset,t)
-            bank_v.append((x,height(x,z)+lift,z))
+            target=shoulder_v if abs(offset)>=.27 else slope_v
+            target.append((x,height(x,z)+lift,z))
     for i in range(steps):
         a=i*2;f.extend(upward_triangles(v,(a,a+2,a+3,a+1)))
-        for side in (0,3):
-            for k in (0,1):
-                a=i*6+side+k;bank_f.extend(upward_triangles(bank_v,(a,a+6,a+7,a+1)))
+        # Two vertices per dry shoulder and four per wet inner slope, per step.
+        for base in (0,):
+            a=i*4+base;shoulder_f.extend(upward_triangles(shoulder_v,(a,a+4,a+5,a+1)))
+            a=i*4+2;shoulder_f.extend(upward_triangles(shoulder_v,(a,a+4,a+5,a+1)))
+        for base in (0,2):
+            a=i*4+base;slope_f.extend(upward_triangles(slope_v,(a,a+4,a+5,a+1)))
     mesh_obj('Recessed connected irrigation',v,f,water,land,True)
-    mesh_obj('Raised bank and wet channel slope',bank_v,bank_f,track,land,True)
+    mesh_obj('Raised irrigation bank shoulders',shoulder_v,shoulder_f,track,land,True)
+    mesh_obj('Wet channel slopes',slope_v,slope_f,wet_bank,land,True)
 for z in (-IRRIGATION_Z,IRRIGATION_Z):irrigation_branch('x',z,-3.265,3.265)
 for x in (-IRRIGATION_X,IRRIGATION_X):irrigation_branch('z',x,-5.35,3.095)
 planted_parcel([(-2.50,-2.30),(2.45,-2.30),(2.45,2.27),(-2.50,2.27)],greens[1],1,sample=True)
@@ -471,24 +513,48 @@ def add_leaf(base, direction, length, width, material, batches, roll=0):
     group["faces"].extend(tuple(offset + i for i in face) for face in top)
 
 
+def canopy_lobe(parent,name,center,scale,mat,rng):
+    """Create one soft, asymmetric foliage mass with a deterministic outline."""
+    bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=2,radius=1,location=to_blender(center))
+    obj=bpy.context.object;obj.name=name
+    obj.scale=(scale[0],scale[2],scale[1])
+    obj.rotation_euler=(rng.uniform(-.24,.24),rng.uniform(-.35,.35),rng.uniform(-.20,.20))
+    for vertex in obj.data.vertices:
+        co=vertex.co
+        warp=1+rng.uniform(-.055,.055)+.045*math.sin(co.x*4.1+co.y*2.7)
+        co*=warp
+        co.z*=.9+.10*math.sin(co.x*2.8-co.y*3.6)
+    obj.data.materials.append(mat)
+    for polygon in obj.data.polygons:polygon.use_smooth=True
+    move_collection(obj,parent)
+    return obj
 
-# Three branched silhouettes at a believable crop-edge scale. Batched leaves
-# grow along tapering limbs; no sphere crowns or individual runtime plant calls.
+
+
+# Three branched silhouettes at a believable crop-edge scale. Overlapping,
+# asymmetric foliage lobes carry the crown at aerial distance; a bounded set
+# of folded leaves breaks the outer contour without turning into point noise.
 tree_specs=[(.98,.54,1.48),(1.18,.43,1.85),(.78,.65,1.29)]
 for variant_index,(trunk_height,spread,crown_height) in enumerate(tree_specs):
     parent=tree_variants[variant_index];rng=random.Random(730+variant_index);leaf_batches={}
     tapered_branch(parent,'Tapered living trunk',(0,0,0),(.045,trunk_height,0),.049,.013,sides=9)
+    canopy_lobe(parent,'Continuous asymmetric crown',(0,trunk_height*1.07,0),
+                 (spread*.92,crown_height*.23,spread*.84),foliage,rng)
     for branch in range(10):
         angle=branch*2.399+rng.uniform(-.25,.25)
         start=(.02,trunk_height*rng.uniform(.46,.90),0)
         end=(math.cos(angle)*spread*rng.uniform(.65,1),rng.uniform(trunk_height*.9,crown_height),math.sin(angle)*spread*rng.uniform(.65,1))
         tapered_branch(parent,'Primary branching limb',start,end,.018,.004,sides=7)
+        if branch%2==0:
+            lobe_center=(end[0]*.64,end[1]*.74+trunk_height*.26,end[2]*.64)
+            lobe_scale=(rng.uniform(.27,.36)*(spread/.54),rng.uniform(.21,.29)*(crown_height/1.48),rng.uniform(.26,.34)*(spread/.54))
+            canopy_lobe(parent,'Overlapping crown edge',lobe_center,lobe_scale,foliage_light if branch in (0,4) else foliage,rng)
         for twig in range(3):
             t=.45+twig*.23;origin=tuple(start[k]+(end[k]-start[k])*t for k in range(3))
             twig_angle=angle+rng.uniform(-1.5,1.5)
             tip=(origin[0]+math.cos(twig_angle)*.20,origin[1]+rng.uniform(.08,.22),origin[2]+math.sin(twig_angle)*.20)
             tapered_branch(parent,'Fine secondary branch',origin,tip,.006,.0015,sides=5)
-            for leaf in range(30):
+            for leaf in range(5):
                 a=rng.random()*math.tau;r=rng.random()**.5*.19
                 location=(tip[0]+math.cos(a)*r,tip[1]+rng.uniform(-.11,.14),tip[2]+math.sin(a)*r)
                 direction=(math.cos(a),rng.uniform(-.15,.8),math.sin(a))
@@ -506,7 +572,7 @@ from surface_maps import build_surfaces, apply_surface
 surface_output=OUT.parent/'textures'/'surfaces'
 surface_images=build_surfaces(surface_output)
 for mat in bpy.data.materials:
-    role=('foil' if mat==gold else 'metal' if mat==silver else 'water' if mat==water else 'leaf' if mat in (foliage,foliage_light) else 'crop' if mat in greens or mat==crop else 'soil' if mat in (soil,track,bark) else None)
+    role=('foil' if mat==gold else 'metal' if mat==silver else 'water' if mat==water else 'leaf' if mat in (foliage,foliage_light) else 'crop' if mat in greens or mat==crop else 'soil' if mat in (soil,track,wet_bank,bark) else None)
     if role:apply_surface(mat,role,surface_images,.42 if role=='foil' else .65 if role=='water' else .18 if mat==track else .4)
     if mat in (foliage,foliage_light,crop):mat['doubleSided']=True
 for obj in bpy.data.objects:

@@ -14,9 +14,9 @@ export function mountJourney(root){
  const $=id=>root.querySelector(`#${id}`),params=new URLSearchParams(location.search);
  const media=matchMedia('(prefers-reduced-motion: reduce)'),diagnostic=params.has('qa');
  const resources=[];
- let disposed=false,initializing=false,reduced=media.matches||params.get('motion')==='reduce';
+ let disposed=false,initializing=false,probeStarted=false,reduced=media.matches||params.get('motion')==='reduce';
  let renderer,composer,scene,camera,spacecraft,earth,terrain,stars,beam,evidence,sun,fill,hemisphere;
- let progress=0,target=0,active=false,raf=0,last=0,frames=0,shotIndex=-1,mobileLayout=null,focusField=false,insufficient=false,state={};
+ let progress=0,target=0,active=false,raf=0,last=0,frames=0,shotIndex=-1,mobileLayout=null,narrativeInsufficient=null,focusField=false,insufficient=false,state={};
  const mobileChapters=[
   ['มองเห็นความเปลี่ยนแปลง','จากวงโคจรถึงแปลงจริง'],
   ['ดูโลกในแต่ละช่วงเวลา','ภาพดาวเทียมช่วยติดตามพื้นที่เดิม'],
@@ -29,6 +29,11 @@ export function mountJourney(root){
   ['ผลนี้ควรตรวจแปลงต่อ','ค่า NDVI ลดลง แต่ข้อมูลดาวเทียมยังไม่บอกสาเหตุ'],
   ['เริ่มติดตามแปลงของคุณ','สร้างฟาร์มและวาดขอบเขตใน AgriScope']
  ];
+ const insufficientChapters={
+  6:['ตรวจคุณภาพก่อนเปรียบเทียบ','ข้อมูลที่ใช้วัดได้ไม่ทับซ้อนกัน จึงยังสรุปการเปลี่ยนแปลงไม่ได้'],
+  7:['ยังเปรียบเทียบไม่ได้','ไม่มีพื้นที่ร่วมที่ใช้วัดได้ จึงไม่แสดงค่าเปลี่ยนแปลงหรือแผนที่เปรียบเทียบ'],
+  8:['ข้อมูลยังไม่พอจะสรุป','ต้องมีข้อมูลที่ใช้วัดได้ร่วมกันก่อน จึงจะประเมินการเปลี่ยนแปลงได้']
+ };
  const range=()=>Math.max(1,$('journey').offsetHeight-innerHeight);
  const moveTo=(p,behavior='instant')=>scrollTo({top:root.offsetTop+clamp(p)*range(),behavior});
  const getProgress=()=>clamp((scrollY-root.offsetTop)/range());
@@ -78,14 +83,14 @@ export function mountJourney(root){
    hemisphere=new THREE.HemisphereLight(0xb3d8ee,0x1b2618,.68);scene.add(hemisphere);
    sun=new THREE.DirectionalLight(0xffead4,2.35);sun.position.set(-30,30,18);sun.castShadow=true;
    sun.shadow.mapSize.set(innerWidth<760?1024:2048,innerWidth<760?1024:2048);
-   Object.assign(sun.shadow.camera,{near:1,far:120,left:-19,right:19,top:25,bottom:-19});sun.shadow.bias=-.00012;sun.shadow.normalBias=.004;sun.shadow.radius=7;scene.add(sun);
+   Object.assign(sun.shadow.camera,{near:1,far:120,left:-19,right:19,top:25,bottom:-19});sun.shadow.bias=-.00012;sun.shadow.normalBias=.003;sun.shadow.radius=5;scene.add(sun);
    fill=new THREE.DirectionalLight(0x7faed2,.76);fill.position.set(20,18,-15);scene.add(fill);
    earth=buildEarth({day,clouds,night});scene.add(earth);stars=buildStarfield();scene.add(stars);
    spacecraft=buildSpacecraft(ship,surfaceMaps);scene.add(spacecraft);
    const rotation=new THREE.Matrix3().setFromMatrix4(new THREE.Matrix4().makeRotationFromQuaternion(earth.quaternion.clone().invert()));
    terrain=buildTerrain({farmland,tree},{mobile:innerWidth<760,day,rotation,surfaceMaps});scene.add(terrain);
    const fieldEnvironment=agriculturalEnvironment(renderer);resources.push(fieldEnvironment);
-   terrain.traverse(mesh=>{if(mesh.material?.isMeshStandardMaterial){mesh.material.envMap=fieldEnvironment.texture;mesh.material.envMapIntensity=mesh.name.includes('water')?1.1:.45;}});
+   terrain.traverse(mesh=>{if(mesh.material?.isMeshStandardMaterial){mesh.material.envMap=fieldEnvironment.texture;mesh.material.envMapIntensity=mesh.name.includes('water')?1.45:mesh.name.includes('foliage')?.34:.42;}});
    evidence=buildEvidence();scene.add(evidence.group);
    beam=new THREE.Mesh(new THREE.CylinderGeometry(.008,.024,1,16,1,true),new THREE.MeshBasicMaterial({color:0xe8c99a,transparent:true,opacity:0,blending:THREE.AdditiveBlending,depthWrite:false,side:THREE.DoubleSide}));scene.add(beam);
    composer=new THREE.EffectComposer(renderer);composer.addPass(new THREE.RenderPass(scene,camera));
@@ -100,13 +105,28 @@ export function mountJourney(root){
    const initial=params.has('shot')?SHOTS[clamp(Math.floor(Number(params.get('shot'))||1)-1,0,9)].p:params.has('p')?clamp(Number(params.get('p'))||0):hashProgress??null;
    if(initial!==null){root.classList.remove('static-mode');moveTo(initial);progress=getProgress();}
    const gl=renderer.getContext(),debug=gl.getExtension('WEBGL_debug_renderer_info');
-   writeDiagnostics({assets:6,model:spacecraft.userData.asset,land:terrain.userData.asset,gpu:debug?gl.getParameter(debug.UNMASKED_RENDERER_WEBGL):gl.getParameter(gl.RENDERER)});
-   if(reduced)fallback('แสดงขั้นตอนติดตามแปลงตามการตั้งค่าลดการเคลื่อนไหวของคุณ',true);else activate();
+   writeDiagnostics({assets:6,model:spacecraft.userData.asset,land:terrain.userData.asset,gpu:debug?gl.getParameter(debug.UNMASKED_RENDERER_WEBGL):gl.getParameter(gl.RENDERER),devicePixelRatio,renderPixelRatio:renderer.getPixelRatio(),browser:navigator.userAgent});
+   if(reduced)fallback('แสดงขั้นตอนติดตามแปลงตามการตั้งค่าลดการเคลื่อนไหวของคุณ',true);else{activate();void runHardwareProbe();}
   }catch(error){
    if(!disposed){console.error('[AgriScope]',error);fallback('อุปกรณ์นี้แสดงภาพ 3D ไม่ได้ คุณยังอ่านวิธีติดตามแปลงและดูข้อมูลตัวอย่างได้');}
   }finally{initializing=false;}
  }
  function renderScene(){renderer.info.reset();composer.render();writeDiagnostics({drawCalls:renderer.info.render.calls,triangles:renderer.info.render.triangles});}
+ async function runHardwareProbe(){
+  if(probeStarted||!diagnostic||!params.has('hardware-probe'))return;probeStarted=true;
+  const shot=Math.max(1,Math.min(10,Number(params.get('hardware-probe'))||6)),base=SHOTS[shot-1].p,recording=params.get('recording')==='1';
+  moveTo(base);target=getProgress();progress=target;apply(progress);renderScene();
+  await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+  const intervals=[],submission=[],started=performance.now();let previous=started;
+  await new Promise(resolve=>{const frame=now=>{
+   intervals.push(now-previous);previous=now;const renderStarted=performance.now();
+   apply(base+Math.sin((now-started)/700)*.003);renderScene();submission.push(performance.now()-renderStarted);
+   if(now-started<2400)requestAnimationFrame(frame);else resolve();
+  };requestAnimationFrame(frame);});
+  progress=base;target=base;apply(base);renderScene();
+  const stats=values=>{const sorted=[...values].sort((a,b)=>a-b);return {count:values.length,mean:values.reduce((a,b)=>a+b,0)/values.length,p50:sorted[Math.floor(sorted.length*.5)],p95:sorted[Math.min(sorted.length-1,Math.floor(sorted.length*.95))],max:sorted.at(-1)};};
+  writeDiagnostics({hardwareProbe:{shot,progress:base,recording,elapsedMs:performance.now()-started,intervalStatsMs:stats(intervals),submissionStatsMs:stats(submission),intervalsMs:intervals,renderSubmissionMs:submission,interpretation:'rAF scheduling and synchronous render submission under the reported renderer; intentional journey holds are not part of this probe and this is not isolated GPU execution time.'}});
+ }
  function panel(id,opacity){const element=$(id);element.style.opacity=opacity;element.style.visibility=opacity>.02?'visible':'hidden';element.inert=opacity<.5;}
  function apply(p){
   const key=sampleCamera(p,innerWidth/innerHeight),mobile=innerWidth<760;
@@ -117,13 +137,13 @@ export function mountJourney(root){
   const attitude=new THREE.Quaternion().setFromEuler(new THREE.Euler(-.18,-.22,-.22));
   const nadir=new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.PI/2,0,-.22));
   spacecraft.quaternion.copy(attitude).slerp(nadir,smooth(.235,.38,p));spacecraft.visible=p<.50;
-  const descent=smooth(.41,.56,p),detail=smooth(.395,.50,p);
+  const descent=smooth(.41,.56,p),detail=smooth(.385,.455,p);
   const agriculturalLight=smooth(.43,.57,p);
-  sun.intensity=2.35+.5*agriculturalLight;fill.intensity=.76-.18*agriculturalLight;hemisphere.intensity=.68+.18*agriculturalLight;scene.environmentIntensity=.68-.22*agriculturalLight;
+  sun.intensity=2.4+.55*agriculturalLight;fill.intensity=.66-.24*agriculturalLight;hemisphere.intensity=.56+.10*agriculturalLight;scene.environmentIntensity=.70-.24*agriculturalLight;
   // Keep the far edge atmospheric, but let the nearby parcels retain warm soil
   // and crop contrast instead of disappearing into a grey fog wash.
-  scene.fog.density=.0006+descent*.009;scene.fog.color.set(0x101c29).lerp(new THREE.Color(0x465c63),descent);
-  scene.background.set(0x060d15).lerp(new THREE.Color(0x1a3038),descent);
+  scene.fog.density=.00055+descent*.0073;scene.fog.color.set(0x101c29).lerp(new THREE.Color(0x354b50),descent);
+  scene.background.set(0x060d15).lerp(new THREE.Color(0x13282f),descent);
   stars.material.opacity=.78*(1-smooth(.36,.49,p));stars.visible=p<.51;
   terrain.visible=p>=.405;terrain.userData.localDetail.value=detail;
   const flatten=terrain.userData.update(p);
@@ -131,9 +151,9 @@ export function mountJourney(root){
   // Let the spherical basemap leave as the camera commits to the local terrain.
   // Keeping it underneath the flattening mesh produces stray geographic green
   // islands through gaps between synthetic plots in shots 5–6.
-  earth.userData.surface.visible=p<.555;
+  earth.userData.surface.visible=p<.455;
   earth.userData.atmosphere.material.uniforms.opacity.value=1-smooth(.41,.53,p);
-  earth.userData.clouds.visible=p<.49;earth.userData.clouds.material.opacity=.30*(1-smooth(.35,.49,p));
+  earth.userData.clouds.visible=p<.49;earth.userData.clouds.material.opacity=.38*(1-smooth(.35,.49,p));
   earth.userData.clouds.rotation.y=.008*smooth(.20,.49,p);
   const payload=spacecraft.localToWorld(spacecraft.userData.payloadPosition.clone()),ground=new THREE.Vector3(0,.12,0),direction=payload.clone().sub(ground);
   beam.position.copy(payload).add(ground).multiplyScalar(.5);beam.scale.y=direction.length();beam.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),direction.normalize());
@@ -157,11 +177,15 @@ export function mountJourney(root){
   const optic=payload.project(camera);
   $('instrument').style.left=`${clamp((optic.x*.5+.5)*innerWidth-27,24,innerWidth-230)}px`;
   $('instrument').style.top=`${clamp((-optic.y*.5+.5)*innerHeight-27,110,innerHeight*.48)}px`;
-  if(shot!==shotIndex||mobile!==mobileLayout){
-   shotIndex=shot;mobileLayout=mobile;const s=SHOTS[shot];$('eyebrow').textContent=`${String(shot+1).padStart(2,'0')} / 10   ${s.name}`;
-   $('title').innerHTML=shot===0?'มองเห็นความเปลี่ยนแปลง<br><span>จากวงโคจรถึงแปลงจริง</span>':s.thai.split(' ').filter(Boolean).join('<br>');
-   if(mobile){$('title').textContent=mobileChapters[shot][0];$('description').textContent=mobileChapters[shot][1];}
-   else $('description').textContent=s.text;
+  if(shot!==shotIndex||mobile!==mobileLayout||insufficient!==narrativeInsufficient){
+   shotIndex=shot;mobileLayout=mobile;narrativeInsufficient=insufficient;const s=SHOTS[shot],assessmentCopy=insufficient?insufficientChapters[shot]:null;$('eyebrow').textContent=`${String(shot+1).padStart(2,'0')} / 10   ${s.name}`;
+   if(assessmentCopy){
+    $('title').textContent=assessmentCopy[0];$('description').textContent=assessmentCopy[1];
+   }else{
+    $('title').innerHTML=shot===0?'มองเห็นความเปลี่ยนแปลง<br><span>จากวงโคจรถึงแปลงจริง</span>':s.thai.split(' ').filter(Boolean).join('<br>');
+    $('description').textContent=mobile?mobileChapters[shot][1]:s.text;
+    if(mobile)$('title').textContent=mobileChapters[shot][0];
+   }
    $('chapter').textContent=`${s.name} / ${String(shot+1).padStart(2,'0')}`;
   }
   const phase=[0,1,3,6,9].reduce((a,i)=>i<=shot?i:a,0);
@@ -185,7 +209,6 @@ export function mountJourney(root){
   $('sample-status').textContent=insufficient?'ข้อมูลยังไม่พอ':'ควรตรวจต่อ';
   $('before-value').textContent=insufficient?'—':DEMO.before.toFixed(2);$('after-value').textContent=insufficient?'—':DEMO.after.toFixed(2);
   $('sample-explanation').textContent=insufficient?'พื้นที่ที่ใช้วัดได้ในสองวันไม่ทับซ้อนกัน จึงยังสรุปการเปลี่ยนแปลงไม่ได้':'ค่า NDVI ลดลงในพื้นที่ตัวอย่าง จึงควรตรวจแปลงต่อเพื่อหาสาเหตุ';
-  $('trend').hidden=!insufficient;$('inspect-field').setAttribute('aria-expanded',String(insufficient));
   $('inspect-field').textContent=insufficient?'กลับไปดูกรณีข้อมูลเพียงพอ':'ดูกรณีข้อมูลไม่พอ';
   $('evidence-panel').querySelector('.quality-line').textContent=insufficient?'ไม่มีพื้นที่ร่วมที่ใช้วัดได้ จึงเปรียบเทียบไม่ได้':'ข้อมูลตัวอย่างสองช่วงเวลาใช้เปรียบเทียบได้';
   $('evidence-panel').querySelector('.map-legend').hidden=insufficient;

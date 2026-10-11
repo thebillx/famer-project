@@ -27,9 +27,12 @@ def build_surfaces(output):
     straw=np.maximum(0,np.sin(2*np.pi*(x*41+y*7))-.83)*np.maximum(0,np.sin(2*np.pi*y*23))
     crop=.48+broad*.18+grain*.12+straw*.55
     water=sum(np.sin(2*np.pi*(x*a+y*b)+c)*w for a,b,c,w in [(3,1,.2,.10),(7,-2,1,.045),(17,3,.8,.02),(31,-5,2,.008)])
-    # Broad, warped folds: no high-frequency diagonal corrugation.
-    foil=.13*np.sin(2*np.pi*(x*2+y)+.9*np.sin(2*np.pi*y*3))
-    foil+=.065*np.abs(np.sin(2*np.pi*(x-y*2)+.7*np.sin(2*np.pi*x*3)))
+    # Broad triangular facets plus narrow crease valleys make the normal map
+    # respond like folded metallic blanket rather than padded waves.
+    fold_a=(2/np.pi)*np.arcsin(np.sin(2*np.pi*(x*2.2+y*.72)+.52*np.sin(2*np.pi*y*2)))
+    fold_b=(2/np.pi)*np.arcsin(np.sin(2*np.pi*(x*.75-y*2.8)+.38*np.sin(2*np.pi*x*1.5)))
+    crease=np.exp(-np.abs(np.sin(2*np.pi*(x*1.35+y*1.85)+.6))*42)
+    foil=.11*fold_a+.065*fold_b-.038*crease
     vein=np.exp(-abs(x-.5)*180)+.45*np.exp(-abs(np.sin((y-abs(x-.5)*.7)*np.pi*12))*30)
     leaf=.55+.12*broad+.09*vein+.02*grain
     brushed=.5+.025*np.sin(y*np.pi*300)+grain*.018

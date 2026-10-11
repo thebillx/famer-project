@@ -285,6 +285,14 @@ try{
     }
     if(!viewport.mobile)for(const index of [2,5])await measureFrames(page,points[index],false);
     await makeContactSheet(page,viewport.name,shots);
+    if(!viewport.mobile&&!checkpointsOnly){
+      await seek(page,.86);
+      await page.locator('#inspect-field').click();
+      assert.equal(await page.locator('#sample-status').textContent(),'ข้อมูลยังไม่พอ');
+      assert.equal((await page.evaluate(()=>window.__agriscope.snapshot())).evidence.status,'NOT_ASSESSABLE');
+      await page.screenshot({path:join(output,viewport.name,'insufficient-data.png'),timeout:60000});
+      await page.locator('#inspect-field').click();
+    }
     if(viewport.mobile){
       await ready(page);
       await seek(page,.86);
@@ -297,6 +305,23 @@ try{
       assert.equal(insufficient.delta,null,'Insufficient data has no change metric.');
       assert.equal(insufficient.status,'NOT_ASSESSABLE');
       assert.equal(insufficient.commonSupport,0);
+      if(!process.env.BASELINE_REASON){
+        assert.match(await page.locator('#title').textContent(),/ข้อมูลยังไม่พอ/,'The summary narrative follows NOT_ASSESSABLE.');
+        assert.doesNotMatch(await page.locator('#description').textContent(),/ลดลง|ควรตรวจ/,'The narrative must not retain a valid-data conclusion.');
+        assert.doesNotMatch(await page.locator('#sample-explanation').textContent(),/ลดลง|ควรตรวจ/,'The panel must not retain a valid-data conclusion.');
+        assert.equal(await page.locator('.map-legend').isVisible(),false,'No change legend is shown without common support.');
+        await page.locator('#rail button[aria-label^="ช่วง 7:"]').click();
+        await page.waitForFunction(()=>Math.abs(window.__agriscope.snapshot().p-.65)<.003,null,{timeout:10000});
+        assert.equal((await page.evaluate(()=>window.__agriscope.snapshot())).evidence.status,'NOT_ASSESSABLE');
+        assert.match(await page.locator('#title').textContent(),/ตรวจคุณภาพก่อนเปรียบเทียบ/,'Reverse chapter navigation keeps the insufficient-data narrative.');
+        await page.setViewportSize({width:800,height:900});
+        await seek(page,.86);
+        assert.equal((await page.evaluate(()=>window.__agriscope.snapshot())).evidence.status,'NOT_ASSESSABLE');
+        assert.match(await page.locator('#title').textContent(),/ข้อมูลยังไม่พอ/,'Desktop resize keeps the insufficient-data narrative.');
+        assert.doesNotMatch(await page.locator('#description').textContent(),/ลดลง|ควรตรวจ/);
+        await page.setViewportSize({width:viewport.width,height:viewport.height});
+        await seek(page,.86);
+      }
       await page.screenshot({path:join(output,viewport.name,'insufficient-data.png'),timeout:60000});
       await page.locator('#inspect-field').click();
       assert.equal(await page.locator('#sample-status').textContent(),'ควรตรวจต่อ','The valid demonstration is restored after toggling back.');

@@ -79,9 +79,15 @@ try{
   await p.locator('#inspect-field').click();assert.equal(await p.locator('#sample-status').textContent(),'ข้อมูลยังไม่พอ');
   assert.equal(await p.locator('#before-value').textContent(),'—');assert.equal(await p.locator('#after-value').textContent(),'—');
   assert.equal((await state(p)).evidence.delta,null);assert.equal((await state(p)).evidence.commonSupport,0);
+  assert.doesNotMatch(await p.locator('#title').textContent(),/ควรตรวจแปลงต่อ|ลดลง/);assert.match(await p.locator('#title').textContent(),/ข้อมูลยังไม่พอ/);
+  assert.doesNotMatch(await p.locator('#description').textContent(),/ควรตรวจ|ลดลง/);
+  assert.doesNotMatch(await p.locator('#sample-explanation').textContent(),/ควรตรวจ|ลดลง/);
+  assert.equal(await p.locator('.map-legend').isVisible(),false);
   await save(p,`${viewport.width}x${viewport.height}-insufficient-data`);
-  await checkpoint(p,.76);assert.equal((await state(p)).evidence.status,'NOT_ASSESSABLE');assert.equal(await p.locator('.map-legend').isVisible(),false);
-  await checkpoint(p,.86);await p.locator('#inspect-field').click();assert.equal((await state(p)).evidence.delta,-.26);
+  await checkpoint(p,.76);assert.equal((await state(p)).evidence.status,'NOT_ASSESSABLE');assert.equal(await p.locator('.map-legend').isVisible(),false);assert.match(await p.locator('#title').textContent(),/ยังเปรียบเทียบไม่ได้/);
+  const resized=mobile?{width:390,height:844}:{width:1276,height:800};await p.setViewportSize(resized);await checkpoint(p,.86);
+  assert.equal((await state(p)).evidence.status,'NOT_ASSESSABLE');assert.match(await p.locator('#title').textContent(),/ข้อมูลยังไม่พอ/);assert.doesNotMatch(await p.locator('#description').textContent(),/ควรตรวจ|ลดลง/);
+  await p.setViewportSize(viewport);await checkpoint(p,.86);await p.locator('#inspect-field').click();assert.equal((await state(p)).evidence.delta,-.26);assert.match(await p.locator('#title').textContent(),/ผลนี้ควรตรวจแปลงต่อ/);
   await p.locator('#rail button').first().click();await settled(p,0);
   await p.locator('#rail button').nth(3).click();await settled(p,.36);
   const geo=await p.locator('#geo').boundingBox();assert.ok(geo.x>=0&&geo.x+geo.width<=viewport.width&&geo.y>=100);

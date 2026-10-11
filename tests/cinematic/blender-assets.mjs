@@ -40,7 +40,7 @@ for(const name of ['spacecraft','farmland','tree']){
     const n=new THREE.Vector3().fromBufferAttribute(normal,i);
     assert.ok(n.length()>.98&&n.length()<1.02,'Packed normals preserve unit length');
    }
-   if(name==='farmland'&&['Irrigation water','Field tracks'].includes(mesh.name)){
+   if(name==='farmland'&&['Irrigation water','Field tracks','Wet channel earth'].includes(mesh.name)){
     for(let i=0;i<index.count;i+=3){
      const a=new THREE.Vector3().fromBufferAttribute(position,index.getX(i));
      const b=new THREE.Vector3().fromBufferAttribute(position,index.getX(i+1));

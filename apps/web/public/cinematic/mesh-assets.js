@@ -48,7 +48,9 @@ export function decodeMeshAsset(data,variantIndex=0,surfaceMaps={}) {
   geometry.computeBoundingSphere();
   const surface=m.material.surface;
   if(surface&&!SURFACES.has(surface))throw new Error('Unsupported authored surface');
-  const material=new THREE.MeshPhysicalMaterial({color:new THREE.Color().setRGB(...m.material.color),metalness:m.material.metalness,roughness:m.material.roughness,clearcoat:m.material.clearcoat,clearcoatRoughness:.24,envMapIntensity:1.15,side:m.material.doubleSided?THREE.DoubleSide:THREE.FrontSide,...(surfaceMaps[surface]||{})});
+  const response=m.name==='Photovoltaic cells'?1.35:surface==='foil'?1.42:surface==='metal'?1.2:surface==='water'?1.5:surface==='leaf' ? .7 : 1.0;
+  const optical=m.name==='Photovoltaic cells'?{iridescence:.18,iridescenceIOR:1.35,iridescenceThicknessRange:[110,260],specularIntensity:1}:surface==='water'?{ior:1.333,reflectivity:.56}:{};
+  const material=new THREE.MeshPhysicalMaterial({color:new THREE.Color().setRGB(...m.material.color),metalness:m.material.metalness,roughness:m.material.roughness,clearcoat:m.material.clearcoat,clearcoatRoughness:surface==='water'?.08:.24,envMapIntensity:response,side:m.material.doubleSided?THREE.DoubleSide:THREE.FrontSide,...optical,...(surfaceMaps[surface]||{})});
   if(surface)material.normalScale.setScalar(m.material.normalStrength??.5);
   const mesh=new THREE.Mesh(geometry,material);mesh.name=m.name;mesh.castShadow=mesh.receiveShadow=true;group.add(mesh);
  }
