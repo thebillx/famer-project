@@ -8,7 +8,7 @@ const output=process.argv[2];
 if(!output)throw new Error('Pass an evidence output directory.');
 const sourceUrl='https://edolus.com/';
 const viewport={width:1440,height:900};
-const report={status:'RUNNING',sourceUrl,viewport,captureMethod:'Playwright Chromium; settled sequence frames are saved at each PageDown step. A scene is named only when its heading is rendered, stable and inside the viewport. Step position and hidden page text are not treated as scene identity.',browser:null,captures:[],candidates:[],unverified:[],unavailable:[],limitations:['Reference captures use a 1440×900 browser viewport; they do not establish physical-device or non-headless parity.','Edolus is a visual reference only. No image assets or code are copied.','Unclassified candidate frames preserve rendered content for visual review when the site does not expose a stable visible scene heading to automation.']};
+const report={status:'RUNNING',sourceUrl,viewport,captureMethod:'Playwright Chromium; the entry frame is captured after CTA activation and before any scroll input, followed by settled PageDown sequence frames. A scene is named only when its heading is rendered, stable and inside the viewport. Step position and hidden page text are not treated as scene identity.',browser:null,captures:[],candidates:[],unverified:[],unavailable:[],limitations:['Reference captures use a 1440×900 browser viewport; they do not establish physical-device or non-headless parity.','Edolus is a visual reference only. No image assets or code are copied.','Unclassified candidate frames preserve rendered content for visual review when the site does not expose a stable visible scene heading to automation.']};
 await mkdir(output,{recursive:true});
 let browser;
 async function captureVisible(page,{marker,name,content}){
@@ -54,6 +54,15 @@ async function waitForStablePageText(page,{stableMs=1300,timeoutMs=9000}={}){
  }
  return {stable:false,elapsedMs:Date.now()-started,text:previous||''};
 }
+async function captureEntryCandidate(page){
+  await page.waitForTimeout(1800);
+  const name='earth-limb-spacecraft-entry-candidate';
+  const path=resolve(output,`candidates/${name}.png`);
+  await mkdir(resolve(output,'candidates'),{recursive:true});
+  const pageText=(await page.locator('body').innerText()).trim().replace(/\s+/g,' ').slice(0,500);
+  await page.screenshot({path,fullPage:false,timeout:60000});
+  report.candidates.push({name,path:`reference/candidates/${name}.png`,sourceUrl:page.url(),viewport,sceneIdentity:'candidate from the settled orbital entry state; verify the rendered pixels before treating its descriptive name as scene identity',capturePhase:'settled entry scene after CTA activation and before any scroll input',visiblePageText:pageText});
+}
 async function advanceTo(page,marker,{maxSteps=10}={}){
   await page.mouse.move(viewport.width/2,viewport.height/2);
   for(let step=0;step<maxSteps;step++){
@@ -84,6 +93,7 @@ try{
   },null,{timeout:60000});
   await page.evaluate(()=>document.querySelector('#custom-cta')?.click());
   await page.waitForFunction(()=>document.body.innerText.includes('SCROLL TO BEGIN'),null,{timeout:30000});
+  await captureEntryCandidate(page);
   if(await advanceTo(page,'URBAN SYSTEMS')<0){
     report.unverified.push({scene:'urban-systems aerial terrain',reason:'No stable visible URBAN SYSTEMS heading was verified; inspect unclassified candidate frames.'});
   }else await captureVisible(page,{marker:'URBAN SYSTEMS',name:'urban-systems-aerial-terrain',content:'Heading verified in the viewport; inspect the screenshot for the rendered terrain and atmosphere composition.'});
