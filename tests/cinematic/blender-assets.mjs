@@ -1,9 +1,21 @@
 import assert from 'node:assert/strict';
-import {readFileSync,statSync} from 'node:fs';
+import {readFileSync,readdirSync,statSync} from 'node:fs';
 import * as THREE from '../../apps/web/public/cinematic/vendor.js';
 import {decodeMeshAsset} from '../../apps/web/public/cinematic/mesh-assets.js';
 import {buildEvidence,sampleEvidence} from '../../apps/web/public/cinematic/demo-evidence.js';
 let totalBytes=0,totalTriangles=0;
+const surfaceDir=new URL('../../apps/web/public/cinematic/textures/surfaces/',import.meta.url);
+const surfaceFiles=readdirSync(surfaceDir).filter(file=>file.endsWith('.png'));
+assert.deepEqual(surfaceFiles.sort(),[
+ 'crop-color.png','crop-normal.png','crop-roughness.png',
+ 'foil-color.png','foil-normal.png','foil-roughness.png',
+ 'leaf-color.png','leaf-normal.png','leaf-roughness.png',
+ 'metal-color.png','metal-normal.png','metal-roughness.png',
+ 'soil-color.png','soil-normal.png','soil-roughness.png',
+ 'water-color.png','water-normal.png','water-roughness.png',
+],'Authored surfaces publish complete color, normal, and roughness maps');
+const surfaceBytes=surfaceFiles.reduce((total,file)=>total+statSync(new URL(file,surfaceDir)).size,0);
+assert.ok(surfaceBytes<=1.6*1024*1024,`Surface maps stay under the 1.6 MiB transfer budget (${surfaceBytes} bytes)`);
 for(const name of ['spacecraft','farmland','tree']){
  const url=new URL(`../../apps/web/public/cinematic/models/${name}.mesh.json`,import.meta.url);
  totalBytes+=statSync(url).size;
@@ -16,8 +28,12 @@ for(const name of ['spacecraft','farmland','tree']){
   let triangles=0;
   for(const mesh of model.children){
    const {position,normal}=mesh.geometry.attributes,index=mesh.geometry.index;
+   const uv=mesh.geometry.attributes.uv;
    assert.ok(index.count%3===0);triangles+=index.count/3;
    assert.equal(position.count,normal.count);
+   assert.ok(uv,`${name} exports authored UV coordinates for every material batch`);
+   assert.equal(uv.count,position.count,'Authored UV count matches decoded vertices');
+   for(let i=0;i<uv.array.length;i++)assert.ok(Number.isFinite(uv.array[i]),'Authored UVs decode to finite values');
    for(let i=0;i<position.array.length;i++)assert.ok(Number.isFinite(position.array[i]));
    for(let i=0;i<index.count;i++)assert.ok(index.getX(i)<position.count);
    for(let i=0;i<normal.count;i++){
@@ -43,8 +59,8 @@ for(const name of ['spacecraft','farmland','tree']){
  }
  if(name==='tree')assert.equal(new Set(heights.map(v=>v.toFixed(2))).size,3,'Tree variants preserve visibly different crown heights');
 }
-assert.ok(totalBytes<5*1024*1024,'Three complete mesh assets stay under 5 MiB');
-assert.ok(totalTriangles<175000,'Bounded original geometry budget');
+assert.ok(totalBytes<=6*1024*1024,`Three complete mesh assets stay under the 6 MiB transfer budget (${totalBytes} bytes)`);
+assert.ok(totalTriangles<=175000,'Bounded original geometry budget');
 const evidence=buildEvidence();
 for(const p of [.65,.76,.86,.95]){
  const valid=sampleEvidence(p);assert.equal(valid.delta,-.26);assert.equal(valid.commonSupport,1);

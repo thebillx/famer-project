@@ -9,23 +9,35 @@ The generator writes three compact material-batched mesh containers into
 `apps/web/public/cinematic/models/`. Their combined transfer size is recorded
 in the per-build metadata before HTTP compression. Seven spacecraft materials preserve folded
 thermal blankets, hinges, individually modeled solar cells, a recessed lens,
-radiator fins, harnesses, telemetry dish and thrusters. Land includes raised
-planting beds, staggered and proportion-varied parcels cleared against the
-sample field's actual footprint, adjacent paddies placed around the unchanged
-sample field, connected shallow irrigation runs with separate raised banks,
-two access spurs and low track crossings, and three instanced branched tree
-silhouettes. The compact export keeps Blender base color, metalness, roughness
-and clearcoat. The existing browser loader adds role-based procedural detail
-for spacecraft finishes, foliage, soil, crops, tracks and canal water without
-UV maps or third-party surface textures. These meshes are synthetic illustration and do not
-represent surveyed ownership or real irrigation.
-Planting rows retain upward-facing normals through the Blender-to-runtime axis
-conversion. Tree variants share one JSON file with tapered bark and batched,
-pointed foliage in shaded and sunlit material batches. Terrain uses procedural
-roughness and multi-scale color grain in Blender and the web shader. Geometry
-uses fixed seeds for reproducible output. Irrigation bed, raised bank and track
-crossing triangles are explicitly oriented upward; the mesh check verifies
-water and track winding for the overhead Three.js camera.
+radiator fins, harnesses, telemetry dish and thrusters. Land has adjoining
+nonuniform quadrilateral parcels, continuous shared banks, raised crop ridges,
+and irrigation recessed below the soil with separate slopes and access tracks.
+Only the central cell is reserved for the unchanged sample boundary and canals.
+Three tree variants use tapered branching and small folded leaves, batched by
+material and instanced in seeded groves. Distant crop rows use low ridges rather
+than individual plants. All geometry uses fixed seeds.
+
+The compact export preserves Blender base color, metalness, roughness, clearcoat,
+UV coordinates (signed 16-bit at 1/512 precision), sidedness and normal strength.
+`surface_maps.py` authors six tileable 256×256 color/normal/roughness sets with
+Blender's bundled NumPy: soil clods, crop fibers, water ripples, broad foil creases,
+brushed metal and leaf veins. The same images drive Blender nodes and runtime
+MeshPhysicalMaterial. Color maps use sRGB; normal and roughness maps remain linear.
+One shared texture set per role is disposed with the scene. Missing maps produce
+the existing readable fallback. No additional Three.js runtime is introduced.
+
+Surface artwork and geometry are original AgriScope project assets, licensed
+under the same terms as this repository. No external textures, purchased assets,
+or reference screenshots are incorporated into the runtime. Edolus review
+screenshots under `tools/cinematic/references/` retain third-party ownership and
+are evidence only, with provenance and file hashes in their manifest.
+
+The mesh budget is 6 MiB before HTTP compression, including UVs, with a separate
+1.6 MiB surface-map budget. UVs increase transfer size while enabling actual
+surface response; the generator's metadata reports triangles and bytes. These
+budgets are not performance claims. Trees remain instanced rather than allocating
+a draw call for each leaf or plant. Irrigation/track winding and the unchanged
+boundary's clearance are checked against decoded runtime vertices.
 
 Use Blender 4.5 LTS from https://www.blender.org/download/lts/:
 

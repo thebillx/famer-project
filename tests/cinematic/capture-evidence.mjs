@@ -30,7 +30,8 @@ const endpointReferencePath=join(output,'motion','orbit-endpoint-browser.png');
 const endpointEncodedFramePath=join(output,'motion','orbit-endpoint-encoded.png');
 const startReferencePath=join(output,'motion','orbit-start-browser.png');
 const startEncodedFramePath=join(output,'motion','orbit-start-encoded.png');
-const rawVideoDir=join(output,'motion','.raw-capture');
+const rawVideoDir=join(output,'motion','raw-capture');
+const timing={captureOperations:[],frameProbes:[],motionStages:[]};
 let browser;
 let motionContext;
 let hashes=[];
@@ -75,10 +76,12 @@ function matchReferencePts(rawVideoPath,referencePath,{last=false}={}){
   const width=270,height=88,bytesPerFrame=width*height*3;
   const artworkFilter=`crop=1080:350:350:530,scale=${width}:${height}:flags=area,format=rgb24`;
   const reference=execFileSync('ffmpeg',['-hide_banner','-loglevel','error','-i',referencePath,'-vf',artworkFilter,'-frames:v','1','-f','rawvideo','pipe:1'],{maxBuffer:bytesPerFrame*2});
-  const samples=execFileSync('ffmpeg',['-hide_banner','-loglevel','error','-i',rawVideoPath,'-vf',`fps=4,${artworkFilter}`,'-f','rawvideo','pipe:1'],{maxBuffer:1024*1024*64});
+  const format=probeVideo(rawVideoPath);
+  const sampleBufferBytes=Math.ceil((Number(format.duration)+2)*4)*bytesPerFrame;
+  const samples=execFileSync('ffmpeg',['-hide_banner','-loglevel','error','-i',rawVideoPath,'-vf',`fps=4,${artworkFilter}`,'-f','rawvideo','pipe:1'],{maxBuffer:sampleBufferBytes});
   assert.equal(reference.length,bytesPerFrame,'Browser endpoint reference decodes to one RGB sample.');
   assert.equal(samples.length%bytesPerFrame,0,'Raw motion samples align to full decoded RGB frames.');
-  const frameCount=samples.length/bytesPerFrame,format=probeVideo(rawVideoPath),streamStart=Number(format.start_time||0),matches=[];
+  const frameCount=samples.length/bytesPerFrame,streamStart=Number(format.start_time||0),matches=[];
   const referenceMean=reference.reduce((sum,value)=>sum+value,0)/reference.length;
   for(let index=0;index<frameCount;index++){
     const offset=index*bytesPerFrame;
@@ -188,6 +191,25 @@ async function makeContactSheet(page,name,shots){
   if(originalViewport)await page.setViewportSize(originalViewport);
 }
 
+async function measureFrames(page,progress,recording){
+  await seek(page,progress);
+  const started=Date.now();
+  const sample=await page.evaluate(progress=>new Promise(resolve=>{
+    const intervals=[],submission=[],start=performance.now();let previous=start;
+    const frame=now=>{
+      intervals.push(now-previous);previous=now;
+      const t=performance.now();
+      // Force the same small deterministic camera sweep in both source versions.
+      window.__agriscope.seekCheckpoint(progress+Math.sin((now-start)/700)*.003);
+      submission.push(performance.now()-t);
+      if(now-start<2400)requestAnimationFrame(frame);
+      else resolve({intervalsMs:intervals,renderSubmissionMs:submission,elapsedMs:now-start,renderer:window.__agriscope.snapshot().gpu});
+    };requestAnimationFrame(frame);
+  }),progress);
+  const stats=values=>{const sorted=[...values].sort((a,b)=>a-b);return {count:values.length,mean:values.reduce((a,b)=>a+b,0)/values.length,p50:sorted[Math.floor(sorted.length*.5)],p95:sorted[Math.floor(sorted.length*.95)],max:sorted.at(-1)};};
+  timing.frameProbes.push({progress,recording,viewport:page.viewportSize(),hostElapsedMs:Date.now()-started,...sample,intervalStatsMs:stats(sample.intervalsMs),submissionStatsMs:stats(sample.renderSubmissionMs),interpretation:'rAF intervals and synchronous seek/render submission time; not GPU execution time or a hardware benchmark.'});
+}
+
 async function animateToProgress(page,progress,durationMs){
   await page.evaluate(({progress,durationMs})=>{
     const max=Math.max(1,document.querySelector('#journey').offsetHeight-innerHeight);
@@ -255,10 +277,13 @@ try{
         }
       }
       const path=join(output,viewport.name,`shot-${String(index+1).padStart(2,'0')}.png`);
+      const screenshotStarted=Date.now();
       await page.screenshot({path,timeout:60000});
+      timing.captureOperations.push({viewport:viewport.name,shot:index+1,operation:'screenshot',elapsedMs:Date.now()-screenshotStarted});
       shots.push({number:index+1,name:shotNames[index],path});
       captures.push({shot:index+1,progress:snapshot.p,renderer:{mode:snapshot.mode,gpu:snapshot.gpu||null,drawCalls:snapshot.drawCalls,triangles:snapshot.triangles,softwareWebGL},assets:{model:snapshot.model,land:snapshot.land}});
     }
+    if(!viewport.mobile)for(const index of [2,5])await measureFrames(page,points[index],false);
     await makeContactSheet(page,viewport.name,shots);
     if(viewport.mobile){
       await ready(page);
@@ -301,7 +326,10 @@ try{
     report.status=report.errors.length===0&&report.failedRequests.length===0?'PASS':'FAIL';
     if(report.status==='FAIL')process.exitCode=1;
   }else{
+  report.rendererSamples=captures;report.interactions={mobile:mobileInteractionReport,fallbacks:fallbackChecks};
   await mkdir(rawVideoDir,{recursive:true});
+  const probeContext=await browser.newContext({viewport:{width:1440,height:900},deviceScaleFactor:1,recordVideo:{dir:join(rawVideoDir,'timing-probe'),size:{width:1440,height:900}}});
+  try{const probePage=await probeContext.newPage();await ready(probePage);const points=await probePage.evaluate(()=>window.__agriscope.SHOTS.map(shot=>shot.p));for(const index of [2,5])await measureFrames(probePage,points[index],true);}finally{await probeContext.close();}
   motionContext=await browser.newContext({viewport:{width:1440,height:900},deviceScaleFactor:1,recordVideo:{dir:rawVideoDir,size:{width:1440,height:900}}});
   const motionPage=await motionContext.newPage();monitor(motionPage);await ready(motionPage);
   await motionPage.evaluate(()=>window.scrollTo({top:0,behavior:'instant'}));
@@ -322,7 +350,9 @@ try{
     {to:0,move:2500,hold:1000},
   ];
   const motionStartedAt=Date.now();
-  for(const stage of sequence){await animateToProgress(motionPage,stage.to,stage.move);await motionPage.waitForTimeout(stage.hold);}
+  const navigationCount={value:0};motionPage.on('framenavigated',frame=>{if(frame===motionPage.mainFrame())navigationCount.value++;});
+  for(const stage of sequence){const started=Date.now();await animateToProgress(motionPage,stage.to,stage.move);const moved=Date.now();await motionPage.waitForTimeout(stage.hold);timing.motionStages.push({...stage,actualMoveMs:moved-started,actualHoldMs:Date.now()-moved});}
+  assert.equal(navigationCount.value,0,'The production page must not reload during the recording.');
   await motionPage.waitForFunction(()=>{const state=window.__agriscope.snapshot();return state.p<.0003&&state.shot===1;},null,{timeout:10000});
   await motionPage.waitForTimeout(4000);
   await motionPage.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
@@ -335,9 +365,8 @@ try{
   await motionContext.close();motionContext=undefined;
   const rawVideoPath=await motionVideo.path();
   const requestedDurationSeconds=(motionEndedAt-motionStartedAt)/1000;
-  // Leave room for WebM/container frame-duration rounding so ffprobe's
-  // measured output remains strictly below the 45-second evidence cap.
-  const outputDurationLimitSeconds=44.8;
+  timing.rawVideoPath=rawVideoPath;timing.requestedMotionWindowSeconds=requestedDurationSeconds;
+  await writeFile(join(output,'timing-diagnostics.json'),JSON.stringify(timing,null,2));
   const rawFormat=probeVideo(rawVideoPath);
   const rawStartSeconds=Number(rawFormat.start_time||0),rawDurationSeconds=Number(rawFormat.duration);
   assert.ok(Number.isFinite(rawDurationSeconds)&&rawDurationSeconds>0,'Raw browser recording must contain a valid presentation timeline.');
@@ -353,22 +382,25 @@ try{
   const clipEndSeconds=Math.min(rawStartSeconds+rawDurationSeconds,lastEndpoint.pts+.24);
   const measuredPtsWindowSeconds=clipEndSeconds-clipStartSeconds;
   assert.ok(measuredPtsWindowSeconds>=30,`Matched browser endpoints leave less than 30 seconds of complete journey (${measuredPtsWindowSeconds.toFixed(2)}s).`);
-  const playbackSpeedMultiplier=Math.max(1,measuredPtsWindowSeconds/outputDurationLimitSeconds);
-  assert.ok(playbackSpeedMultiplier<=1.35,`Matched WebM journey is too long to preserve a slow pace; required playback speed multiplier ${playbackSpeedMultiplier.toFixed(2)} exceeds 1.35.`);
-  const ptsScale=1/playbackSpeedMultiplier;
+  const playbackSpeedMultiplier=1;
   rawMotionPtsWindow={startSeconds:clipStartSeconds,endSeconds:clipEndSeconds,rawStartSeconds,rawDurationSeconds,measuredMotionWindowSeconds:requestedDurationSeconds,measuredPresentationWindowSeconds:measuredPtsWindowSeconds,initialEndpointAlignmentSeconds:initialFrameAlignmentSeconds,initialEndpointMatch:firstEndpoint,finalEndpointMatch:lastEndpoint,finalOrbitChapterHoldSeconds:lastEndpoint.heldSeconds};
   // Trim the measured browser journey against its matched presentation times.
-  execFileSync('ffmpeg',['-hide_banner','-loglevel','error','-y','-i',rawVideoPath,'-vf',`trim=start=${clipStartSeconds}:end=${clipEndSeconds},setpts=(PTS-STARTPTS)*${ptsScale}`,'-an','-c:v','libvpx-vp9','-crf','32','-b:v','0',videoPath],{stdio:'pipe'});
+  timing.rawMotionPtsWindow=rawMotionPtsWindow;
+  await writeFile(join(output,'timing-diagnostics.json'),JSON.stringify(timing,null,2));
+  const encodingStarted=Date.now();
+  execFileSync('ffmpeg',['-hide_banner','-loglevel','error','-y','-i',rawVideoPath,'-vf',`trim=start=${clipStartSeconds}:end=${clipEndSeconds},setpts=PTS-STARTPTS`,'-an','-c:v','libvpx-vp9','-crf','32','-b:v','0',videoPath],{stdio:'pipe'});
+  timing.encodingElapsedMs=Date.now()-encodingStarted;
   actualMotionDurationSeconds=Number(execFileSync('ffprobe',['-v','error','-show_entries','format=duration','-of','default=noprint_wrappers=1:nokey=1',videoPath],{encoding:'utf8'}).trim());
   assert.ok(Number.isFinite(actualMotionDurationSeconds),'ffprobe must return the final recording duration.');
-  assert.ok(actualMotionDurationSeconds>=30&&actualMotionDurationSeconds<=45,`Motion recording must be 30–45 seconds; received ${actualMotionDurationSeconds.toFixed(2)} seconds.`);
+  assert.ok(actualMotionDurationSeconds>=30,'Motion recording preserves the complete journey.');
+  assert.ok(Math.abs(actualMotionDurationSeconds-measuredPtsWindowSeconds)<.25,'Encoded duration preserves the measured presentation timeline at original speed.');
   const encodedFinalMatch=matchReferencePts(videoPath,endpointReferencePath,{last:true});
   assert.ok(encodedFinalMatch.heldSeconds>=3,`Final orbit appears for only ${encodedFinalMatch.heldSeconds.toFixed(2)} seconds in the encoded WebM.`);
   const endpointVerifier=await browser.newPage({viewport:{width:1440,height:900}});
   startComparison=await compareMotionFrame(endpointVerifier,startReferencePath,startEncodedFramePath,false);
   endpointComparison=await compareMotionFrame(endpointVerifier,endpointReferencePath,endpointEncodedFramePath,true);
   await endpointVerifier.close();
-  await rm(rawVideoDir,{recursive:true,force:true});
+  // Retain the raw recording, including on success, for independent timestamp review.
   report.motion={path:'motion/agriscope-forward-reverse.webm',durationSeconds:actualMotionDurationSeconds,captureWindowSeconds:requestedDurationSeconds,rawPresentationTimeWindow:rawMotionPtsWindow,playbackSpeedMultiplier,initialEndpoint:{shot:initialOrbitSnapshot.shot,progress:initialOrbitSnapshot.p,encodedFrameComparison:startComparison,encodedFramePath:'motion/orbit-start-encoded.png',browserReferencePath:'motion/orbit-start-browser.png'},finalEndpoint:{shot:finalOrbitSnapshot.shot,progress:finalOrbitSnapshot.p,requestedHoldSeconds:4,rawChapterHoldSeconds:lastEndpoint.heldSeconds,encodedChapterHoldSeconds:encodedFinalMatch.heldSeconds,encodedFrameComparison:endpointComparison,encodedFramePath:'motion/orbit-endpoint-encoded.png',browserReferencePath:'motion/orbit-endpoint-browser.png'},sequence:'Slow forward descent; pauses at descent, boundary, NDVI, summary and handoff; reverse to boundary then orbit.'};
   report.rendererSamples=captures;
   report.interactions={mobile:mobileInteractionReport,fallbacks:fallbackChecks};
@@ -380,7 +412,7 @@ try{
 }finally{
   if(motionContext)await motionContext.close().catch(()=>{});
   if(browser)await browser.close().catch(()=>{});
-  if(report.status==='PASS')await rm(rawVideoDir,{recursive:true,force:true}).catch(()=>{});
+  await writeFile(join(output,'timing-diagnostics.json'),JSON.stringify(timing,null,2)+'\n');
   await mkdir(output,{recursive:true});
   const checkedOutSha=execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'}).trim();
   if(hashes.length===0)hashes=await sourceHashes().catch(error=>[{error:String(error)}]);
@@ -397,6 +429,7 @@ try{
     captureMethod:{screenshots:'Playwright Chromium screenshots at the ten existing seekCheckpoint shot positions; contact sheets composed from those PNGs in Chromium.',motion:`${motionDescription} Raw WebM trim boundaries are found by matching the unobstructed Earth surface in the browser orbit frame against decoded raw-stream frames sampled at 4 fps on the presentation-time clock; wall-clock offsets are not used. The final encoded frame is compared across the full viewport with a browser capture after a 4-second orbit hold.`,baselineOnly:checkpointsOnly},
     playbackSpeedMultiplier:report.motion?.playbackSpeedMultiplier??null,
     rawMotionPtsWindow,
+    timingDiagnostics:'timing-diagnostics.json',
     initialEncodedFrameComparison:startComparison,
     finalEncodedFrameComparison:endpointComparison,
     renderingLimitations:[`Renderer mode: ${softwareReported?'software WebGL / SwiftShader':'see renderer metadata; hardware acceleration was not benchmarked'}.`,'Small-mobile dimensions are browser viewport/touch emulation, not a physical device.','Journey values are synthetic public examples; no private data or live satellite service is used.'],

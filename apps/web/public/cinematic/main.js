@@ -3,8 +3,8 @@ import {buildSpacecraft} from './spacecraft.js';
 import {buildEarth,buildStarfield} from './earth.js';
 import {buildTerrain} from './terrain.js';
 import {buildEvidence,DEMO} from './demo-evidence.js';
-import {loadMeshData} from './mesh-assets.js';
-import {spaceEnvironment} from './space-light.js';
+import {loadMeshData,loadSurfaceMaps} from './mesh-assets.js';
+import {spaceEnvironment,agriculturalEnvironment} from './space-light.js';
 import {SHOTS,sampleCamera,clamp,smooth} from './timeline.js';
 
 // One instance per React mount. Assets, listeners and GPU resources belong to it.
@@ -69,18 +69,23 @@ export function mountJourney(root){
     const data=await loadMeshData(name,controller.signal);complete();return data;
    }));
    if(disposed)return;
+   const surfaceMaps=await loadSurfaceMaps([ship,farmland,tree],loader);
+   for(const set of Object.values(surfaceMaps))for(const texture of Object.values(set)){if(disposed)texture.dispose();else resources.push(texture);}
+   if(disposed)return;
    const [day,clouds,night]=textures;
    textures.forEach(t=>{t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());});
    const environment=spaceEnvironment(renderer);scene.environment=environment.texture;resources.push(environment);scene.environmentIntensity=.68;
    hemisphere=new THREE.HemisphereLight(0xb3d8ee,0x1b2618,.68);scene.add(hemisphere);
    sun=new THREE.DirectionalLight(0xffead4,2.35);sun.position.set(-30,30,18);sun.castShadow=true;
    sun.shadow.mapSize.set(innerWidth<760?1024:2048,innerWidth<760?1024:2048);
-   Object.assign(sun.shadow.camera,{near:1,far:120,left:-19,right:19,top:25,bottom:-19});sun.shadow.bias=-.00012;sun.shadow.normalBias=.022;sun.shadow.radius=7;scene.add(sun);
+   Object.assign(sun.shadow.camera,{near:1,far:120,left:-19,right:19,top:25,bottom:-19});sun.shadow.bias=-.00012;sun.shadow.normalBias=.004;sun.shadow.radius=7;scene.add(sun);
    fill=new THREE.DirectionalLight(0x7faed2,.76);fill.position.set(20,18,-15);scene.add(fill);
    earth=buildEarth({day,clouds,night});scene.add(earth);stars=buildStarfield();scene.add(stars);
-   spacecraft=buildSpacecraft(ship);scene.add(spacecraft);
+   spacecraft=buildSpacecraft(ship,surfaceMaps);scene.add(spacecraft);
    const rotation=new THREE.Matrix3().setFromMatrix4(new THREE.Matrix4().makeRotationFromQuaternion(earth.quaternion.clone().invert()));
-   terrain=buildTerrain({farmland,tree},{mobile:innerWidth<760,day,rotation});scene.add(terrain);
+   terrain=buildTerrain({farmland,tree},{mobile:innerWidth<760,day,rotation,surfaceMaps});scene.add(terrain);
+   const fieldEnvironment=agriculturalEnvironment(renderer);resources.push(fieldEnvironment);
+   terrain.traverse(mesh=>{if(mesh.material?.isMeshStandardMaterial){mesh.material.envMap=fieldEnvironment.texture;mesh.material.envMapIntensity=mesh.name.includes('water')?1.1:.45;}});
    evidence=buildEvidence();scene.add(evidence.group);
    beam=new THREE.Mesh(new THREE.CylinderGeometry(.008,.024,1,16,1,true),new THREE.MeshBasicMaterial({color:0xe8c99a,transparent:true,opacity:0,blending:THREE.AdditiveBlending,depthWrite:false,side:THREE.DoubleSide}));scene.add(beam);
    composer=new THREE.EffectComposer(renderer);composer.addPass(new THREE.RenderPass(scene,camera));
@@ -114,10 +119,10 @@ export function mountJourney(root){
   spacecraft.quaternion.copy(attitude).slerp(nadir,smooth(.235,.38,p));spacecraft.visible=p<.50;
   const descent=smooth(.41,.56,p),detail=smooth(.395,.50,p);
   const agriculturalLight=smooth(.43,.57,p);
-  sun.intensity=2.35-.55*agriculturalLight;fill.intensity=.76+1.30*agriculturalLight;hemisphere.intensity=.68+.90*agriculturalLight;
+  sun.intensity=2.35+.5*agriculturalLight;fill.intensity=.76-.18*agriculturalLight;hemisphere.intensity=.68+.18*agriculturalLight;scene.environmentIntensity=.68-.22*agriculturalLight;
   // Keep the far edge atmospheric, but let the nearby parcels retain warm soil
   // and crop contrast instead of disappearing into a grey fog wash.
-  scene.fog.density=.0006+descent*.0042;scene.fog.color.set(0x101c29).lerp(new THREE.Color(0x293f3d),descent);
+  scene.fog.density=.0006+descent*.009;scene.fog.color.set(0x101c29).lerp(new THREE.Color(0x465c63),descent);
   scene.background.set(0x060d15).lerp(new THREE.Color(0x1a3038),descent);
   stars.material.opacity=.78*(1-smooth(.36,.49,p));stars.visible=p<.51;
   terrain.visible=p>=.405;terrain.userData.localDetail.value=detail;
