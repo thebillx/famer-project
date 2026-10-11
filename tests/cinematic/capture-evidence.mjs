@@ -130,7 +130,7 @@ function monitor(page){
 }
 
 async function ready(page){
-  await page.goto(`${url}?qa=1`,{waitUntil:'domcontentloaded'});
+  await page.goto(`${url}?qa=1`,{waitUntil:'domcontentloaded',timeout:60000});
   await page.waitForFunction(()=>window.__agriscope?.snapshot()?.ready&&window.__agriscope.snapshot().mode==='webgl',null,{timeout:60000});
   assert.equal(await page.locator('.cinematic canvas').count(),1);
 }

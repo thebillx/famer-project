@@ -140,6 +140,7 @@ jobs:
         if: always()
         env:
           CI: "true"
+          CINEMATIC_SOFTWARE_WEBGL: "1"
           CINEMATIC_EVIDENCE: evidence/reference
         run: node tests/cinematic/capture-reference.mjs "$CINEMATIC_EVIDENCE"
 
