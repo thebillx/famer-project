@@ -114,7 +114,7 @@ export function mountJourney(root){
   spacecraft.quaternion.copy(attitude).slerp(nadir,smooth(.235,.38,p));spacecraft.visible=p<.50;
   const descent=smooth(.41,.56,p),detail=smooth(.395,.50,p);
   const agriculturalLight=smooth(.43,.57,p);
-  sun.intensity=2.35-.70*agriculturalLight;fill.intensity=.76+1.02*agriculturalLight;hemisphere.intensity=.68+.62*agriculturalLight;
+  sun.intensity=2.35-.55*agriculturalLight;fill.intensity=.76+1.30*agriculturalLight;hemisphere.intensity=.68+.90*agriculturalLight;
   // Keep the far edge atmospheric, but let the nearby parcels retain warm soil
   // and crop contrast instead of disappearing into a grey fog wash.
   scene.fog.density=.0006+descent*.0042;scene.fog.color.set(0x101c29).lerp(new THREE.Color(0x293f3d),descent);

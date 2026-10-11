@@ -130,7 +130,7 @@ function monitor(page){
 }
 
 async function ready(page){
-  await page.goto(`${url}?qa=1`,{waitUntil:'networkidle'});
+  await page.goto(`${url}?qa=1`,{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>window.__agriscope?.snapshot()?.ready&&window.__agriscope.snapshot().mode==='webgl',null,{timeout:60000});
   assert.equal(await page.locator('.cinematic canvas').count(),1);
 }
@@ -146,7 +146,7 @@ async function verifyMotionFallbacks(){
   const reducedContext=await browser.newContext({viewport,deviceScaleFactor:1,isMobile:true,hasTouch:true});
   const reducedPage=await reducedContext.newPage();
   await reducedPage.emulateMedia({reducedMotion:'reduce'});
-  await reducedPage.goto(`${url}?qa=1`,{waitUntil:'networkidle'});
+  await reducedPage.goto(`${url}?qa=1`,{waitUntil:'domcontentloaded'});
   await reducedPage.waitForFunction(()=>window.__agriscope?.snapshot()?.ready&&window.__agriscope.snapshot().mode==='static',null,{timeout:60000});
   assert.ok(await reducedPage.locator('#fallback').isVisible(),'Reduced-motion users retain the readable fallback.');
   await reducedPage.locator('#resume').click();
@@ -162,8 +162,8 @@ async function verifyMotionFallbacks(){
     };
   });
   const failurePage=await failureContext.newPage();
-  await failurePage.goto(`${url}?qa=1`,{waitUntil:'networkidle'});
-  await failurePage.waitForFunction(()=>document.querySelector('.cinematic')?.classList.contains('static-mode')&&document.querySelector('#fallback')&&!document.querySelector('#fallback').hidden,null,{timeout:60000});
+  await failurePage.goto(`${url}?qa=1`,{waitUntil:'domcontentloaded'});
+  await failurePage.waitForFunction(()=>window.__agriscope?.snapshot()?.ready&&window.__agriscope.snapshot().mode==='static'&&window.__agriscope.snapshot().reason&&document.querySelector('#fallback')&&!document.querySelector('#fallback').hidden,null,{timeout:60000});
   assert.match(await failurePage.locator('#fallback-reason').textContent(),/3D/,'A WebGL failure retains the readable text fallback.');
   await failureContext.close();
   return {reducedMotion:{fallbackVisible:true,resumeReturnsToWebGL:true},rendererFailure:{staticFallbackVisible:true}};

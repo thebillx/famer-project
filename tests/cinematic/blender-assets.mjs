@@ -24,6 +24,15 @@ for(const name of ['spacecraft','farmland','tree']){
     const n=new THREE.Vector3().fromBufferAttribute(normal,i);
     assert.ok(n.length()>.98&&n.length()<1.02,'Packed normals preserve unit length');
    }
+   if(name==='farmland'&&['Irrigation water','Field tracks'].includes(mesh.name)){
+    for(let i=0;i<index.count;i+=3){
+     const a=new THREE.Vector3().fromBufferAttribute(position,index.getX(i));
+     const b=new THREE.Vector3().fromBufferAttribute(position,index.getX(i+1));
+     const c=new THREE.Vector3().fromBufferAttribute(position,index.getX(i+2));
+     const normal=b.sub(a).cross(c.sub(a));
+     assert.ok(normal.y>1e-7,`${mesh.name} triangle ${i/3} must face upward for overhead visibility`);
+    }
+   }
   }
   assert.equal(triangles,asset.triangles);totalTriangles+=triangles;
   const bounds=new THREE.Box3().setFromObject(model),size=bounds.getSize(new THREE.Vector3());

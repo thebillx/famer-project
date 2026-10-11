@@ -6,19 +6,24 @@ of Sentinel-2 or a surveyed farm. No paid service, AI image or copied reference
 asset is involved. Earth textures and the Thai font retain their existing credits.
 
 The generator writes three compact material-batched mesh containers into
-`apps/web/public/cinematic/models/`. Their combined transfer size is about
-3.71 MiB before HTTP compression. Seven spacecraft materials preserve folded
+`apps/web/public/cinematic/models/`. Their combined transfer size is recorded
+in the per-build metadata before HTTP compression. Seven spacecraft materials preserve folded
 thermal blankets, hinges, individually modeled solar cells, a recessed lens,
 radiator fins, harnesses, telemetry dish and thrusters. Land includes raised
 planting beds, staggered and proportion-varied parcels cleared against the
 sample field's actual footprint, adjacent paddies placed around the unchanged
-sample field, a winding service path connected across a recessed irrigation
-channel with raised banks, and three instanced branched tree silhouettes.
+sample field, connected shallow irrigation runs with separate raised banks,
+two access spurs and low track crossings, and three instanced branched tree
+silhouettes. Runtime materials add role-specific procedural detail to soil,
+crop, track and water. These meshes are synthetic illustration and do not
+represent surveyed ownership or real irrigation.
 Planting rows retain upward-facing normals through the Blender-to-runtime axis
 conversion. Tree variants share one JSON file with tapered bark and batched,
 pointed foliage in shaded and sunlit material batches. Terrain uses procedural
 roughness and multi-scale color grain in Blender and the web shader. Geometry
-uses fixed seeds for reproducible output.
+uses fixed seeds for reproducible output. Irrigation bed, raised bank and track
+crossing triangles are explicitly oriented upward; the mesh check verifies
+water and track winding for the overhead Three.js camera.
 
 Use Blender 4.5 LTS from https://www.blender.org/download/lts/:
 

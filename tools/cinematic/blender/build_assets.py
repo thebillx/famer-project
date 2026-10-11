@@ -74,17 +74,17 @@ dark = material("Instrument carbon", (.014, .021, .027), .5, .34)
 cells = material("Photovoltaic cells", (.008, .029, .058), .65, .27, .42)
 glass = material("Recessed optical glass", (.005, .025, .029), .26, .14, .9)
 copper = material("Harness copper", (.24, .10, .035), .75, .37)
-soil = material("Dry earth", (.13, .084, .046), 0, .96)
-track = material("Field tracks", (.23, .16, .088), 0, .94)
-water = material("Irrigation water", (.025, .085, .082), .08, .24, .12)
-foliage = material("Tree foliage", (.22, .30, .095), 0, .96)
-foliage_light = material("Tree foliage · sunlit leaves", (.34, .43, .145), 0, .94)
-bark = material("Tree bark", (.12, .083, .049), 0, .96)
+soil = material("Dry earth", (.18, .118, .067), 0, .96)
+track = material("Field tracks", (.24, .16, .095), 0, .94)
+water = material("Irrigation water", (.012, .075, .082), .12, .20, .24)
+foliage = material("Tree foliage", (.29, .36, .12), 0, .96)
+foliage_light = material("Tree foliage · sunlit leaves", (.40, .49, .18), 0, .94)
+bark = material("Tree bark", (.17, .11, .062), 0, .96)
 greens = [material(f"Rice field {i}", c, 0, .92) for i, c in enumerate([
-    (.105, .19, .058), (.12, .205, .063), (.16, .205, .061),
-    (.094, .164, .049), (.18, .216, .072), (.11, .179, .052),
+    (.095, .17, .066), (.13, .19, .073), (.18, .195, .070),
+    (.105, .156, .059), (.17, .21, .082), (.11, .175, .068),
 ])]
-crop = material("Rice rows", (.11, .174, .051), 0, .97)
+crop = material("Rice rows", (.10, .165, .059), 0, .97)
 
 
 def collection(name):
@@ -124,6 +124,26 @@ def mesh_obj(name, vertices, faces, mat, parent, smooth=False):
         for p in mesh.polygons:
             p.use_smooth = True
     return obj
+
+
+def upward_triangles(vertices, face):
+    """Triangulate a terrain face with every visible surface normal upward.
+
+    Vertex tuples use the runtime's (x, height, z) convention. Explicitly
+    orienting each triangle here avoids axis/side-specific winding mistakes
+    on the irrigation branches and keeps Three.js front-face culling correct.
+    """
+    triangles = [(face[0], face[i], face[i + 1]) for i in range(1, len(face) - 1)]
+    result = []
+    for triangle in triangles:
+        a, b, c = (vertices[index] for index in triangle)
+        ab = (b[0] - a[0], b[1] - a[1], b[2] - a[2])
+        ac = (c[0] - a[0], c[1] - a[1], c[2] - a[2])
+        normal_y = ab[2] * ac[0] - ab[0] * ac[2]
+        if abs(normal_y) < 1e-10:
+            raise ValueError(f"Degenerate upward-facing terrain triangle: {triangle}")
+        result.append(triangle if normal_y > 0 else (triangle[0], triangle[2], triangle[1]))
+    return result
 
 
 def box(name, center, size, mat, parent=ship, bevel=0):
@@ -355,7 +375,7 @@ def crop_plot(cx, cz, half_x, half_z, mat, angle, row_count):
             bend = .036 * math.sin(t * math.pi * 2 + row * .63 + cx) + .016 * math.sin(t * math.pi * 5 + cz)
             # Broader, low crop ridges remain legible in the wide descent view;
             # their shallow crown still reads as planted ground, not toy rails.
-            for lateral, crown in ((-.045, 0), (0, .024), (.045, 0)):
+            for lateral, crown in ((-.016, 0), (0, .004), (.016, 0)):
                 x, z = local_point(cx, cz, lx, base + bend + lateral, angle)
                 row_v.append((x, height(x, z) + .015 + crown, z))
         for step in range(4):
@@ -371,23 +391,76 @@ def crop_plot(cx, cz, half_x, half_z, mat, angle, row_count):
 
 
 patch("Continuous agricultural ground", -18, 18, -18, 18, soil, segments=48, lift=-.004)
-# Neighboring paddies follow the measured sample footprint with a narrow,
-# uniform clearance. These make the focal parcel part of a cultivated landscape
-# instead of leaving an empty 3×3 hole in the surrounding scene.
+# A connected, low irrigation network frames the unchanged sample footprint.
+# Its four branches meet at the corners, with raised banks and a shallow basin.
+# The surrounding parcels sit outside those water and access corridors.
+IRRIGATION_X = 3.12
+IRRIGATION_Z = 2.95
+IRRIGATION_BANK_OUTER = .24
+
+def irrigation_branch(name, axis, coordinate, low, high, mat, width, bank=False):
+    v, f = [], []
+    steps = 144
+    for i in range(steps + 1):
+        t = low + (high - low) * i / steps
+        taper = min(1, i / 9, (steps - i) / 9)
+        drift = (.085 * math.sin(t * .31 + coordinate)
+                 + .028 * math.sin(t * .77 - coordinate * .4)) * taper
+        center = coordinate + drift
+        if axis == "x":
+            x, z = t, center
+        else:
+            x, z = center, t
+        if bank:
+            # Separate shoulders keep the open water surface visible between them.
+            cross = [(-1, -width / 2, .020), (-1, -width / 2 - .065, .063),
+                     (-1, -IRRIGATION_BANK_OUTER, .018),
+                     (1, width / 2, .020), (1, width / 2 + .065, .063),
+                     (1, IRRIGATION_BANK_OUTER, .018)]
+        else:
+            cross = [(-1, -width / 2, .026), (-1, -width * .24, .022),
+                     (1, width * .24, .022), (1, width / 2, .026)]
+        for side, offset, lift in cross:
+            px, pz = (x, z + offset) if axis == "x" else (x + offset, z)
+            v.append((px, height(px, pz) + lift, pz))
+    for i in range(steps):
+        start = i * len(cross)
+        if bank:
+            for side_start in (0, 3):
+                for j in range(2):
+                    a, b = start + side_start + j, start + side_start + j + 6
+                    f.extend(upward_triangles(v, (a, b, b + 1, a + 1)))
+        else:
+            for j in range(3):
+                a, b = start + j, start + j + 4
+                f.extend(upward_triangles(v, (a, b, b + 1, a + 1)))
+    mesh_obj(name, v, f, mat, land, True)
+
+for z in (-IRRIGATION_Z, IRRIGATION_Z):
+    irrigation_branch("Connected irrigation water · cross parcel", "x", z, -IRRIGATION_X, IRRIGATION_X, water, .28)
+    irrigation_branch("Raised paddy bank · cross parcel", "x", z, -IRRIGATION_X, IRRIGATION_X, track, .28, bank=True)
+for x in (-IRRIGATION_X, IRRIGATION_X):
+    irrigation_branch("Connected irrigation water · side run", "z", x, -IRRIGATION_Z, IRRIGATION_Z, water, .28)
+    irrigation_branch("Raised paddy bank · side run", "z", x, -IRRIGATION_Z, IRRIGATION_Z, track, .28, bank=True)
+    irrigation_branch("Connected irrigation water · access spur", "z", x, -5.05, -IRRIGATION_Z, water, .26)
+    irrigation_branch("Raised paddy bank · access spur", "z", x, -5.05, -IRRIGATION_Z, track, .26, bank=True)
+
+# Neighboring paddies are aligned to the bank network so the sample field reads
+# as one cultivated pocket rather than a green tile surrounded by empty ground.
 nearby_plots = []
 for side in (-1, 1):
     for z in (-1.15, 1.05):
-        nearby_plots.append((side * 3.88 + terrain_random.uniform(-.06, .06),
+        nearby_plots.append((side * 4.62 + terrain_random.uniform(-.10, .10),
                              z + terrain_random.uniform(-.07, .07),
-                             .88 + terrain_random.uniform(-.06, .05),
+                             .80 + terrain_random.uniform(-.06, .05),
                              .73 + terrain_random.uniform(-.05, .06),
                              side * terrain_random.uniform(-.16, .16)))
 for side in (-1, 1):
-    for x in (-1.48, 0.0, 1.48):
+    for x in (-1.55, 0.0, 1.55):
         nearby_plots.append((x + terrain_random.uniform(-.04, .04),
-                             side * 3.55 + terrain_random.uniform(-.05, .05),
-                             .69 + terrain_random.uniform(-.04, .04),
-                             .68 + terrain_random.uniform(-.04, .04),
+                             side * 4.02 + terrain_random.uniform(-.07, .07),
+                             .70 + terrain_random.uniform(-.04, .04),
+                             .66 + terrain_random.uniform(-.04, .04),
                              terrain_random.uniform(-.10, .10)))
 for index, (x, z, half_x, half_z, angle) in enumerate(nearby_plots):
     if overlaps_sample(x, z, half_x, half_z, angle):
@@ -402,12 +475,21 @@ for ix in range(-4, 5):
             continue
         x = ix * 3.48 + (iz % 2) * .62 + .25 * math.sin(iz * .71 + ix * .39) + terrain_random.uniform(-.30, .30)
         z = iz * 3.46 + .25 * math.sin(ix * .57 - iz * .31) + terrain_random.uniform(-.30, .30)
-        half_x = 1.40 + terrain_random.random() * .30
-        half_z = 1.15 + terrain_random.random() * .25
+        half_x = 1.18 + terrain_random.random() * .58
+        half_z = .86 + terrain_random.random() * .58
         angle = terrain_random.uniform(-.64, .64) + .07 * math.sin(ix * .6 + iz * .38)
         if overlaps_sample(x, z, half_x, half_z, angle):
             continue
-        rows = terrain_random.randint(9, 12)
+        # Do not let remote green parcels bridge over the central water banks.
+        extent_x = half_x * abs(math.cos(angle)) + half_z * abs(math.sin(angle))
+        extent_z = half_x * abs(math.sin(angle)) + half_z * abs(math.cos(angle))
+        crosses_side = any(abs(x - side * IRRIGATION_X) < extent_x + IRRIGATION_BANK_OUTER
+                           and abs(z) < IRRIGATION_Z + extent_z for side in (-1, 1))
+        crosses_end = any(abs(z - side * IRRIGATION_Z) < extent_z + IRRIGATION_BANK_OUTER
+                          and abs(x) < IRRIGATION_X + extent_x for side in (-1, 1))
+        if crosses_side or crosses_end:
+            continue
+        rows = terrain_random.randint(7, 14)
         crop_plot(x, z, half_x, half_z, greens[(ix * 3 + iz * 7) % len(greens)], angle, rows)
 # One continuous sample field: boundary and comparison cover the same geometry.
 patch("AgriScope sample field", -2.50, 2.45, -2.30, 2.27, greens[1], segments=18)
@@ -431,38 +513,13 @@ for lane, z in enumerate([-5.05]):
         a = i * 2
         f.append((a, a + 1, a + 3, a + 2))
     mesh_obj("Winding farm access path", v, f, track, land, True)
-def canal_ribbon(name, side, mat, width, lift):
-    v, f = [], []
-    steps = 160
-    for i in range(steps + 1):
-        z = -16 + 32 * i / steps
-        center = -4.42 + .16 * math.sin(z * .19) + .055 * math.sin(z * .53 + .7)
-        local_width = width * (.90 + .10 * math.sin(z * .31 + .4))
-        if side == 0:
-            edges = (-local_width / 2, 0, local_width / 2)
-        else:
-            bank = center + side * (.10 + local_width / 2)
-            edges = (-width / 2, width / 2)
-        for edge_index, offset in enumerate(edges):
-            x = center + offset if side == 0 else bank + offset
-            y = height(x, z) + lift
-            if side == 0:
-                y += -.046 if edge_index == 1 else -.018
-            v.append((x, y, z))
-    for i in range(steps):
-        if side == 0:
-            a = i * 3
-            b = a + 3
-            f.extend(((a, b, b + 1, a + 1), (a + 1, b + 1, b + 2, a + 2)))
-        else:
-            a = i * 2
-            f.append((a, a + 2, a + 3, a + 1))
-    mesh_obj(name, v, f, mat, land, True)
-
-
-canal_ribbon("Meandering irrigation canal", 0, water, .28, .018)
-for side in (-1, 1):
-    canal_ribbon("Raised canal bank", side, track, .15, .035)
+# Two low crossings keep the existing west-to-east access road connected over
+# the feeder canals without changing the illustrative field boundary.
+for x in (-IRRIGATION_X, IRRIGATION_X):
+    v = []
+    for px, z in ((x - .24, -5.31), (x + .24, -5.31), (x + .24, -4.79), (x - .24, -4.79)):
+        v.append((px, height(px, z) + .085, z))
+    mesh_obj("Raised farm track crossing", v, upward_triangles(v, (0, 1, 2, 3)), track, land)
 
 def tapered_branch(parent, name, start, end, base_radius, tip_radius, mat=bark, sides=8):
     a, b = Vector(to_blender(start)), Vector(to_blender(end))
@@ -529,11 +586,11 @@ for variant_index, spec in enumerate(tree_specs):
                     end[1] + rng.uniform(.08, .22),
                     end[2] + math.sin(fork_angle) * .17)
         tapered_branch(parent, "Forked secondary limb", fork_start, fork_end, .013, .004, sides=6)
-        for step in range(1, 6):
-            t = step / 6
+        for step in range(1, 8):
+            t = step / 8
             center = tuple(start[k] + (end[k] - start[k]) * t for k in range(3))
             for side in (-1, 1):
-                for layer in range(3):
+                for layer in range(4):
                     leaf_angle = azimuth + side * rng.uniform(.42, 1.26) + rng.uniform(-.36, .36)
                     leaf_direction = (math.cos(leaf_angle) * .58 + math.cos(azimuth) * .34,
                                       rng.uniform(.48, .90),
