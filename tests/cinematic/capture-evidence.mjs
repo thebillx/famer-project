@@ -335,7 +335,9 @@ try{
   await motionContext.close();motionContext=undefined;
   const rawVideoPath=await motionVideo.path();
   const requestedDurationSeconds=(motionEndedAt-motionStartedAt)/1000;
-  const outputDurationLimitSeconds=45;
+  // Leave room for WebM/container frame-duration rounding so ffprobe's
+  // measured output remains strictly below the 45-second evidence cap.
+  const outputDurationLimitSeconds=44.8;
   const rawFormat=probeVideo(rawVideoPath);
   const rawStartSeconds=Number(rawFormat.start_time||0),rawDurationSeconds=Number(rawFormat.duration);
   assert.ok(Number.isFinite(rawDurationSeconds)&&rawDurationSeconds>0,'Raw browser recording must contain a valid presentation timeline.');
