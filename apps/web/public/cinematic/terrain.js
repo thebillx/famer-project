@@ -12,7 +12,7 @@ function detail(material,transition){
    .replace('#include <normal_fragment_begin>','#include <normal_fragment_begin>\nnormal=normalize(mix(geographicNormal,normal,localDetail));')
    .replace('#include <roughnessmap_fragment>','#include <roughnessmap_fragment>\nroughnessFactor=mix(.87,roughnessFactor,localDetail);')
    .replace('#include <metalnessmap_fragment>','#include <metalnessmap_fragment>\nmetalnessFactor*=localDetail;')
-   .replace('#include <color_fragment>','#include <color_fragment>\nfloat fieldPatch=fieldNoise(agriculturalPosition.xz*.24);\nfloat soilVariation=fieldNoise(agriculturalPosition.xz*1.15);\nfloat fineVariation=fieldNoise(agriculturalPosition.xz*5.2);\nfloat furrowLight=sin(agriculturalPosition.x*5.7+sin(agriculturalPosition.z*3.6));\ndiffuseColor.rgb *= .84 + .20*fieldPatch + .075*soilVariation + .025*fineVariation + .018*furrowLight;\nvec3 earthDirection=normalize(globeRotation*vec3(agriculturalPosition.x,agriculturalPosition.y+40.,agriculturalPosition.z));\nvec2 earthUV=vec2(fract(atan(earthDirection.z,-earthDirection.x)/6.2831853),asin(earthDirection.y)/3.14159265+.5);\nvec3 geographicColor=texture2D(globeMap,earthUV).rgb;\ndiffuseColor.rgb=mix(geographicColor,diffuseColor.rgb,localDetail);');
+   .replace('#include <color_fragment>','#include <color_fragment>\nfloat fieldPatch=fieldNoise(agriculturalPosition.xz*.20);\nfloat soilVariation=fieldNoise(agriculturalPosition.xz*1.2);\nfloat fineVariation=fieldNoise(agriculturalPosition.xz*5.8);\nfloat furrowLight=sin(agriculturalPosition.x*5.7+sin(agriculturalPosition.z*3.6));\nfloat soilTone=fieldNoise(agriculturalPosition.xz*.12);\ndiffuseColor.rgb *= .64 + .50*fieldPatch + .22*soilVariation + .08*fineVariation + .018*furrowLight;\ndiffuseColor.rgb=mix(diffuseColor.rgb,vec3(.17,.155,.115),.12*(1.-soilTone));\nvec3 earthDirection=normalize(globeRotation*vec3(agriculturalPosition.x,agriculturalPosition.y+40.,agriculturalPosition.z));\nvec2 earthUV=vec2(fract(atan(earthDirection.z,-earthDirection.x)/6.2831853),asin(earthDirection.y)/3.14159265+.5);\nvec3 geographicColor=texture2D(globeMap,earthUV).rgb;\ndiffuseColor.rgb=mix(geographicColor,diffuseColor.rgb,localDetail);');
  };
  material.customProgramCacheKey=()=> 'agriscope-blender-field-detail-v3';
 }
@@ -22,24 +22,21 @@ export function buildTerrain(assets,{mobile=false,day=null,rotation=new THREE.Ma
  const transition={detail:{value:day?0:1},flatten:{value:0},map:{value:day},rotation:{value:rotation}};
  for(const mesh of group.children){mesh.castShadow=false;if(day)detail(mesh.material,transition);}
  const prototypes=(assets.tree.variants||[assets.tree]).map((_,index)=>decodeMeshAsset(assets.tree,index));
- const random=seededRandom(21),count=mobile?16:26,clusterCount=mobile?5:7,dummy=new THREE.Object3D();
+ const random=seededRandom(21),count=mobile?10:18,clusterCount=mobile?4:6,dummy=new THREE.Object3D();
  const transforms=prototypes.map(()=>[]),trees=[];
+ const groveAnchors=[[-11,-10],[-5,-13],[3,-12],[11,-8],[-12,5],[-6,12],[8,10],[12,2]];
  let anchor=null;
  for(let i=0;i<count;i++){
   const cluster=Math.floor(i/(count/clusterCount));
   if(!anchor||cluster!==Math.floor((i-1)/(count/clusterCount))){
-   let nextAnchor=null;
-   for(let attempt=0;attempt<12;attempt++){
-    const candidate={x:(random()-.5)*27,z:(random()-.5)*27};
-    if(Math.abs(candidate.x)>4.2||Math.abs(candidate.z)>4.2){nextAnchor=candidate;break;}
-   }
-   anchor=nextAnchor||{x:8+cluster*1.1,z:-8};
+   const [ax,az]=groveAnchors[cluster];
+   anchor={x:ax+(random()-.5)*1.8,z:az+(random()-.5)*1.8};
   }
-  const angle=random()*Math.PI*2,radius=.6+random()*2.25;
-  let x=THREE.MathUtils.clamp(anchor.x+Math.cos(angle)*radius,-15.5,15.5);
-  const z=THREE.MathUtils.clamp(anchor.z+Math.sin(angle)*radius,-15.5,15.5);
+  const angle=random()*Math.PI*2,radius=.45+random()*1.45;
+  let x=THREE.MathUtils.clamp(anchor.x+Math.cos(angle)*radius,-13,13);
+  const z=THREE.MathUtils.clamp(anchor.z+Math.sin(angle)*radius,-13,13);
   if(Math.abs(x)<3.2&&Math.abs(z)<3.2)x=THREE.MathUtils.clamp(x+(x<0?-4:4),-15.5,15.5);
-  dummy.position.set(x,fieldHeight(x,z),z);dummy.rotation.y=random()*Math.PI*2;dummy.scale.setScalar(.76+random()*.54);dummy.updateMatrix();
+  dummy.position.set(x,fieldHeight(x,z),z);dummy.rotation.y=random()*Math.PI*2;dummy.scale.set(.62+random()*.25,.66+random()*.24,.62+random()*.25);dummy.updateMatrix();
   transforms[i%prototypes.length].push(dummy.matrix.clone());
  }
  for(let variant=0;variant<prototypes.length;variant++)for(const part of prototypes[variant].children){

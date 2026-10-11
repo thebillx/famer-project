@@ -15,7 +15,7 @@ export function mountJourney(root){
  const media=matchMedia('(prefers-reduced-motion: reduce)'),diagnostic=params.has('qa');
  const resources=[];
  let disposed=false,initializing=false,reduced=media.matches||params.get('motion')==='reduce';
- let renderer,composer,scene,camera,spacecraft,earth,terrain,stars,beam,evidence;
+ let renderer,composer,scene,camera,spacecraft,earth,terrain,stars,beam,evidence,sun,fill,hemisphere;
  let progress=0,target=0,active=false,raf=0,last=0,frames=0,shotIndex=-1,mobileLayout=null,focusField=false,insufficient=false,state={};
  const mobileChapters=[
   ['มองเห็นความเปลี่ยนแปลง','จากวงโคจรถึงแปลงจริง'],
@@ -72,11 +72,11 @@ export function mountJourney(root){
    const [day,clouds,night]=textures;
    textures.forEach(t=>{t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());});
    const environment=spaceEnvironment(renderer);scene.environment=environment.texture;resources.push(environment);scene.environmentIntensity=.68;
-   scene.add(new THREE.HemisphereLight(0xb3d8ee,0x1b2618,.68));
-   const sun=new THREE.DirectionalLight(0xffead4,2.35);sun.position.set(-30,30,18);sun.castShadow=true;
+   hemisphere=new THREE.HemisphereLight(0xb3d8ee,0x1b2618,.68);scene.add(hemisphere);
+   sun=new THREE.DirectionalLight(0xffead4,2.35);sun.position.set(-30,30,18);sun.castShadow=true;
    sun.shadow.mapSize.set(innerWidth<760?1024:2048,innerWidth<760?1024:2048);
    Object.assign(sun.shadow.camera,{near:1,far:120,left:-19,right:19,top:25,bottom:-19});sun.shadow.bias=-.00012;sun.shadow.normalBias=.022;sun.shadow.radius=7;scene.add(sun);
-   const fill=new THREE.DirectionalLight(0x7faed2,.76);fill.position.set(20,18,-15);scene.add(fill);
+   fill=new THREE.DirectionalLight(0x7faed2,.76);fill.position.set(20,18,-15);scene.add(fill);
    earth=buildEarth({day,clouds,night});scene.add(earth);stars=buildStarfield();scene.add(stars);
    spacecraft=buildSpacecraft(ship);scene.add(spacecraft);
    const rotation=new THREE.Matrix3().setFromMatrix4(new THREE.Matrix4().makeRotationFromQuaternion(earth.quaternion.clone().invert()));
@@ -113,6 +113,8 @@ export function mountJourney(root){
   const nadir=new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.PI/2,0,-.22));
   spacecraft.quaternion.copy(attitude).slerp(nadir,smooth(.235,.38,p));spacecraft.visible=p<.50;
   const descent=smooth(.41,.56,p),detail=smooth(.395,.50,p);
+  const agriculturalLight=smooth(.43,.57,p);
+  sun.intensity=2.35-.70*agriculturalLight;fill.intensity=.76+.80*agriculturalLight;hemisphere.intensity=.68+.50*agriculturalLight;
   scene.fog.density=.0008+descent*.011;scene.fog.color.set(0x11263a).lerp(new THREE.Color(0x496774),descent);
   scene.background.set(0x060d15).lerp(new THREE.Color(0x496774),descent);
   stars.material.opacity=.78*(1-smooth(.36,.49,p));stars.visible=p<.51;

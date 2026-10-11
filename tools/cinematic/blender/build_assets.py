@@ -55,11 +55,11 @@ copper = material("Harness copper", (.24, .10, .035), .75, .37)
 soil = material("Dry earth", (.17, .15, .105), 0, .96)
 track = material("Field tracks", (.25, .22, .16), 0, .93)
 water = material("Irrigation water", (.032, .068, .066), .08, .31, .12)
-foliage = material("Tree foliage", (.12, .165, .06), 0, .93)
+foliage = material("Tree foliage", (.11, .145, .066), 0, .96)
 bark = material("Tree bark", (.12, .083, .049), 0, .96)
 greens = [material(f"Rice field {i}", c, 0, .92) for i, c in enumerate([
-    (.18, .225, .088), (.145, .205, .072), (.235, .245, .095),
-    (.115, .18, .075), (.205, .22, .082), (.13, .19, .064),
+    (.17, .19, .086), (.155, .181, .076), (.202, .203, .091),
+    (.142, .171, .078), (.184, .192, .084), (.151, .174, .07),
 ])]
 crop = material("Rice rows", (.082, .145, .044), 0, .97)
 
@@ -279,10 +279,10 @@ def crop_plot(cx, cz, half_x, half_z, mat, angle, row_count):
         for i in range(nx + 1):
             ux = i / nx * 2 - 1
             edge = max(abs(ux), abs(vz))
-            wobble = (math.sin(vz * 4.4 + cx * .31 + math.sin(ux * 2.1)) * .055
-                      + math.sin(ux * 5.1 + cz * .27) * .045
-                      + math.sin((ux + vz) * 7.3 + cx * .13) * .018)
-            edge_weight = max(0, (edge - .48) / .52)
+            wobble = (math.sin(vz * 4.1 + cx * .31 + math.sin(ux * 2.1)) * .11
+                      + math.sin(ux * 5.1 + cz * .27) * .075
+                      + math.sin((ux + vz) * 7.3 + cx * .13) * .035)
+            edge_weight = max(0, (edge - .38) / .62)
             scale = 1 + wobble * edge_weight
             # Cut back parcel corners and soften long straight sides. This uses
             # the existing grid resolution, so visible outline gains no triangles.
@@ -369,7 +369,7 @@ def canopy_blob(parent, name, center, scale, rng):
     obj.name = name
     obj.scale = scale
     for vertex in obj.data.vertices:
-        vertex.co *= .84 + rng.random() * .30
+        vertex.co *= .76 + rng.random() * .50
     for polygon in obj.data.polygons:
         polygon.use_smooth = True
     obj.data.materials.append(foliage)
@@ -378,9 +378,9 @@ def canopy_blob(parent, name, center, scale, rng):
 
 # Three clearly distinct silhouettes share the same two material batches at runtime.
 tree_specs = [
-    ("Round canopy", .78, [((0, .98, 0), (.40, .35, .37)), ((-.24, .85, .04), (.26, .25, .27)), ((.23, .82, -.08), (.27, .26, .25)), ((.03, 1.20, -.01), (.28, .23, .28))]),
-    ("Tall canopy", .98, [((0, 1.15, 0), (.31, .43, .29)), ((-.20, 1.01, .02), (.23, .31, .22)), ((.19, 1.08, -.06), (.24, .34, .22)), ((.02, 1.42, 0), (.23, .31, .22))]),
-    ("Open crown", 1.02, [((-.23, 1.25, .02), (.27, .26, .28)), ((.23, 1.22, -.06), (.25, .27, .24)), ((.02, 1.52, .03), (.25, .24, .27))]),
+    ("Round canopy", .94, [((.02, 1.06, .01), (.49, .32, .43)), ((-.28, 1.02, .06), (.36, .30, .37)), ((.30, .97, -.14), (.37, .31, .34)), ((.02, 1.30, -.08), (.34, .29, .36))]),
+    ("Tall canopy", 1.12, [((.01, 1.25, .02), (.37, .38, .31)), ((-.22, 1.20, .09), (.31, .34, .27)), ((.24, 1.31, -.10), (.31, .39, .27)), ((.04, 1.56, -.02), (.30, .31, .27))]),
+    ("Open crown", 1.10, [((-.27, 1.39, .10), (.34, .31, .35)), ((.27, 1.40, -.13), (.33, .32, .30)), ((.03, 1.62, .04), (.32, .30, .34))]),
 ]
 for variant_index, (name, trunk_height, blobs) in enumerate(tree_specs):
     parent = tree_variants[variant_index]

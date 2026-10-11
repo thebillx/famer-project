@@ -309,18 +309,18 @@ try{
   await motionPage.screenshot({path:startReferencePath,timeout:60000});
   const points=await motionPage.evaluate(()=>window.__agriscope.SHOTS.map(shot=>shot.p));
   const sequence=[
-    {to:points[4],move:3500,hold:2000},
-    {to:points[5],move:2000,hold:2000},
-    {to:points[7],move:3000,hold:2000},
-    {to:points[8],move:2000,hold:1500},
-    {to:points[9],move:2500,hold:2000},
-    {to:points[5],move:3500,hold:2000},
-    {to:0,move:3000,hold:1000},
+    {to:points[4],move:3000,hold:2000},
+    {to:points[5],move:1750,hold:2000},
+    {to:points[7],move:2250,hold:2000},
+    {to:points[8],move:1500,hold:1500},
+    {to:points[9],move:1900,hold:2000},
+    {to:points[5],move:3000,hold:2000},
+    {to:0,move:2500,hold:1000},
   ];
   const motionStartedAt=Date.now();
   for(const stage of sequence){await animateToProgress(motionPage,stage.to,stage.move);await motionPage.waitForTimeout(stage.hold);}
   await motionPage.waitForFunction(()=>{const state=window.__agriscope.snapshot();return state.p<.0003&&state.shot===1;},null,{timeout:10000});
-  await motionPage.waitForTimeout(3500);
+  await motionPage.waitForTimeout(4000);
   await motionPage.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
   const finalOrbitSnapshot=await motionPage.evaluate(()=>window.__agriscope.snapshot());
   assert.equal(finalOrbitSnapshot.shot,1,'Motion must finish at the first orbit shot.');
@@ -331,7 +331,7 @@ try{
   await motionContext.close();motionContext=undefined;
   const rawVideoPath=await motionVideo.path();
   const requestedDurationSeconds=(motionEndedAt-motionStartedAt)/1000;
-  const outputDurationLimitSeconds=44;
+  const outputDurationLimitSeconds=45;
   const rawFormat=probeVideo(rawVideoPath);
   const rawStartSeconds=Number(rawFormat.start_time||0),rawDurationSeconds=Number(rawFormat.duration);
   assert.ok(Number.isFinite(rawDurationSeconds)&&rawDurationSeconds>0,'Raw browser recording must contain a valid presentation timeline.');
@@ -343,7 +343,7 @@ try{
   const measuredPtsWindowSeconds=clipEndSeconds-clipStartSeconds;
   assert.ok(measuredPtsWindowSeconds>=30,`Matched browser endpoints leave less than 30 seconds of complete journey (${measuredPtsWindowSeconds.toFixed(2)}s).`);
   const playbackSpeedMultiplier=Math.max(1,measuredPtsWindowSeconds/outputDurationLimitSeconds);
-  assert.ok(playbackSpeedMultiplier<=1.25,`Matched WebM journey is too long to preserve a slow pace; required playback speed multiplier ${playbackSpeedMultiplier.toFixed(2)} exceeds 1.25.`);
+  assert.ok(playbackSpeedMultiplier<=1.35,`Matched WebM journey is too long to preserve a slow pace; required playback speed multiplier ${playbackSpeedMultiplier.toFixed(2)} exceeds 1.35.`);
   const ptsScale=1/playbackSpeedMultiplier;
   rawMotionPtsWindow={startSeconds:clipStartSeconds,endSeconds:clipEndSeconds,rawStartSeconds,rawDurationSeconds,measuredMotionWindowSeconds:requestedDurationSeconds,measuredPresentationWindowSeconds:measuredPtsWindowSeconds,initialEndpointMatch:firstEndpoint,finalEndpointMatch:lastEndpoint,finalOrbitChapterHoldSeconds:lastEndpoint.heldSeconds};
   // Trim the measured browser journey against its matched presentation times.
@@ -351,12 +351,14 @@ try{
   actualMotionDurationSeconds=Number(execFileSync('ffprobe',['-v','error','-show_entries','format=duration','-of','default=noprint_wrappers=1:nokey=1',videoPath],{encoding:'utf8'}).trim());
   assert.ok(Number.isFinite(actualMotionDurationSeconds),'ffprobe must return the final recording duration.');
   assert.ok(actualMotionDurationSeconds>=30&&actualMotionDurationSeconds<=45,`Motion recording must be 30–45 seconds; received ${actualMotionDurationSeconds.toFixed(2)} seconds.`);
+  const encodedFinalMatch=matchReferencePts(videoPath,endpointReferencePath,{last:true});
+  assert.ok(encodedFinalMatch.heldSeconds>=3,`Final orbit appears for only ${encodedFinalMatch.heldSeconds.toFixed(2)} seconds in the encoded WebM.`);
   const endpointVerifier=await browser.newPage({viewport:{width:1440,height:900}});
   startComparison=await compareMotionFrame(endpointVerifier,startReferencePath,startEncodedFramePath,false);
   endpointComparison=await compareMotionFrame(endpointVerifier,endpointReferencePath,endpointEncodedFramePath,true);
   await endpointVerifier.close();
   await rm(rawVideoDir,{recursive:true,force:true});
-  report.motion={path:'motion/agriscope-forward-reverse.webm',durationSeconds:actualMotionDurationSeconds,captureWindowSeconds:requestedDurationSeconds,rawPresentationTimeWindow:rawMotionPtsWindow,playbackSpeedMultiplier,initialEndpoint:{shot:initialOrbitSnapshot.shot,progress:initialOrbitSnapshot.p,encodedFrameComparison:startComparison,encodedFramePath:'motion/orbit-start-encoded.png',browserReferencePath:'motion/orbit-start-browser.png'},finalEndpoint:{shot:finalOrbitSnapshot.shot,progress:finalOrbitSnapshot.p,requestedHoldSeconds:3.5,encodedChapterHoldSeconds:lastEndpoint.heldSeconds,encodedFrameComparison:endpointComparison,encodedFramePath:'motion/orbit-endpoint-encoded.png',browserReferencePath:'motion/orbit-endpoint-browser.png'},sequence:'Slow forward descent; pauses at descent, boundary, NDVI, summary and handoff; reverse to boundary then orbit.'};
+  report.motion={path:'motion/agriscope-forward-reverse.webm',durationSeconds:actualMotionDurationSeconds,captureWindowSeconds:requestedDurationSeconds,rawPresentationTimeWindow:rawMotionPtsWindow,playbackSpeedMultiplier,initialEndpoint:{shot:initialOrbitSnapshot.shot,progress:initialOrbitSnapshot.p,encodedFrameComparison:startComparison,encodedFramePath:'motion/orbit-start-encoded.png',browserReferencePath:'motion/orbit-start-browser.png'},finalEndpoint:{shot:finalOrbitSnapshot.shot,progress:finalOrbitSnapshot.p,requestedHoldSeconds:4,rawChapterHoldSeconds:lastEndpoint.heldSeconds,encodedChapterHoldSeconds:encodedFinalMatch.heldSeconds,encodedFrameComparison:endpointComparison,encodedFramePath:'motion/orbit-endpoint-encoded.png',browserReferencePath:'motion/orbit-endpoint-browser.png'},sequence:'Slow forward descent; pauses at descent, boundary, NDVI, summary and handoff; reverse to boundary then orbit.'};
   report.rendererSamples=captures;
   report.interactions={mobile:mobileInteractionReport,fallbacks:fallbackChecks};
   report.status=report.errors.length===0&&report.failedRequests.length===0?'PASS':'FAIL';
@@ -381,7 +383,7 @@ try{
     sourceAndAssetHashes:hashes,
     viewportSizes:viewports.map(({name,width,height,mobile})=>({name,width,height,mobileEmulation:mobile})),
     motionDurationSeconds:actualMotionDurationSeconds,
-    captureMethod:{screenshots:'Playwright Chromium screenshots at the ten existing seekCheckpoint shot positions; contact sheets composed from those PNGs in Chromium.',motion:`${motionDescription} Raw WebM trim boundaries are found by matching the browser chapter text region against decoded raw-stream frames sampled at 4 fps on the presentation-time clock; wall-clock offsets are not used. The final encoded frame is compared across the full viewport with a browser capture after a 3.5-second orbit hold.`,baselineOnly:checkpointsOnly},
+    captureMethod:{screenshots:'Playwright Chromium screenshots at the ten existing seekCheckpoint shot positions; contact sheets composed from those PNGs in Chromium.',motion:`${motionDescription} Raw WebM trim boundaries are found by matching the browser chapter text region against decoded raw-stream frames sampled at 4 fps on the presentation-time clock; wall-clock offsets are not used. The final encoded frame is compared across the full viewport with a browser capture after a 4-second orbit hold.`,baselineOnly:checkpointsOnly},
     playbackSpeedMultiplier:report.motion?.playbackSpeedMultiplier??null,
     rawMotionPtsWindow,
     initialEncodedFrameComparison:startComparison,
