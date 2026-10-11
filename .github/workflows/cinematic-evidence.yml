@@ -61,20 +61,11 @@ jobs:
 
       - name: Select the comparison baseline
         id: baseline
-        env:
-          EVENT_ACTION: ${{ github.event.action }}
-          PRIOR_HEAD: ${{ github.event.before }}
-          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
-          # On synchronize, compare against the head that triggered the update.
-          # On opened/reopened/ready_for_review, use the target branch snapshot.
-          if [[ "$EVENT_ACTION" == "synchronize" && -n "$PRIOR_HEAD" ]]; then
-            baseline_sha="$PRIOR_HEAD"
-            baseline_reason="prior PR head from synchronize event"
-          else
-            baseline_sha="$PR_BASE_SHA"
-            baseline_reason="PR base snapshot for $EVENT_ACTION event"
-          fi
+          # Preserve the owner's reviewed visual baseline across evidence-only
+          # correction commits; otherwise a capture fix compares identical art.
+          baseline_sha="4351e748b38bc4e8d0ad2740e31b0fe3d188c8da"
+          baseline_reason="owner-reviewed source before the geometry/material pass"
           echo "sha=$baseline_sha" >> "$GITHUB_OUTPUT"
           echo "reason=$baseline_reason" >> "$GITHUB_OUTPUT"
           echo "Cinematic comparison baseline: $baseline_sha ($baseline_reason)"

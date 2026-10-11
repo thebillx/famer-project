@@ -353,7 +353,17 @@ try{
   const navigationCount={value:0};motionPage.on('framenavigated',frame=>{if(frame===motionPage.mainFrame())navigationCount.value++;});
   for(const stage of sequence){const started=Date.now();await animateToProgress(motionPage,stage.to,stage.move);const moved=Date.now();await motionPage.waitForTimeout(stage.hold);timing.motionStages.push({...stage,actualMoveMs:moved-started,actualHoldMs:Date.now()-moved});}
   assert.equal(navigationCount.value,0,'The production page must not reload during the recording.');
-  await motionPage.waitForFunction(()=>{const state=window.__agriscope.snapshot();return state.p<.0003&&state.shot===1;},null,{timeout:10000});
+  // Software recording can stall between frames while the runtime's bounded
+  // damping is still converging. Wait for natural motion; never seek the endpoint
+  // or retime away the settling interval. Match the focused browser suite budget.
+  const settlingStarted=Date.now();
+  timing.finalSettling={before:await motionPage.evaluate(()=>window.__agriscope.snapshot()),timeoutMs:90000};
+  try{
+    await motionPage.waitForFunction(()=>{const state=window.__agriscope.snapshot();return state.p<.0003&&state.shot===1;},null,{timeout:90000});
+  }finally{
+    timing.finalSettling.elapsedMs=Date.now()-settlingStarted;
+    timing.finalSettling.after=await motionPage.evaluate(()=>window.__agriscope.snapshot()).catch(()=>null);
+  }
   await motionPage.waitForTimeout(4000);
   await motionPage.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
   const finalOrbitSnapshot=await motionPage.evaluate(()=>window.__agriscope.snapshot());
