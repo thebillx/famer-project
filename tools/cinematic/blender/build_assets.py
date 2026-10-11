@@ -52,16 +52,16 @@ dark = material("Instrument carbon", (.014, .021, .027), .5, .34)
 cells = material("Photovoltaic cells", (.008, .029, .058), .65, .27, .42)
 glass = material("Recessed optical glass", (.005, .025, .029), .26, .14, .9)
 copper = material("Harness copper", (.24, .10, .035), .75, .37)
-soil = material("Dry earth", (.19, .16, .094), 0, .96)
-track = material("Field tracks", (.30, .27, .18), 0, .93)
-water = material("Irrigation water", (.038, .082, .073), .15, .24, .25)
-foliage = material("Tree foliage", (.045, .091, .027), 0, .88)
-bark = material("Tree bark", (.105, .072, .038), 0, .96)
+soil = material("Dry earth", (.17, .15, .105), 0, .96)
+track = material("Field tracks", (.25, .22, .16), 0, .93)
+water = material("Irrigation water", (.032, .068, .066), .08, .31, .12)
+foliage = material("Tree foliage", (.12, .165, .06), 0, .93)
+bark = material("Tree bark", (.12, .083, .049), 0, .96)
 greens = [material(f"Rice field {i}", c, 0, .92) for i, c in enumerate([
-    (.21, .28, .085), (.17, .25, .071), (.29, .30, .10),
-    (.13, .22, .074), (.235, .27, .08), (.13, .20, .054),
+    (.18, .225, .088), (.145, .205, .072), (.235, .245, .095),
+    (.115, .18, .075), (.205, .22, .082), (.13, .19, .064),
 ])]
-crop = material("Rice rows", (.115, .20, .047), 0, .95)
+crop = material("Rice rows", (.082, .145, .044), 0, .97)
 
 
 def collection(name):
@@ -279,10 +279,16 @@ def crop_plot(cx, cz, half_x, half_z, mat, angle, row_count):
         for i in range(nx + 1):
             ux = i / nx * 2 - 1
             edge = max(abs(ux), abs(vz))
-            wobble = (math.sin((ux + 1.7) * 7.1 + cz * .19) * .014
-                      + math.sin((vz - .4) * 5.3 + cx * .17) * .012)
-            scale = 1 + wobble * max(0, (edge - .78) / .22)
-            lx, lz = ux * half_x * scale, vz * half_z * scale
+            wobble = (math.sin(vz * 4.4 + cx * .31 + math.sin(ux * 2.1)) * .055
+                      + math.sin(ux * 5.1 + cz * .27) * .045
+                      + math.sin((ux + vz) * 7.3 + cx * .13) * .018)
+            edge_weight = max(0, (edge - .48) / .52)
+            scale = 1 + wobble * edge_weight
+            # Cut back parcel corners and soften long straight sides. This uses
+            # the existing grid resolution, so visible outline gains no triangles.
+            rounded_x = ux * (1 - .13 * abs(vz) ** 3)
+            rounded_z = vz * (1 - .11 * abs(ux) ** 3)
+            lx, lz = rounded_x * half_x * scale, rounded_z * half_z * scale
             x, z = local_point(cx, cz, lx, lz, angle)
             v.append((x, height(x, z) + .001, z))
     for j in range(nz):
@@ -295,12 +301,13 @@ def crop_plot(cx, cz, half_x, half_z, mat, angle, row_count):
     # spacing drift break the comb-like repetition without changing the sample field.
     row_v, row_f = [], []
     for row in range(row_count):
-        base = -half_z + .065 + (row + terrain_random.uniform(-.12, .12)) * (2 * half_z - .13) / row_count
+        row_margin = .14
+        base = -half_z + row_margin + (row + terrain_random.uniform(-.14, .14)) * (2 * half_z - 2 * row_margin) / row_count
         start = len(row_v)
         for step in range(5):
             t = step / 4
-            lx = -half_x + .025 + t * (2 * half_x - .05)
-            bend = .018 * math.sin(t * math.pi * 2 + row * .63 + cx) + .008 * math.sin(t * math.pi * 5 + cz)
+            lx = -half_x + .14 + t * (2 * half_x - .28)
+            bend = .036 * math.sin(t * math.pi * 2 + row * .63 + cx) + .016 * math.sin(t * math.pi * 5 + cz)
             for side in (-.009, .009):
                 x, z = local_point(cx, cz, lx, base + bend + side, angle)
                 row_v.append((x, height(x, z) + .016, z))
@@ -312,16 +319,18 @@ def crop_plot(cx, cz, half_x, half_z, mat, angle, row_count):
 
 
 patch("Continuous agricultural ground", -18, 18, -18, 18, soil, segments=48, lift=-.004)
-for ix in range(-6, 7):
-    for iz in range(-6, 7):
-        x = ix * 2.65 + (iz % 2) * .42 + terrain_random.uniform(-.12, .12)
-        z = iz * 2.45 + terrain_random.uniform(-.18, .18)
-        if abs(ix) <= 1 and abs(iz) <= 1:
+for ix in range(-4, 5):
+    for iz in range(-4, 5):
+        # Broad, staggered parcels follow a loose landscape rhythm instead of a
+        # repeated tile grid. The fixed seed retains exact rebuilds.
+        if terrain_random.random() < .14 or (abs(ix) <= 1 and abs(iz) <= 1):
             continue
-        half_x = .97 + terrain_random.random() * .20
-        half_z = .87 + terrain_random.random() * .17
-        angle = terrain_random.choice((-.17, -.08, .035, .11, .20)) + terrain_random.uniform(-.025, .025)
-        rows = terrain_random.randint(15, 21)
+        x = ix * 3.82 + (iz % 2) * .76 + .31 * math.sin(iz * .71 + ix * .39) + terrain_random.uniform(-.48, .48)
+        z = iz * 3.73 + .29 * math.sin(ix * .57 - iz * .31) + terrain_random.uniform(-.48, .48)
+        half_x = 1.08 + terrain_random.random() * .38
+        half_z = .91 + terrain_random.random() * .37
+        angle = terrain_random.uniform(-.72, .72) + .07 * math.sin(ix * .6 + iz * .38)
+        rows = terrain_random.randint(8, 14)
         crop_plot(x, z, half_x, half_z, greens[(ix * 3 + iz * 7) % len(greens)], angle, rows)
 # One continuous sample field: boundary and comparison cover the same geometry.
 patch("AgriScope sample field", -2.50, 2.45, -2.30, 2.27, greens[1], segments=18)
@@ -360,7 +369,7 @@ def canopy_blob(parent, name, center, scale, rng):
     obj.name = name
     obj.scale = scale
     for vertex in obj.data.vertices:
-        vertex.co *= .94 + rng.random() * .12
+        vertex.co *= .84 + rng.random() * .30
     for polygon in obj.data.polygons:
         polygon.use_smooth = True
     obj.data.materials.append(foliage)
@@ -369,9 +378,9 @@ def canopy_blob(parent, name, center, scale, rng):
 
 # Three clearly distinct silhouettes share the same two material batches at runtime.
 tree_specs = [
-    ("Round canopy", .38, [((0, .53, 0), (.30, .27, .28)), ((-.17, .49, .04), (.20, .19, .21)), ((.16, .47, -.06), (.21, .20, .19)), ((.02, .68, -.01), (.22, .18, .22))]),
-    ("Tall canopy", .50, [((0, .66, 0), (.23, .34, .22)), ((-.13, .57, .02), (.16, .23, .17)), ((.13, .61, -.04), (.17, .25, .17)), ((.02, .86, 0), (.17, .23, .17))]),
-    ("Open crown", .57, [((-.18, .72, .02), (.20, .19, .21)), ((.18, .70, -.06), (.19, .20, .18)), ((.02, .88, .03), (.19, .18, .20))]),
+    ("Round canopy", .78, [((0, .98, 0), (.40, .35, .37)), ((-.24, .85, .04), (.26, .25, .27)), ((.23, .82, -.08), (.27, .26, .25)), ((.03, 1.20, -.01), (.28, .23, .28))]),
+    ("Tall canopy", .98, [((0, 1.15, 0), (.31, .43, .29)), ((-.20, 1.01, .02), (.23, .31, .22)), ((.19, 1.08, -.06), (.24, .34, .22)), ((.02, 1.42, 0), (.23, .31, .22))]),
+    ("Open crown", 1.02, [((-.23, 1.25, .02), (.27, .26, .28)), ((.23, 1.22, -.06), (.25, .27, .24)), ((.02, 1.52, .03), (.25, .24, .27))]),
 ]
 for variant_index, (name, trunk_height, blobs) in enumerate(tree_specs):
     parent = tree_variants[variant_index]

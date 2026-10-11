@@ -58,6 +58,63 @@ jobs:
           node tests/cinematic/terrain.mjs
           node tests/cinematic/timeline.mjs
 
+      - name: Select the comparison baseline
+        id: baseline
+        env:
+          EVENT_ACTION: ${{ github.event.action }}
+          PRIOR_HEAD: ${{ github.event.before }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          # On synchronize, compare against the head that triggered the update.
+          # On opened/reopened/ready_for_review, use the target branch snapshot.
+          if [[ "$EVENT_ACTION" == "synchronize" && -n "$PRIOR_HEAD" ]]; then
+            baseline_sha="$PRIOR_HEAD"
+            baseline_reason="prior PR head from synchronize event"
+          else
+            baseline_sha="$PR_BASE_SHA"
+            baseline_reason="PR base snapshot for $EVENT_ACTION event"
+          fi
+          echo "sha=$baseline_sha" >> "$GITHUB_OUTPUT"
+          echo "reason=$baseline_reason" >> "$GITHUB_OUTPUT"
+          echo "Cinematic comparison baseline: $baseline_sha ($baseline_reason)"
+
+      - name: Check out comparison baseline
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ steps.baseline.outputs.sha }}
+          path: .baseline
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Capture matched checkpoints from the selected baseline
+        env:
+          BASELINE_SHA: ${{ steps.baseline.outputs.sha }}
+          BASELINE_REASON: ${{ steps.baseline.outputs.reason }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          CINEMATIC_CHECKPOINTS_ONLY: "1"
+          CINEMATIC_SOFTWARE_WEBGL: "1"
+        run: |
+          test "$(git -C .baseline rev-parse HEAD)" = "$BASELINE_SHA"
+          echo "Baseline reason: $BASELINE_REASON"
+          ln -s "$GITHUB_WORKSPACE/node_modules" .baseline/node_modules
+          (
+            cd .baseline
+            npm run dev --workspace apps/web -- --hostname 127.0.0.1 --port 5185
+          ) > /tmp/agriscope-next-baseline.log 2>&1 &
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:5185/ > /dev/null; then break; fi
+            sleep 2
+          done
+          curl --fail --silent http://127.0.0.1:5185/ > /dev/null
+          (
+            cd .baseline
+            CINEMATIC_EVIDENCE="$GITHUB_WORKSPACE/evidence/before" \
+            CINEMATIC_EXPECTED_HEAD="$BASELINE_SHA" \
+            CINEMATIC_BASE_SHA="$PR_BASE_SHA" \
+            CINEMATIC_URL=http://127.0.0.1:5185/ \
+            node "$GITHUB_WORKSPACE/tests/cinematic/capture-evidence.mjs"
+          )
+
       - name: Start the existing Next.js application
         run: |
           npm run dev --workspace apps/web -- --hostname 127.0.0.1 --port 5184 > /tmp/agriscope-next.log 2>&1 &

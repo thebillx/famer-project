@@ -16,7 +16,19 @@ export function mountJourney(root){
  const resources=[];
  let disposed=false,initializing=false,reduced=media.matches||params.get('motion')==='reduce';
  let renderer,composer,scene,camera,spacecraft,earth,terrain,stars,beam,evidence;
- let progress=0,target=0,active=false,raf=0,last=0,frames=0,shotIndex=-1,focusField=false,insufficient=false,state={};
+ let progress=0,target=0,active=false,raf=0,last=0,frames=0,shotIndex=-1,mobileLayout=null,focusField=false,insufficient=false,state={};
+ const mobileChapters=[
+  ['มองเห็นความเปลี่ยนแปลง','จากวงโคจรถึงแปลงจริง'],
+  ['ดูโลกในแต่ละช่วงเวลา','ภาพดาวเทียมช่วยติดตามพื้นที่เดิม'],
+  ['อ่านแสงเพื่อเปรียบเทียบ','ข้อมูลหลายช่วงคลื่นประกอบการคำนวณ NDVI'],
+  ['จากภาพโลกสู่ประเทศไทย','เลือกพื้นที่ที่คุณสนใจติดตาม'],
+  ['เข้าใกล้พื้นที่เกษตร','การเดินทางนี้เป็นภาพจำลอง'],
+  ['เริ่มจากขอบเขตแปลง','ใช้พื้นที่เดียวกันค้นหาและเปรียบเทียบข้อมูล'],
+  ['ตรวจวันที่และคุณภาพ','ข้อมูลต้องพอทั้งสองช่วงเวลา หากไม่พอจะยังสรุปไม่ได้'],
+  ['เปรียบเทียบพื้นที่เดียวกัน','ค่า NDVI ตัวอย่างต่างวันที่ · ข้อมูลจำลอง'],
+  ['ผลนี้ควรตรวจแปลงต่อ','ค่า NDVI ลดลง แต่ข้อมูลดาวเทียมยังไม่บอกสาเหตุ'],
+  ['เริ่มติดตามแปลงของคุณ','สร้างฟาร์มและวาดขอบเขตใน AgriScope']
+ ];
  const range=()=>Math.max(1,$('journey').offsetHeight-innerHeight);
  const moveTo=(p,behavior='instant')=>scrollTo({top:root.offsetTop+clamp(p)*range(),behavior});
  const getProgress=()=>clamp((scrollY-root.offsetTop)/range());
@@ -60,11 +72,11 @@ export function mountJourney(root){
    const [day,clouds,night]=textures;
    textures.forEach(t=>{t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());});
    const environment=spaceEnvironment(renderer);scene.environment=environment.texture;resources.push(environment);scene.environmentIntensity=.68;
-   scene.add(new THREE.HemisphereLight(0xb3d8ee,0x1b2618,.42));
-   const sun=new THREE.DirectionalLight(0xffead4,2.8);sun.position.set(-30,22,18);sun.castShadow=true;
+   scene.add(new THREE.HemisphereLight(0xb3d8ee,0x1b2618,.68));
+   const sun=new THREE.DirectionalLight(0xffead4,2.35);sun.position.set(-30,30,18);sun.castShadow=true;
    sun.shadow.mapSize.set(innerWidth<760?1024:2048,innerWidth<760?1024:2048);
-   Object.assign(sun.shadow.camera,{near:1,far:120,left:-19,right:19,top:25,bottom:-19});sun.shadow.bias=-.00012;sun.shadow.normalBias=.012;scene.add(sun);
-   const fill=new THREE.DirectionalLight(0x7faed2,.55);fill.position.set(20,18,-15);scene.add(fill);
+   Object.assign(sun.shadow.camera,{near:1,far:120,left:-19,right:19,top:25,bottom:-19});sun.shadow.bias=-.00012;sun.shadow.normalBias=.022;sun.shadow.radius=7;scene.add(sun);
+   const fill=new THREE.DirectionalLight(0x7faed2,.76);fill.position.set(20,18,-15);scene.add(fill);
    earth=buildEarth({day,clouds,night});scene.add(earth);stars=buildStarfield();scene.add(stars);
    spacecraft=buildSpacecraft(ship);scene.add(spacecraft);
    const rotation=new THREE.Matrix3().setFromMatrix4(new THREE.Matrix4().makeRotationFromQuaternion(earth.quaternion.clone().invert()));
@@ -118,8 +130,12 @@ export function mountJourney(root){
   const fieldOpacity=smooth(.835,.86,p),evidenceOpacity=smooth(.635,.655,p)*(1-smooth(.815,.84,p));
   panel('field-panel',fieldOpacity);panel('evidence-panel',evidenceOpacity);
   if(focusField&&fieldOpacity>=.5){$('inspect-field').focus({preventScroll:true});focusField=false;}
-  const narrativeOpacity=mobile?1-smooth(.62,.645,p):1;
-  $('narrative').style.opacity=narrativeOpacity;$('narrative').inert=narrativeOpacity<.5;
+  const narrative=$('narrative'),chapterCta=$('chapter-cta');
+  const compactChapter=mobile&&p>=.62;
+  narrative.style.opacity=1;narrative.inert=false;
+  narrative.classList.toggle('mobile-chapter',compactChapter);
+  $('field-panel').classList.toggle('is-handoff',mobile&&p>=.925);
+  chapterCta.hidden=!(mobile&&p>=.925);
   panel('hero-actions',1-smooth(.035,.065,p));
   $('instrument').style.opacity=smooth(.18,.21,p)*(1-smooth(.235,.265,p));$('instrument').style.visibility=p>=.18&&p<.265?'visible':'hidden';
   $('geo').style.opacity=smooth(.33,.36,p)*(1-smooth(.425,.46,p));$('geo').style.visibility=p>=.33&&p<.46?'visible':'hidden';
@@ -129,10 +145,12 @@ export function mountJourney(root){
   const optic=payload.project(camera);
   $('instrument').style.left=`${clamp((optic.x*.5+.5)*innerWidth-27,24,innerWidth-230)}px`;
   $('instrument').style.top=`${clamp((-optic.y*.5+.5)*innerHeight-27,110,innerHeight*.48)}px`;
-  if(shot!==shotIndex){
-   shotIndex=shot;const s=SHOTS[shot];$('eyebrow').textContent=`${String(shot+1).padStart(2,'0')} / 10   ${s.name}`;
+  if(shot!==shotIndex||mobile!==mobileLayout){
+   shotIndex=shot;mobileLayout=mobile;const s=SHOTS[shot];$('eyebrow').textContent=`${String(shot+1).padStart(2,'0')} / 10   ${s.name}`;
    $('title').innerHTML=shot===0?'มองเห็นความเปลี่ยนแปลง<br><span>จากวงโคจรถึงแปลงจริง</span>':s.thai.split(' ').filter(Boolean).join('<br>');
-   $('description').textContent=s.text;$('chapter').textContent=`${s.name} / ${String(shot+1).padStart(2,'0')}`;
+   if(mobile){$('title').textContent=mobileChapters[shot][0];$('description').textContent=mobileChapters[shot][1];}
+   else $('description').textContent=s.text;
+   $('chapter').textContent=`${s.name} / ${String(shot+1).padStart(2,'0')}`;
   }
   const phase=[0,1,3,6,9].reduce((a,i)=>i<=shot?i:a,0);
   [...$('rail').children].forEach((b,i)=>b.setAttribute('aria-current',String(i===(mobile?phase:shot))));
