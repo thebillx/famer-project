@@ -70,31 +70,35 @@ async function compareMotionFrame(page,referencePath,encodedPath,atEnd){
 function matchReferencePts(rawVideoPath,referencePath,{last=false}={}){
   // Playwright's WebM clock is independent from Date.now(). Locate the actual
   // browser endpoint on the recorded presentation timeline before trimming.
-  const width=144,height=90,bytesPerFrame=width*height*3;
-  const reference=execFileSync('ffmpeg',['-hide_banner','-loglevel','error','-i',referencePath,'-vf',`scale=${width}:${height}:flags=area,format=rgb24`,'-frames:v','1','-f','rawvideo','pipe:1'],{maxBuffer:bytesPerFrame*2});
-  const samples=execFileSync('ffmpeg',['-hide_banner','-loglevel','error','-i',rawVideoPath,'-vf',`fps=4,scale=${width}:${height}:flags=area,format=rgb24`,'-f','rawvideo','pipe:1'],{maxBuffer:1024*1024*16});
+  // Compare the unobstructed Earth surface, not chapter copy or the center of
+  // the artwork: the loading title can overlap both of those dark regions.
+  const width=270,height=88,bytesPerFrame=width*height*3;
+  const artworkFilter=`crop=1080:350:350:530,scale=${width}:${height}:flags=area,format=rgb24`;
+  const reference=execFileSync('ffmpeg',['-hide_banner','-loglevel','error','-i',referencePath,'-vf',artworkFilter,'-frames:v','1','-f','rawvideo','pipe:1'],{maxBuffer:bytesPerFrame*2});
+  const samples=execFileSync('ffmpeg',['-hide_banner','-loglevel','error','-i',rawVideoPath,'-vf',`fps=4,${artworkFilter}`,'-f','rawvideo','pipe:1'],{maxBuffer:1024*1024*64});
   assert.equal(reference.length,bytesPerFrame,'Browser endpoint reference decodes to one RGB sample.');
   assert.equal(samples.length%bytesPerFrame,0,'Raw motion samples align to full decoded RGB frames.');
   const frameCount=samples.length/bytesPerFrame,format=probeVideo(rawVideoPath),streamStart=Number(format.start_time||0),matches=[];
+  const referenceMean=reference.reduce((sum,value)=>sum+value,0)/reference.length;
   for(let index=0;index<frameCount;index++){
     const offset=index*bytesPerFrame;
-    let error=0,channels=0;
-    // The chapter copy is stable while the planet and satellite continue to
-    // drift. Match that semantic screen region, so a mostly-black loading
-    // frame cannot pass by diluting the whole-frame difference.
-    for(let y=42;y<75;y++)for(let x=7;x<42;x++){
+    let error=0,channels=0,sampleMean=0;
+    // Include the moving artwork so the loading view cannot match just because
+    // both it and the orbit chapter have a mostly-black background.
+    for(let y=0;y<height;y++)for(let x=0;x<width;x++){
       const referenceIndex=(y*width+x)*3,sampleIndex=offset+referenceIndex;
-      for(let c=0;c<3;c++){error+=Math.abs(samples[sampleIndex+c]-reference[referenceIndex+c]);channels++;}
+      for(let c=0;c<3;c++){const sample=samples[sampleIndex+c];error+=Math.abs(sample-reference[referenceIndex+c]);sampleMean+=sample;channels++;}
     }
     const mean=error/channels;
-    if(mean<14)matches.push({index,pts:streamStart+index/4,chapterRegionMeanAbsoluteChannelDifference:mean,sampleFps:4});
+    sampleMean/=channels;
+    if(mean<12&&sampleMean>=Math.max(referenceMean*.5,8))matches.push({index,pts:streamStart+index/4,artworkRegionMeanAbsoluteChannelDifference:mean,artworkRegionMeanChannelValue:sampleMean,sampleFps:4});
   }
   const match=last?matches.at(-1):matches[0];
   assert.ok(match,`Could not locate the ${last?'final':'initial'} browser endpoint in the raw WebM presentation timeline.`);
   let runStart=match.index,runEnd=match.index;
   while(matches.some(candidate=>candidate.index===runStart-1))runStart--;
   while(matches.some(candidate=>candidate.index===runEnd+1))runEnd++;
-  return {...match,heldSeconds:(runEnd-runStart)/4,matchStartPts:streamStart+runStart/4,matchEndPts:streamStart+runEnd/4,threshold:14,matchedRegion:'chapter copy'};
+  return {...match,heldSeconds:(runEnd-runStart)/4,matchStartPts:streamStart+runStart/4,matchEndPts:streamStart+runEnd/4,threshold:12,minimumMeanChannelValue:Math.max(referenceMean*.5,8),matchedRegion:'unobstructed Earth surface'};
 }
 
 function gitPaths(){
@@ -338,14 +342,19 @@ try{
   const firstEndpoint=matchReferencePts(rawVideoPath,startReferencePath);
   const lastEndpoint=matchReferencePts(rawVideoPath,endpointReferencePath,{last:true});
   assert.ok(lastEndpoint.heldSeconds>=3,`Final orbit appears for only ${lastEndpoint.heldSeconds.toFixed(2)} seconds in the raw encoded stream.`);
-  const clipStartSeconds=firstEndpoint.pts;
+  // ffmpeg's decoded trim boundary can include the preceding source frame at
+  // an exact fps-sampled PTS. Start one sample inside the proven orbit hold,
+  // then compare the first encoded frame against the browser reference below.
+  const initialFrameAlignmentSeconds=1/4;
+  assert.ok(firstEndpoint.heldSeconds>=initialFrameAlignmentSeconds,`Initial orbit match lasts only ${firstEndpoint.heldSeconds.toFixed(2)} seconds.`);
+  const clipStartSeconds=firstEndpoint.pts+initialFrameAlignmentSeconds;
   const clipEndSeconds=Math.min(rawStartSeconds+rawDurationSeconds,lastEndpoint.pts+.24);
   const measuredPtsWindowSeconds=clipEndSeconds-clipStartSeconds;
   assert.ok(measuredPtsWindowSeconds>=30,`Matched browser endpoints leave less than 30 seconds of complete journey (${measuredPtsWindowSeconds.toFixed(2)}s).`);
   const playbackSpeedMultiplier=Math.max(1,measuredPtsWindowSeconds/outputDurationLimitSeconds);
   assert.ok(playbackSpeedMultiplier<=1.35,`Matched WebM journey is too long to preserve a slow pace; required playback speed multiplier ${playbackSpeedMultiplier.toFixed(2)} exceeds 1.35.`);
   const ptsScale=1/playbackSpeedMultiplier;
-  rawMotionPtsWindow={startSeconds:clipStartSeconds,endSeconds:clipEndSeconds,rawStartSeconds,rawDurationSeconds,measuredMotionWindowSeconds:requestedDurationSeconds,measuredPresentationWindowSeconds:measuredPtsWindowSeconds,initialEndpointMatch:firstEndpoint,finalEndpointMatch:lastEndpoint,finalOrbitChapterHoldSeconds:lastEndpoint.heldSeconds};
+  rawMotionPtsWindow={startSeconds:clipStartSeconds,endSeconds:clipEndSeconds,rawStartSeconds,rawDurationSeconds,measuredMotionWindowSeconds:requestedDurationSeconds,measuredPresentationWindowSeconds:measuredPtsWindowSeconds,initialEndpointAlignmentSeconds:initialFrameAlignmentSeconds,initialEndpointMatch:firstEndpoint,finalEndpointMatch:lastEndpoint,finalOrbitChapterHoldSeconds:lastEndpoint.heldSeconds};
   // Trim the measured browser journey against its matched presentation times.
   execFileSync('ffmpeg',['-hide_banner','-loglevel','error','-y','-i',rawVideoPath,'-vf',`trim=start=${clipStartSeconds}:end=${clipEndSeconds},setpts=(PTS-STARTPTS)*${ptsScale}`,'-an','-c:v','libvpx-vp9','-crf','32','-b:v','0',videoPath],{stdio:'pipe'});
   actualMotionDurationSeconds=Number(execFileSync('ffprobe',['-v','error','-show_entries','format=duration','-of','default=noprint_wrappers=1:nokey=1',videoPath],{encoding:'utf8'}).trim());
@@ -383,7 +392,7 @@ try{
     sourceAndAssetHashes:hashes,
     viewportSizes:viewports.map(({name,width,height,mobile})=>({name,width,height,mobileEmulation:mobile})),
     motionDurationSeconds:actualMotionDurationSeconds,
-    captureMethod:{screenshots:'Playwright Chromium screenshots at the ten existing seekCheckpoint shot positions; contact sheets composed from those PNGs in Chromium.',motion:`${motionDescription} Raw WebM trim boundaries are found by matching the browser chapter text region against decoded raw-stream frames sampled at 4 fps on the presentation-time clock; wall-clock offsets are not used. The final encoded frame is compared across the full viewport with a browser capture after a 4-second orbit hold.`,baselineOnly:checkpointsOnly},
+    captureMethod:{screenshots:'Playwright Chromium screenshots at the ten existing seekCheckpoint shot positions; contact sheets composed from those PNGs in Chromium.',motion:`${motionDescription} Raw WebM trim boundaries are found by matching the unobstructed Earth surface in the browser orbit frame against decoded raw-stream frames sampled at 4 fps on the presentation-time clock; wall-clock offsets are not used. The final encoded frame is compared across the full viewport with a browser capture after a 4-second orbit hold.`,baselineOnly:checkpointsOnly},
     playbackSpeedMultiplier:report.motion?.playbackSpeedMultiplier??null,
     rawMotionPtsWindow,
     initialEncodedFrameComparison:startComparison,
