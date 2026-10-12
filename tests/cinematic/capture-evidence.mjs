@@ -206,8 +206,9 @@ async function measureFrames(page,progress,recording){
       else resolve({intervalsMs:intervals,renderSubmissionMs:submission,elapsedMs:now-start,renderer:window.__agriscope.snapshot().gpu});
     };requestAnimationFrame(frame);
   }),progress);
-  const stats=values=>{const sorted=[...values].sort((a,b)=>a-b);return {count:values.length,mean:values.reduce((a,b)=>a+b,0)/values.length,p50:sorted[Math.floor(sorted.length*.5)],p95:sorted[Math.floor(sorted.length*.95)],max:sorted.at(-1)};};
-  timing.frameProbes.push({progress,recording,viewport:page.viewportSize(),hostElapsedMs:Date.now()-started,...sample,intervalStatsMs:stats(sample.intervalsMs),submissionStatsMs:stats(sample.renderSubmissionMs),interpretation:'rAF intervals and synchronous seek/render submission time; not GPU execution time or a hardware benchmark.'});
+  const stats=values=>{const sorted=[...values].sort((a,b)=>a-b),at=q=>sorted[Math.min(sorted.length-1,Math.floor(sorted.length*q))];return {count:values.length,mean:values.reduce((a,b)=>a+b,0)/values.length,p50:at(.5),p95:at(.95),p99:at(.99),max:sorted.at(-1)};};
+  const intervalClassification={droppedFrameIntervals:sample.intervalsMs.filter(value=>value>25).length,stalledFrameIntervals:sample.intervalsMs.filter(value=>value>50).length,severeStallIntervals:sample.intervalsMs.filter(value=>value>100).length,estimatedMissedVsyncs:sample.intervalsMs.reduce((total,value)=>total+Math.max(0,Math.round(value/(1000/60))-1),0),thresholdsMs:{dropped:25,stalled:50,severe:100}};
+  timing.frameProbes.push({progress,recording,viewport:page.viewportSize(),hostElapsedMs:Date.now()-started,...sample,intervalStatsMs:stats(sample.intervalsMs),intervalClassification,submissionStatsMs:stats(sample.renderSubmissionMs),interpretation:'rAF intervals and synchronous seek/render submission time; not GPU execution time or a hardware benchmark.'});
 }
 
 async function animateToProgress(page,progress,durationMs){

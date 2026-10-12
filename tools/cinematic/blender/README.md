@@ -16,9 +16,10 @@ Only the central cell is reserved for the unchanged sample boundary and canals.
 The channel keeps its accepted centreline and water width, with a compact low
 soil cross-section and one localized vegetated verge joining the sample-facing
 bank to the unchanged field edge. Three tree variants use tapered branching,
-five smooth asymmetric crown shells and attached folded leaf sprays, batched by
-material and instanced in seeded groves. Distant crop rows use low ridges rather
-than individual plants. All geometry uses fixed seeds.
+four small open foliage clusters and attached folded broadleaf fans, batched by
+material and instanced in seeded groves. The branch-attached fans break nearby
+silhouettes while real gaps remain between crown masses. Distant crop rows use
+low ridges rather than individual plants. All geometry uses fixed seeds.
 
 The compact export preserves Blender base color, metalness, roughness, clearcoat,
 UV coordinates (signed 16-bit at 1/512 precision), sidedness and normal strength.
@@ -27,7 +28,10 @@ Blender's bundled NumPy: soil clods, crop fibers, water ripples, broad foil crea
 brushed metal and leaf veins. The same images drive Blender nodes and runtime
 MeshPhysicalMaterial. Color maps use sRGB; normal and roughness maps remain linear.
 One shared texture set per role is disposed with the scene. Missing maps produce
-the existing readable fallback. No additional Three.js runtime is introduced.
+the existing readable fallback. Water reflection uses the authored normal and
+roughness maps, physical IOR, view angle and the original procedural outdoor
+environment; the runtime does not paint periodic fragment-stage bands. No
+additional Three.js runtime is introduced.
 
 Surface artwork and geometry are original AgriScope project assets, licensed
 under the same terms as this repository. No external textures, purchased assets,

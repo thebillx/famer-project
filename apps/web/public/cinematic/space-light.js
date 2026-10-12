@@ -27,8 +27,10 @@ export function agriculturalEnvironment(renderer){
   fragmentShader:`varying vec3 direction;void main(){
    vec3 d=normalize(direction);
    float sky=smoothstep(-.12,.4,d.y),horizon=pow(1.-abs(d.y),5.);
-   float sunlight=pow(max(0.,dot(d,normalize(vec3(-30.,30.,18.)))),200.);
-   vec3 color=mix(vec3(.055,.072,.038),vec3(.30,.39,.43),sky)+horizon*vec3(.31,.30,.25)+sunlight*vec3(4.4,3.8,2.8);
+   vec3 sunDirection=normalize(vec3(-30.,30.,18.));
+   float sunHaze=pow(max(0.,dot(d,sunDirection)),7.);
+   float sunlight=pow(max(0.,dot(d,sunDirection)),200.);
+   vec3 color=mix(vec3(.055,.072,.038),vec3(.30,.39,.43),sky)+horizon*vec3(.31,.30,.25)+sunHaze*vec3(.22,.18,.11)+sunlight*vec3(4.4,3.8,2.8);
    gl_FragColor=vec4(color,1.);
   }`});
  const geometry=new THREE.SphereGeometry(10,24,16);scene.add(new THREE.Mesh(geometry,material));

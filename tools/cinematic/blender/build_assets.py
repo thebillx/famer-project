@@ -58,8 +58,8 @@ damp_bank = material("Damp channel shoulder", (.170, .120, .078), 0, .91)
 wet_bank = material("Wet channel earth", (.145, .105, .070), 0, .86)
 green_verge = material("Vegetated sample verge", (.105, .145, .063), 0, .93)
 water = material("Irrigation water", (.018, .052, .055), 0, .12, .82)
-foliage = material("Tree foliage", (.135, .275, .070), 0, .77, .06)
-foliage_light = material("Tree foliage · sunlit leaves", (.270, .405, .120), 0, .73, .08)
+foliage = material("Tree foliage", (.125, .255, .064), 0, .82, .025)
+foliage_light = material("Tree foliage · sunlit leaves", (.285, .420, .126), 0, .69, .045)
 bark = material("Tree bark", (.17, .11, .062), 0, .96)
 greens = [material(f"Rice field {i}", c, 0, .92) for i, c in enumerate([
     (.085, .145, .060), (.110, .165, .065), (.145, .180, .074),
@@ -772,14 +772,9 @@ def add_leaf(base, direction, length, width, material, batches, roll=0):
     group["faces"].extend(tuple(offset + i for i in face) for face in top)
 
 
-def canopy_mass(parent,name,center,scale,mat,rng,phase,yaw=0):
-    """Create one branch-aligned foliage shell with a smooth screen silhouette.
-
-    Five overlapping shells sit around the primary limbs. Extra segments are limited
-    to these visible crown surfaces so the lower-right shot-6 tree retains a
-    smooth highlight and silhouette without subdividing terrain or branches.
-    """
-    longitude=16;latitude=8;vertices=[];faces=[]
+def canopy_mass(parent,name,center,scale,mat,rng,phase,yaw=0,longitude=16,latitude=8):
+    """Create one smooth, asymmetric foliage cluster around a supporting limb."""
+    vertices=[];faces=[]
     # Shared poles prevent the top and underside from becoming radial caps.
     vertices.append((center[0],center[1]+scale[1],center[2]))
     for ring in range(1,latitude):
@@ -788,7 +783,7 @@ def canopy_mass(parent,name,center,scale,mat,rng,phase,yaw=0):
         vertical=math.cos(theta)
         for segment in range(longitude):
             angle=yaw+math.tau*segment/longitude
-            lobes=(.14*math.sin(angle*3+phase)+.055*math.sin(angle*5-theta*1.7+phase*.4))
+            lobes=(.11*math.sin(angle*5+phase)+.045*math.sin(angle*7-theta*1.7+phase*.4))
             crown_taper=.88+.12*math.sin(theta*.78)
             radial=shoulder*crown_taper*(1+lobes*shoulder+.025*rng.uniform(-1,1))
             x=center[0]+math.cos(angle)*scale[0]*radial
@@ -815,35 +810,41 @@ def canopy_mass(parent,name,center,scale,mat,rng,phase,yaw=0):
 
 
 
-# Three branched silhouettes at a believable crop-edge scale. Five smoother,
-# branch-aligned shells form a coherent crown while leaving sky gaps around
-# primary limbs at the actual shot-6 desktop and mobile distances.
+# Three branched silhouettes at a believable crop-edge scale. Variant one is
+# the representative shot-6 tree: small branch-attached foliage clusters keep
+# readable crown gaps and leaf-scale edge breakup without a denser solid shell.
 tree_specs=[(.98,.54,1.48),(1.18,.43,1.85),(.78,.65,1.29)]
 for variant_index,(trunk_height,spread,crown_height) in enumerate(tree_specs):
     parent=tree_variants[variant_index];rng=random.Random(730+variant_index);leaf_batches={}
     tapered_branch(parent,'Tapered living trunk',(0,0,0),(.045,trunk_height,0),.049,.013,sides=9)
     crown_layouts=[
-        [(-.48,-.03,.12,.45,.21,.39),(-.24,.10,-.13,.53,.24,.45),(.06,.18,.02,.58,.27,.51),(.36,.08,-.10,.48,.23,.43),(.53,-.05,.15,.39,.20,.35)],
+        [(-.58,-.02,.18,.34,.17,.31),(-.42,.12,-.24,.37,.18,.33),(-.17,.20,.20,.39,.19,.35),(.10,.25,-.15,.41,.20,.36),(.34,.13,.23,.37,.18,.33),(.56,-.01,-.18,.33,.16,.30),(-.10,-.10,-.25,.31,.15,.28),(.20,-.08,.27,.30,.15,.27)],
         [(-.44,-.06,-.10,.41,.21,.37),(-.21,.09,.13,.49,.24,.42),(.04,.20,-.02,.54,.28,.47),(.33,.10,.12,.45,.23,.40),(.50,-.04,-.11,.38,.20,.34)],
         [(-.51,-.04,.14,.47,.21,.41),(-.25,.09,-.12,.53,.23,.46),(.04,.17,.03,.56,.26,.50),(.36,.08,-.13,.49,.22,.43),(.55,-.05,.12,.41,.19,.36)],
     ]
-    for cluster,(ox,oy,oz,sx,sy,sz) in enumerate(crown_layouts[variant_index]):
-        canopy_mass(parent,'Layered asymmetric foliage crown',
+    cluster_indices=(0,2,4,6) if variant_index==0 else (0,1,3,4)
+    cluster_scale=1 if variant_index==0 else .76
+    for cluster in cluster_indices:
+        ox,oy,oz,sx,sy,sz=crown_layouts[variant_index][cluster]
+        canopy_mass(parent,'Open branch-attached foliage cluster',
                     (ox*spread,trunk_height*1.02+crown_height*(.08+oy),oz*spread),
-                    (spread*sx,crown_height*sy,spread*sz),
-                    foliage_light if cluster in (1,2,3) else foliage,rng,
-                    variant_index*.93+cluster*.71+.4,yaw=cluster*.62-variant_index*.31)
+                    (spread*sx*cluster_scale,crown_height*sy*(.92 if variant_index else 1),spread*sz*cluster_scale),
+                    foliage_light if cluster%3 else foliage,rng,
+                    variant_index*.93+cluster*.71+.4,yaw=cluster*.62-variant_index*.31,
+                    longitude=12,latitude=6)
+    primary_ends=[]
     for branch in range(9):
         angle=branch*2.399+rng.uniform(-.25,.25)
         start=(.02,trunk_height*rng.uniform(.46,.90),0)
         end=(math.cos(angle)*spread*rng.uniform(.62,.92),rng.uniform(trunk_height*.86,crown_height),math.sin(angle)*spread*rng.uniform(.62,.92))
+        primary_ends.append(end)
         tapered_branch(parent,'Primary branching limb',start,end,.018,.004,sides=7)
         # Small edge sprays break the near-camera silhouette without the large
         # disconnected leaf cards visible in the previous lower-right crown.
         for spray in (-.34,0,.34):
             leaf_angle=angle+spray
             direction=(math.cos(leaf_angle),rng.uniform(.24,.62),math.sin(leaf_angle))
-            length=rng.uniform(.085,.125)
+            length=rng.uniform(.105,.150) if variant_index==0 else rng.uniform(.095,.140)
             shade=foliage_light if spray>=0 else foliage
             add_leaf(end,direction,length,length*.24,shade,leaf_batches,spray*.8)
         for twig in range(2):
@@ -862,6 +863,17 @@ for variant_index,(trunk_height,spread,crown_height) in enumerate(tree_specs):
                     length=rng.uniform(.070,.105)
                     shade=foliage_light if side>0 and rng.random()>.38 else foliage
                     add_leaf(location,direction,length,length*rng.uniform(.20,.27),shade,leaf_batches,side*rng.uniform(.35,.95))
+    # Branch-attached leaf fans break the cluster edges at the near shot-6
+    # camera. They merge into the four small crown masses at distance without
+    # allocating a solid shell or dense geometry to every tree.
+    for cluster,end in enumerate(primary_ends+[(0,trunk_height*.96,0)]):
+        leaf_count=(14 if cluster<len(primary_ends) else 18) if variant_index==0 else (10 if cluster<len(primary_ends) else 14)
+        for leaf in range(leaf_count):
+            angle=math.tau*(leaf/leaf_count)+rng.uniform(-.16,.16)+cluster*.71
+            direction=(math.cos(angle)*rng.uniform(.72,1.0),rng.uniform(-.16,.82),math.sin(angle)*rng.uniform(.72,1.0))
+            length=rng.uniform(.105,.185) if variant_index==0 else rng.uniform(.095,.170)
+            shade=foliage_light if (leaf+cluster)%3 else foliage
+            add_leaf(end,direction,length,length*rng.uniform(.24,.34),shade,leaf_batches,rng.uniform(-1.1,1.1))
     for leaf_batch in leaf_batches.values():
         mesh_obj('Small folded leaves in branching crown',leaf_batch['vertices'],leaf_batch['faces'],leaf_batch['material'],parent,True)
 
@@ -874,7 +886,7 @@ surface_output=OUT.parent/'textures'/'surfaces'
 surface_images=build_surfaces(surface_output)
 for mat in bpy.data.materials:
     role=('foil' if mat==gold else 'solar' if mat==cells else 'metal' if mat==silver else 'water' if mat==water else 'leaf' if mat in (foliage,foliage_light) else 'crop' if mat in greens or mat in (crop_rows,green_verge) else 'soil' if mat in (soil,track,damp_bank,wet_bank,bark) else None)
-    if role:apply_surface(mat,role,surface_images,.38 if role=='foil' else .16 if role=='solar' else .84 if role=='water' else .22 if mat==crop_rows else .18 if mat in (track,damp_bank,green_verge) else .4)
+    if role:apply_surface(mat,role,surface_images,.38 if role=='foil' else .16 if role=='solar' else 1.08 if role=='water' else .22 if mat==crop_rows else .18 if mat in (track,damp_bank,green_verge) else .4)
     if mat in (foliage,foliage_light,crop_rows):mat['doubleSided']=True
 for obj in bpy.data.objects:
     if obj.type!='MESH':continue
@@ -885,7 +897,7 @@ for obj in bpy.data.objects:
         mat=obj.data.materials[polygon.material_index]
         # World-scale projections keep soil/crop detail from repeating as tiny
         # wallpaper across large parcels. Water uses still broader wave bands.
-        scale=(.32 if mat==water else 3.0 if mat in (foliage,foliage_light) else .46 if mat in greens or mat in (crop_rows,green_verge) else
+        scale=(.21 if mat==water else 3.0 if mat in (foliage,foliage_light) else .46 if mat in greens or mat in (crop_rows,green_verge) else
                .62 if mat==track else .72 if mat==damp_bank else .82 if mat==wet_bank else .40 if mat==soil else 1.0)
         for loop in polygon.loop_indices:
             point=obj.matrix_world@obj.data.vertices[obj.data.loops[loop].vertex_index].co

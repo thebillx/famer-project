@@ -33,12 +33,17 @@ def build_surfaces(output):
     row_phase=x*18+y*1.25+.055*np.sin(2*np.pi*(y*2.2-x*.65))
     blades=np.maximum(0,np.sin(2*np.pi*row_phase)-.87)
     crop=.50+broad*.075+grain*.028+blades*.095
-    # Two coherent wave families keep the water directional and readable at a
-    # grazing angle. Their restrained amplitude leaves the environment and IOR
-    # response to carry the reflection instead of noisy normal breakup.
-    water=(.088*np.sin(2*np.pi*(x*2.2+y*.30)+.20*np.sin(2*np.pi*y*1.1))
-           +.038*np.sin(2*np.pi*(x*5.2-y*.68)+1.0)
-           +.008*np.sin(2*np.pi*(x*13.5+y*1.8)+.8))
+    # A deterministic directional spectrum gives the water a coherent surface
+    # without one dominant crest spacing. Integer modes keep the map tileable;
+    # low periodic warping prevents the composite highlight from becoming a row
+    # of equally spaced dashes under the oblique field light.
+    water_warp=(.16*np.sin(2*np.pi*(x+y))
+                +.08*np.sin(2*np.pi*(2*x-y)+.7))
+    water_modes=[(2,1,.052,.25),(3,-1,.032,1.17),(5,2,.017,2.24),
+                 (7,-3,.011,.63),(4,5,.009,1.84),(9,1,.006,2.90),
+                 (11,-4,.004,1.33)]
+    water=sum(amplitude*np.sin(2*np.pi*(x*kx+y*ky)+phase+water_warp)
+              for kx,ky,amplitude,phase in water_modes)
     # Hierarchical slack, buckling and crease scales produce an irregular metal
     # blanket highlight without turning the whole face into large triangles.
     slack=np.sin(2*np.pi*(x*1.08+y*.31)+.45*np.sin(2*np.pi*y*.82))

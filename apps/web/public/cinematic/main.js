@@ -90,7 +90,7 @@ export function mountJourney(root){
    const rotation=new THREE.Matrix3().setFromMatrix4(new THREE.Matrix4().makeRotationFromQuaternion(earth.quaternion.clone().invert()));
    terrain=buildTerrain({farmland,tree},{mobile:innerWidth<760,day,rotation,surfaceMaps});scene.add(terrain);
    const fieldEnvironment=agriculturalEnvironment(renderer);resources.push(fieldEnvironment);
-   terrain.traverse(mesh=>{if(mesh.material?.isMeshStandardMaterial){mesh.material.envMap=fieldEnvironment.texture;mesh.material.envMapIntensity=mesh.name.includes('water')?2.05:mesh.name.includes('foliage')?.48:.42;}});
+   terrain.traverse(mesh=>{if(mesh.material?.isMeshStandardMaterial){mesh.material.envMap=fieldEnvironment.texture;mesh.material.envMapIntensity=mesh.name.includes('water')?1.65:mesh.name.includes('foliage')?.48:.42;}});
    evidence=buildEvidence();scene.add(evidence.group);
    beam=new THREE.Mesh(new THREE.CylinderGeometry(.008,.024,1,16,1,true),new THREE.MeshBasicMaterial({color:0xe8c99a,transparent:true,opacity:0,blending:THREE.AdditiveBlending,depthWrite:false,side:THREE.DoubleSide}));scene.add(beam);
    composer=new THREE.EffectComposer(renderer);composer.addPass(new THREE.RenderPass(scene,camera));
@@ -124,8 +124,9 @@ export function mountJourney(root){
    if(now-started<2400)requestAnimationFrame(frame);else resolve();
   };requestAnimationFrame(frame);});
   progress=base;target=base;apply(base);renderScene();
-  const stats=values=>{const sorted=[...values].sort((a,b)=>a-b);return {count:values.length,mean:values.reduce((a,b)=>a+b,0)/values.length,p50:sorted[Math.floor(sorted.length*.5)],p95:sorted[Math.min(sorted.length-1,Math.floor(sorted.length*.95))],max:sorted.at(-1)};};
-  writeDiagnostics({hardwareProbe:{shot,progress:base,recording,elapsedMs:performance.now()-started,intervalStatsMs:stats(intervals),submissionStatsMs:stats(submission),intervalsMs:intervals,renderSubmissionMs:submission,interpretation:'rAF scheduling and synchronous render submission under the reported renderer; intentional journey holds are not part of this probe and this is not isolated GPU execution time.'}});
+  const stats=values=>{const sorted=[...values].sort((a,b)=>a-b),at=q=>sorted[Math.min(sorted.length-1,Math.floor(sorted.length*q))];return {count:values.length,mean:values.reduce((a,b)=>a+b,0)/values.length,p50:at(.5),p95:at(.95),p99:at(.99),max:sorted.at(-1)};};
+  const intervalClassification={droppedFrameIntervals:intervals.filter(value=>value>25).length,stalledFrameIntervals:intervals.filter(value=>value>50).length,severeStallIntervals:intervals.filter(value=>value>100).length,estimatedMissedVsyncs:intervals.reduce((total,value)=>total+Math.max(0,Math.round(value/(1000/60))-1),0),thresholdsMs:{dropped:25,stalled:50,severe:100}};
+  writeDiagnostics({hardwareProbe:{shot,progress:base,recording,elapsedMs:performance.now()-started,intervalStatsMs:stats(intervals),intervalClassification,submissionStatsMs:stats(submission),intervalsMs:intervals,renderSubmissionMs:submission,interpretation:'rAF scheduling and synchronous render submission under the reported renderer; intentional journey holds are not part of this probe and this is not isolated GPU execution time.'}});
  }
  function panel(id,opacity){const element=$(id);element.style.opacity=opacity;element.style.visibility=opacity>.02?'visible':'hidden';element.inert=opacity<.5;}
  function apply(p){
