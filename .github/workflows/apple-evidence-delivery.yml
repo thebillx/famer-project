@@ -1,0 +1,66 @@
+name: Apple cinematic evidence delivery
+
+on:
+  push:
+    branches:
+      - codex/cinematic-refinement
+    paths:
+      - ".github/workflows/apple-evidence-delivery.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  deliver-apple-evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      EVIDENCE_ASSET_ID: "632375596"
+      EVIDENCE_BYTES: "61559377"
+      EVIDENCE_FILE: agriscope-pr19-exact-head-apple-metal-evidence-7d3de6e.zip
+      EVIDENCE_SHA256: 73472e0442c97a27b21912356244801cedefcd05bc3cd7a8ddc27e9f63b8229b
+      VISUAL_SOURCE_SHA: 7d3de6e0fc74cdb0c1cf0b16ce4db4bd45af5347
+
+    steps:
+      - name: Download the existing byte-identical Apple evidence ZIP
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p apple-evidence
+          curl \
+            --fail-with-body \
+            --location \
+            --header "Accept: application/octet-stream" \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            --output "apple-evidence/$EVIDENCE_FILE" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/assets/$EVIDENCE_ASSET_ID"
+
+      - name: Verify source binding, size, and SHA-256
+        run: |
+          set -euo pipefail
+          evidence_path="apple-evidence/$EVIDENCE_FILE"
+          test "$(stat --format=%s "$evidence_path")" = "$EVIDENCE_BYTES"
+          echo "$EVIDENCE_SHA256  $evidence_path" | sha256sum --check --strict
+          cat > apple-evidence/delivery-info.json <<EOF
+          {
+            "artifactPurpose": "Byte-identical Apple Metal evidence delivery for Draft PR #19",
+            "visualSourceSha": "$VISUAL_SOURCE_SHA",
+            "deliveryWorkflowSha": "${{ github.sha }}",
+            "releaseAssetId": $EVIDENCE_ASSET_ID,
+            "file": "$EVIDENCE_FILE",
+            "bytes": $EVIDENCE_BYTES,
+            "sha256": "$EVIDENCE_SHA256",
+            "renderingNote": "The nested ZIP contains the existing Apple M4 / ANGLE Metal browser recording, raw capture, timing diagnostics, and Ponytail receipts. This workflow does not rerender or modify it."
+          }
+          EOF
+
+      - name: Upload Apple evidence for connector download
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: agriscope-pr19-apple-metal-evidence-7d3de6e
+          path: apple-evidence/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
