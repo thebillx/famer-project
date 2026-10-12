@@ -64,8 +64,8 @@ jobs:
         run: |
           # Preserve the owner's reviewed visual baseline across evidence-only
           # correction commits; otherwise a capture fix compares identical art.
-          baseline_sha="91b472f94beb05c494dba55f515c536d4cd8efd9"
-          baseline_reason="independently accepted parcel and channel geometry baseline for the terrain art pass"
+          baseline_sha="d71e7f8d8c810c5a7e819aa6b83350655457246d"
+          baseline_reason="independently reviewed terrain art baseline for the localized bank, foliage, and water correction"
           echo "sha=$baseline_sha" >> "$GITHUB_OUTPUT"
           echo "reason=$baseline_reason" >> "$GITHUB_OUTPUT"
           echo "Cinematic comparison baseline: $baseline_sha ($baseline_reason)"

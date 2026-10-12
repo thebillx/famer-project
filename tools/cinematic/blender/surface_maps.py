@@ -36,9 +36,9 @@ def build_surfaces(output):
     # Two coherent wave families keep the water directional and readable at a
     # grazing angle. Their restrained amplitude leaves the environment and IOR
     # response to carry the reflection instead of noisy normal breakup.
-    water=(.060*np.sin(2*np.pi*(x*2.4+y*.34)+.18*np.sin(2*np.pi*y*1.1))
-           +.026*np.sin(2*np.pi*(x*5.6-y*.72)+1.0)
-           +.010*np.sin(2*np.pi*(x*13.5+y*1.8)+.8))
+    water=(.088*np.sin(2*np.pi*(x*2.2+y*.30)+.20*np.sin(2*np.pi*y*1.1))
+           +.038*np.sin(2*np.pi*(x*5.2-y*.68)+1.0)
+           +.008*np.sin(2*np.pi*(x*13.5+y*1.8)+.8))
     # Hierarchical slack, buckling and crease scales produce an irregular metal
     # blanket highlight without turning the whole face into large triangles.
     slack=np.sin(2*np.pi*(x*1.08+y*.31)+.45*np.sin(2*np.pi*y*.82))
@@ -51,7 +51,7 @@ def build_surfaces(output):
     vein=np.exp(-abs(x-.5)*180)+.45*np.exp(-abs(np.sin((y-abs(x-.5)*.7)*np.pi*12))*30)
     leaf=.55+.095*broad+.10*vein+.014*grain
     brushed=.5+.025*np.sin(y*np.pi*300)+grain*.018
-    roles={'soil':(soil,.88,1.35),'crop':(crop,.90,.58),'water':(water,.12,.46),'foil':(foil,.29,.86),'solar':(solar,.17,.24),'metal':(brushed,.28,.18),'leaf':(leaf,.84,.58)}
+    roles={'soil':(soil,.88,1.35),'crop':(crop,.90,.58),'water':(water,.10,.78),'foil':(foil,.29,.86),'solar':(solar,.17,.24),'metal':(brushed,.28,.18),'leaf':(leaf,.84,.58)}
     result={}
     for role,(height,rough,strength) in roles.items():
         dx=(np.roll(height,-1,axis=1)-np.roll(height,1,axis=1))*strength
@@ -63,7 +63,7 @@ def build_surfaces(output):
         elif role=='soil': color=np.stack((soil*.24+.73,soil*.22+.69,soil*.18+.63),axis=-1)
         elif role=='leaf': color=np.stack((leaf*.29+.63,leaf*.28+.73,leaf*.22+.50),axis=-1)
         elif role=='solar': color=np.stack((.54+solar*.10,.68+solar*.16,.88+solar*.10),axis=-1)
-        elif role=='water': color=np.stack((.72+water*.045,.85+water*.040,.88+water*.038),axis=-1)
+        elif role=='water': color=np.stack((.62+water*.22,.80+water*.18,.86+water*.14),axis=-1)
         else: color=np.repeat((.92+height*.10)[...,None],3,axis=-1)
         roughness=np.repeat(np.clip(rough+(height-np.mean(height))*.18,.08,.98)[...,None],3,axis=-1)
         # Three.js multiplies roughnessMap.g by exported roughness.

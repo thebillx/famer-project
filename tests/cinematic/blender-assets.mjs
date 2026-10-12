@@ -102,7 +102,7 @@ function assertTerrainSurfaceContinuity(model){
   {label:'parcel',minimum:.006,meshes:model.children.filter(mesh=>mesh.name.startsWith('Rice field'))},
   {label:'crop',minimum:.006,meshes:model.children.filter(mesh=>mesh.name.startsWith('Rice rows'))},
   {label:'water',minimum:.006,meshes:model.children.filter(mesh=>mesh.name==='Irrigation water')},
-  {label:'bank',minimum:.006,meshes:model.children.filter(mesh=>['Field tracks','Damp channel shoulder','Wet channel earth'].includes(mesh.name))},
+  {label:'bank',minimum:.006,meshes:model.children.filter(mesh=>['Field tracks','Damp channel shoulder','Wet channel earth','Vegetated sample verge'].includes(mesh.name))},
  ];
  for(const flatten of [0,.785,.92]){
   const groundHeight=surfaceHeightSampler(ground,flatten);
@@ -146,7 +146,7 @@ for(const name of ['spacecraft','farmland','tree']){
  const variants=Array.isArray(data.variants)?data.variants:[data],heights=[];
  for(let variant=0;variant<variants.length;variant++){
   const model=decodeMeshAsset(data,variant),asset=variants[variant];
-  const materialBatchBudget=name==='farmland'?11:10;
+  const materialBatchBudget=name==='farmland'?12:10;
   assert.ok(model.children.length<=materialBatchBudget,'Material batching stays within the bounded mobile draw budget');
   let triangles=0;
   for(const mesh of model.children){
@@ -163,7 +163,7 @@ for(const name of ['spacecraft','farmland','tree']){
     const n=new THREE.Vector3().fromBufferAttribute(normal,i);
     assert.ok(n.length()>.98&&n.length()<1.02,'Packed normals preserve unit length');
    }
-   if(name==='farmland'&&(['Irrigation water','Field tracks','Damp channel shoulder','Wet channel earth'].includes(mesh.name)||mesh.name.startsWith('Rice rows')||mesh.name.startsWith('Rice field'))){
+   if(name==='farmland'&&(['Irrigation water','Field tracks','Damp channel shoulder','Wet channel earth','Vegetated sample verge'].includes(mesh.name)||mesh.name.startsWith('Rice rows')||mesh.name.startsWith('Rice field'))){
     for(let i=0;i<index.count;i+=3){
      const a=new THREE.Vector3().fromBufferAttribute(position,index.getX(i));
      const b=new THREE.Vector3().fromBufferAttribute(position,index.getX(i+1));
@@ -194,6 +194,35 @@ for(const name of ['spacecraft','farmland','tree']){
   }
   if(name==='farmland'){
    const tracks=model.children.find(mesh=>mesh.name==='Field tracks');
+   const profileMeshes=Object.fromEntries(['Irrigation water','Wet channel earth','Damp channel shoulder','Vegetated sample verge'].map(meshName=>[meshName,model.children.find(mesh=>mesh.name===meshName)]));
+   for(const [meshName,mesh] of Object.entries(profileMeshes))assert.ok(mesh,`${meshName} remains an authored channel-profile surface`);
+   const distances=(mesh,{straight=false}={})=>{
+    const position=mesh.geometry.attributes.position,values=[];
+    for(let i=0;i<position.count;i++){
+     const point=new THREE.Vector3().fromBufferAttribute(position,i);
+     if(straight&&Math.hypot(point.x-3.18,point.z-3.02)<=.9)continue;
+     values.push(channelDistance(point));
+    }
+    return {minimum:Math.min(...values),maximum:Math.max(...values)};
+   };
+   const waterProfile=distances(profileMeshes['Irrigation water'],{straight:true});
+   const wetProfile=distances(profileMeshes['Wet channel earth'],{straight:true});
+   const dampProfile=distances(profileMeshes['Damp channel shoulder'],{straight:true});
+   const vergeProfile=distances(profileMeshes['Vegetated sample verge'],{straight:true});
+   const waterCorner=distances(profileMeshes['Irrigation water']);
+   assert.ok(Math.abs(waterProfile.minimum-.15)<.003&&Math.abs(waterProfile.maximum-.15)<.003,'Accepted water half-width remains 0.15 scene units');
+   assert.ok(wetProfile.minimum>=.147&&wetProfile.maximum<=.233,'Wet soil is localized to the compact 0.15–0.23 channel slope');
+   assert.ok(dampProfile.minimum>=.227&&dampProfile.maximum<=.303,'Damp soil is localized to the compact 0.23–0.30 transition');
+   assert.ok(vergeProfile.minimum>=.377&&vergeProfile.maximum<=.703,'The low vegetated sample verge occupies only the localized 0.38–0.70 profile');
+   assert.ok(waterCorner.maximum<=Math.SQRT2*.15+.003,'The accepted water footprint keeps only the intentional miter extension at the 90-degree junction');
+   assert.ok(.38-.15<waterProfile.maximum*2,'One visible soil bank is narrower than the accepted water surface');
+   const vergePosition=profileMeshes['Vegetated sample verge'].geometry.attributes.position;
+   for(let i=0;i<vergePosition.count;i++){
+    const point=new THREE.Vector3().fromBufferAttribute(vergePosition,i);
+    const north=point.x>=-2.9&&point.x<=3.4&&point.z>=2.28&&point.z<=2.67;
+    const east=point.x>=2.46&&point.x<=2.82&&point.z>=-2.7&&point.z<=3.3;
+    assert.ok(north||east,'Vegetated verge remains localized to the sample-facing L instead of covering distant channel banks');
+   }
    const ray=new THREE.Raycaster(),down=new THREE.Vector3(0,-1,0);
    const samples=[];
    for(let x=-18.4;x<=3.0;x+=.24)samples.push([x,3.02]);

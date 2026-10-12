@@ -13,7 +13,10 @@ radiator fins, harnesses, telemetry dish and thrusters. Land has adjoining
 nonuniform quadrilateral parcels, continuous shared banks, raised crop ridges,
 and irrigation recessed below the soil with separate slopes and access tracks.
 Only the central cell is reserved for the unchanged sample boundary and canals.
-Three tree variants use tapered branching and small folded leaves, batched by
+The channel keeps its accepted centreline and water width, with a compact low
+soil cross-section and one localized vegetated verge joining the sample-facing
+bank to the unchanged field edge. Three tree variants use tapered branching,
+five smooth asymmetric crown shells and attached folded leaf sprays, batched by
 material and instanced in seeded groves. Distant crop rows use low ridges rather
 than individual plants. All geometry uses fixed seeds.
 

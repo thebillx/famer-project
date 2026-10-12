@@ -56,9 +56,10 @@ soil = material("Dry earth", (.18, .118, .067), 0, .96)
 track = material("Field tracks", (.195, .140, .090), 0, .94)
 damp_bank = material("Damp channel shoulder", (.170, .120, .078), 0, .91)
 wet_bank = material("Wet channel earth", (.145, .105, .070), 0, .86)
+green_verge = material("Vegetated sample verge", (.105, .145, .063), 0, .93)
 water = material("Irrigation water", (.018, .052, .055), 0, .12, .82)
-foliage = material("Tree foliage", (.155, .285, .080), 0, .87)
-foliage_light = material("Tree foliage · sunlit leaves", (.285, .405, .125), 0, .84)
+foliage = material("Tree foliage", (.135, .275, .070), 0, .77, .06)
+foliage_light = material("Tree foliage · sunlit leaves", (.270, .405, .120), 0, .73, .08)
 bark = material("Tree bark", (.17, .11, .062), 0, .96)
 greens = [material(f"Rice field {i}", c, 0, .92) for i, c in enumerate([
     (.085, .145, .060), (.110, .165, .065), (.145, .180, .074),
@@ -310,9 +311,9 @@ CHANNEL_CENTERLINE = [
     (3.18, -16.0), (3.18, -18.65),
 ]
 CHANNEL_WATER_HALF_WIDTH = .15
-CHANNEL_SLOPE_OUTER = .29
-CHANNEL_BANK_CREST = .42
-CHANNEL_OUTER = .55
+CHANNEL_SLOPE_OUTER = .23
+CHANNEL_BANK_CREST = .30
+CHANNEL_OUTER = .38
 CHANNEL_PARCEL_CLEARANCE = .565
 CHANNEL_LONGITUDINAL_STEP = .28
 CROP_LONGITUDINAL_STEP = .82
@@ -350,8 +351,9 @@ def channel_distance(x, z):
 
 
 def channel_depth(x, z):
-    # A shallow subsoil cut supports the water and wet slopes. The previous
-    # .115-unit trench exaggerated the bank height into box-like walls.
+    # A shallow subsoil cut supports the water and wet slopes. The compact
+    # cross-section keeps the channel below grade without producing a raised
+    # retaining-wall silhouette around the sample plot.
     distance = channel_distance(x, z)
     return .020 * max(0, min(1, (CHANNEL_OUTER-distance)/.28))
 
@@ -692,12 +694,12 @@ def densify_path(points,max_step):
     return dense
 
 
-def channel_strip(name,inner_offset,outer_offset,inner_lift,outer_lift,mat):
+def channel_strip(name,inner_offset,outer_offset,inner_lift,outer_lift,mat,centerline=None):
     # The ground has a half-unit local grid around the channel. Sampling the
     # channel more finely keeps its water, slopes and shoulders on the same
     # curved surface between control points instead of spanning multi-metre
     # chords that the ground can visibly pierce.
-    path=densify_path(CHANNEL_CENTERLINE,CHANNEL_LONGITUDINAL_STEP)
+    path=densify_path(centerline or CHANNEL_CENTERLINE,CHANNEL_LONGITUDINAL_STEP)
     inner=channel_offset_points(path,inner_offset)
     outer=channel_offset_points(path,outer_offset)
     vertices=[];faces=[]
@@ -711,15 +713,22 @@ def channel_strip(name,inner_offset,outer_offset,inner_lift,outer_lift,mat):
 
 
 # One connected supply channel follows the north and east parcel edges. Its
-# mitered cross-section keeps water continuous through the turn while its low,
-# broad shoulders read as usable farm banks instead of a boxed retaining wall.
+# mitered cross-section keeps water continuous through the turn. Narrow wet and
+# dry bands now occupy less screen space than the water itself at shot 6, while
+# a low vegetated verge joins the sample edge to the soil profile locally.
 channel_strip('Recessed connected irrigation',-CHANNEL_WATER_HALF_WIDTH,CHANNEL_WATER_HALF_WIDTH,-.025,-.025,water)
-channel_strip('Wet channel slopes',-CHANNEL_SLOPE_OUTER,-CHANNEL_WATER_HALF_WIDTH,-.003,-.025,wet_bank)
-channel_strip('Wet channel slopes',CHANNEL_WATER_HALF_WIDTH,CHANNEL_SLOPE_OUTER,-.025,-.003,wet_bank)
-channel_strip('Raised irrigation bank shoulders',-CHANNEL_OUTER,-CHANNEL_BANK_CREST,0,.009,track)
-channel_strip('Damp irrigation bank transition',-CHANNEL_BANK_CREST,-CHANNEL_SLOPE_OUTER,.009,-.003,damp_bank)
-channel_strip('Damp irrigation bank transition',CHANNEL_SLOPE_OUTER,CHANNEL_BANK_CREST,-.003,.009,damp_bank)
-channel_strip('Raised irrigation bank shoulders',CHANNEL_BANK_CREST,CHANNEL_OUTER,.009,0,track)
+channel_strip('Wet channel slopes',-CHANNEL_SLOPE_OUTER,-CHANNEL_WATER_HALF_WIDTH,-.008,-.025,wet_bank)
+channel_strip('Wet channel slopes',CHANNEL_WATER_HALF_WIDTH,CHANNEL_SLOPE_OUTER,-.025,-.008,wet_bank)
+channel_strip('Raised irrigation bank shoulders',-CHANNEL_OUTER,-CHANNEL_BANK_CREST,0,.004,track)
+channel_strip('Damp irrigation bank transition',-CHANNEL_BANK_CREST,-CHANNEL_SLOPE_OUTER,.004,-.008,damp_bank)
+channel_strip('Damp irrigation bank transition',CHANNEL_SLOPE_OUTER,CHANNEL_BANK_CREST,-.008,.004,damp_bank)
+channel_strip('Raised irrigation bank shoulders',CHANNEL_BANK_CREST,CHANNEL_OUTER,.004,0,track)
+# The negative side of this short L is the sample-facing side of both arms.
+# It fills only the authored margin between the low soil shoulder and the
+# unchanged sample footprint; adjoining cultivated parcels keep their original
+# channel clearance and clipping contour.
+channel_strip('Vegetated sample verge',-.70,-CHANNEL_OUTER,.004,0,green_verge,
+              [(-2.68,3.02),(3.18,3.02),(3.18,-2.48)])
 
 planted_parcel([(-2.50,-2.30),(2.45,-2.30),(2.45,2.27),(-2.50,2.27)],greens[1],1,sample=True)
 # A farm track joins the outer banks. It follows a shared parcel edge and stays
@@ -764,13 +773,13 @@ def add_leaf(base, direction, length, width, material, batches, roll=0):
 
 
 def canopy_mass(parent,name,center,scale,mat,rng,phase,yaw=0):
-    """Create one low-density branch-aligned foliage cluster.
+    """Create one branch-aligned foliage shell with a smooth screen silhouette.
 
-    A crown uses seven overlapping clusters at primary limb tips. The bounded
-    9-by-5 topology keeps the silhouette organic at shot-6 distance without
-    spending triangles on invisible leaf-scale detail.
+    Five overlapping shells sit around the primary limbs. Extra segments are limited
+    to these visible crown surfaces so the lower-right shot-6 tree retains a
+    smooth highlight and silhouette without subdividing terrain or branches.
     """
-    longitude=9;latitude=5;vertices=[];faces=[]
+    longitude=16;latitude=8;vertices=[];faces=[]
     # Shared poles prevent the top and underside from becoming radial caps.
     vertices.append((center[0],center[1]+scale[1],center[2]))
     for ring in range(1,latitude):
@@ -779,9 +788,9 @@ def canopy_mass(parent,name,center,scale,mat,rng,phase,yaw=0):
         vertical=math.cos(theta)
         for segment in range(longitude):
             angle=yaw+math.tau*segment/longitude
-            lobes=(.26*math.sin(angle*3+phase)+.12*math.sin(angle*5-theta*1.7+phase*.4))
-            crown_taper=.84+.16*math.sin(theta*.78)
-            radial=shoulder*crown_taper*(1+lobes*shoulder+.04*rng.uniform(-1,1))
+            lobes=(.14*math.sin(angle*3+phase)+.055*math.sin(angle*5-theta*1.7+phase*.4))
+            crown_taper=.88+.12*math.sin(theta*.78)
+            radial=shoulder*crown_taper*(1+lobes*shoulder+.025*rng.uniform(-1,1))
             x=center[0]+math.cos(angle)*scale[0]*radial
             z=center[2]+math.sin(angle)*scale[2]*radial
             # A shallow asymmetric underside exposes trunk and first-order limbs.
@@ -806,17 +815,17 @@ def canopy_mass(parent,name,center,scale,mat,rng,phase,yaw=0):
 
 
 
-# Three branched silhouettes at a believable crop-edge scale. Seven overlapping
-# branch-aligned clusters form a coherent crown while leaving narrow sky gaps
-# around primary limbs at the shot-6 distance.
+# Three branched silhouettes at a believable crop-edge scale. Five smoother,
+# branch-aligned shells form a coherent crown while leaving sky gaps around
+# primary limbs at the actual shot-6 desktop and mobile distances.
 tree_specs=[(.98,.54,1.48),(1.18,.43,1.85),(.78,.65,1.29)]
 for variant_index,(trunk_height,spread,crown_height) in enumerate(tree_specs):
     parent=tree_variants[variant_index];rng=random.Random(730+variant_index);leaf_batches={}
     tapered_branch(parent,'Tapered living trunk',(0,0,0),(.045,trunk_height,0),.049,.013,sides=9)
     crown_layouts=[
-        [(-.50,-.03,.12,.40,.18,.34),(-.27,.10,-.13,.48,.21,.40),(.04,.18,.02,.52,.24,.46),(.34,.09,-.10,.43,.20,.38),(.52,-.05,.15,.34,.17,.30),(-.10,-.12,.22,.42,.18,.38),(.22,-.10,.25,.38,.17,.34)],
-        [(-.45,-.06,-.10,.36,.18,.32),(-.24,.08,.13,.44,.21,.37),(.02,.20,-.02,.48,.25,.42),(.30,.11,.12,.40,.20,.35),(.48,-.04,-.11,.33,.17,.29),(-.12,-.11,-.23,.38,.18,.34),(.20,-.09,-.24,.35,.17,.31)],
-        [(-.53,-.04,.14,.42,.18,.36),(-.28,.09,-.12,.48,.20,.41),(.01,.17,.03,.50,.23,.45),(.33,.08,-.13,.44,.19,.38),(.54,-.05,.12,.36,.16,.31),(-.13,-.12,.25,.41,.17,.36),(.23,-.10,.27,.39,.16,.34)],
+        [(-.48,-.03,.12,.45,.21,.39),(-.24,.10,-.13,.53,.24,.45),(.06,.18,.02,.58,.27,.51),(.36,.08,-.10,.48,.23,.43),(.53,-.05,.15,.39,.20,.35)],
+        [(-.44,-.06,-.10,.41,.21,.37),(-.21,.09,.13,.49,.24,.42),(.04,.20,-.02,.54,.28,.47),(.33,.10,.12,.45,.23,.40),(.50,-.04,-.11,.38,.20,.34)],
+        [(-.51,-.04,.14,.47,.21,.41),(-.25,.09,-.12,.53,.23,.46),(.04,.17,.03,.56,.26,.50),(.36,.08,-.13,.49,.22,.43),(.55,-.05,.12,.41,.19,.36)],
     ]
     for cluster,(ox,oy,oz,sx,sy,sz) in enumerate(crown_layouts[variant_index]):
         canopy_mass(parent,'Layered asymmetric foliage crown',
@@ -829,27 +838,30 @@ for variant_index,(trunk_height,spread,crown_height) in enumerate(tree_specs):
         start=(.02,trunk_height*rng.uniform(.46,.90),0)
         end=(math.cos(angle)*spread*rng.uniform(.62,.92),rng.uniform(trunk_height*.86,crown_height),math.sin(angle)*spread*rng.uniform(.62,.92))
         tapered_branch(parent,'Primary branching limb',start,end,.018,.004,sides=7)
-        # Three restrained edge sprays per crown break the silhouette at the
-        # actual shot-6 distance; they stay batched with the smaller leaves.
-        if branch%3==0:
-            for spray in (-.24,0,.24):
-                leaf_angle=angle+spray
-                direction=(math.cos(leaf_angle),rng.uniform(.24,.58),math.sin(leaf_angle))
-                length=rng.uniform(.16,.22)
-                shade=foliage_light if spray>=0 else foliage
-                add_leaf(end,direction,length,length*.27,shade,leaf_batches,spray*.8)
+        # Small edge sprays break the near-camera silhouette without the large
+        # disconnected leaf cards visible in the previous lower-right crown.
+        for spray in (-.34,0,.34):
+            leaf_angle=angle+spray
+            direction=(math.cos(leaf_angle),rng.uniform(.24,.62),math.sin(leaf_angle))
+            length=rng.uniform(.085,.125)
+            shade=foliage_light if spray>=0 else foliage
+            add_leaf(end,direction,length,length*.24,shade,leaf_batches,spray*.8)
         for twig in range(2):
             t=.52+twig*.27;origin=tuple(start[k]+(end[k]-start[k])*t for k in range(3))
             twig_angle=angle+rng.uniform(-1.5,1.5)
             tip=(origin[0]+math.cos(twig_angle)*.20,origin[1]+rng.uniform(.08,.22),origin[2]+math.sin(twig_angle)*.20)
             tapered_branch(parent,'Fine secondary branch',origin,tip,.006,.0015,sides=5)
-            for leaf in range(3):
-                a=rng.random()*math.tau;r=rng.random()**.5*.16
-                location=(tip[0]+math.cos(a)*r,tip[1]+rng.uniform(-.08,.12),tip[2]+math.sin(a)*r)
-                direction=(math.cos(a),rng.uniform(-.15,.8),math.sin(a))
-                length=rng.uniform(.085,.15)
-                shade=foliage_light if rng.random()>.67 else foliage
-                add_leaf(location,direction,length,length*rng.uniform(.22,.32),shade,leaf_batches,rng.uniform(-1.4,1.4))
+            # Paired leaves grow from the authored twig instead of floating at
+            # random points around it. At close range this reads as one coherent
+            # spray; at distance it becomes a fine, stable crown edge.
+            for node in (.52,.82):
+                location=tuple(origin[k]+(tip[k]-origin[k])*node for k in range(3))
+                for side in (-1,1):
+                    leaf_angle=twig_angle+side*rng.uniform(.48,.82)
+                    direction=(math.cos(leaf_angle),rng.uniform(.24,.72),math.sin(leaf_angle))
+                    length=rng.uniform(.070,.105)
+                    shade=foliage_light if side>0 and rng.random()>.38 else foliage
+                    add_leaf(location,direction,length,length*rng.uniform(.20,.27),shade,leaf_batches,side*rng.uniform(.35,.95))
     for leaf_batch in leaf_batches.values():
         mesh_obj('Small folded leaves in branching crown',leaf_batch['vertices'],leaf_batch['faces'],leaf_batch['material'],parent,True)
 
@@ -861,8 +873,8 @@ from surface_maps import build_surfaces, apply_surface
 surface_output=OUT.parent/'textures'/'surfaces'
 surface_images=build_surfaces(surface_output)
 for mat in bpy.data.materials:
-    role=('foil' if mat==gold else 'solar' if mat==cells else 'metal' if mat==silver else 'water' if mat==water else 'leaf' if mat in (foliage,foliage_light) else 'crop' if mat in greens or mat==crop_rows else 'soil' if mat in (soil,track,damp_bank,wet_bank,bark) else None)
-    if role:apply_surface(mat,role,surface_images,.38 if role=='foil' else .16 if role=='solar' else .38 if role=='water' else .22 if mat==crop_rows else .18 if mat in (track,damp_bank) else .4)
+    role=('foil' if mat==gold else 'solar' if mat==cells else 'metal' if mat==silver else 'water' if mat==water else 'leaf' if mat in (foliage,foliage_light) else 'crop' if mat in greens or mat in (crop_rows,green_verge) else 'soil' if mat in (soil,track,damp_bank,wet_bank,bark) else None)
+    if role:apply_surface(mat,role,surface_images,.38 if role=='foil' else .16 if role=='solar' else .84 if role=='water' else .22 if mat==crop_rows else .18 if mat in (track,damp_bank,green_verge) else .4)
     if mat in (foliage,foliage_light,crop_rows):mat['doubleSided']=True
 for obj in bpy.data.objects:
     if obj.type!='MESH':continue
@@ -873,7 +885,7 @@ for obj in bpy.data.objects:
         mat=obj.data.materials[polygon.material_index]
         # World-scale projections keep soil/crop detail from repeating as tiny
         # wallpaper across large parcels. Water uses still broader wave bands.
-        scale=(.32 if mat==water else .46 if mat in greens or mat==crop_rows else
+        scale=(.32 if mat==water else 3.0 if mat in (foliage,foliage_light) else .46 if mat in greens or mat in (crop_rows,green_verge) else
                .62 if mat==track else .72 if mat==damp_bank else .82 if mat==wet_bank else .40 if mat==soil else 1.0)
         for loop in polygon.loop_indices:
             point=obj.matrix_world@obj.data.vertices[obj.data.loops[loop].vertex_index].co
