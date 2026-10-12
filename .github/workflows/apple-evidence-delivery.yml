@@ -8,7 +8,9 @@ on:
       - ".github/workflows/apple-evidence-delivery.yml"
 
 permissions:
-  contents: read
+  # GitHub exposes draft-release assets only to tokens with push-level contents
+  # access. The job performs one authenticated GET and never mutates the release.
+  contents: write
 
 jobs:
   deliver-apple-evidence:
