@@ -313,6 +313,8 @@ CHANNEL_SLOPE_OUTER = .29
 CHANNEL_BANK_CREST = .42
 CHANNEL_OUTER = .55
 CHANNEL_PARCEL_CLEARANCE = .565
+CHANNEL_LONGITUDINAL_STEP = .28
+CROP_LONGITUDINAL_STEP = .82
 
 
 def overlaps_sample(cx, cz, half_x, half_z, angle, clearance=.32):
@@ -350,7 +352,7 @@ def channel_depth(x, z):
     # A shallow subsoil cut supports the water and wet slopes. The previous
     # .115-unit trench exaggerated the bank height into box-like walls.
     distance = channel_distance(x, z)
-    return .026 * max(0, min(1, (CHANNEL_OUTER-distance)/.28))
+    return .020 * max(0, min(1, (CHANNEL_OUTER-distance)/.28))
 
 
 def ground_mesh():
@@ -424,11 +426,17 @@ def path_crosses_channel(points,clearance=.50):
 
 
 def parcel_relief(index,u,v,sample=False):
-    """Broad deterministic cultivation relief shared by soil and crop beds."""
+    """Broad raised cultivation relief shared by parcel soil and crop beds.
+
+    The continuous ground is the subsoil datum. Keeping the cultivation relief
+    above that datum prevents the ground from surfacing through parcel triangles
+    when their tessellation differs during the globe-to-field deformation.
+    """
     amplitude=.018 if sample else .028
     phase=index*.71
-    return amplitude*(.72*math.sin(u*math.tau*1.15+phase)*math.sin(v*math.pi*.82+phase*.37)
-                      +.28*math.sin((u*.55+v)*math.tau*1.7-phase*.41))
+    wave=(.72*math.sin(u*math.tau*1.15+phase)*math.sin(v*math.pi*.82+phase*.37)
+          +.28*math.sin((u*.55+v)*math.tau*1.7-phase*.41))
+    return amplitude*(.55+.45*wave)
 
 
 def planted_parcel(corners,mat,index,sample=False):
@@ -497,7 +505,13 @@ def planted_parcel(corners,mat,index,sample=False):
             channel_distance(*parcel_point(corners,step/24,vv))<CHANNEL_PARCEL_CLEARANCE+.20
             for step in range(25)
         )
-        longitudinal=10 if sample else (20 if row_near_channel else (5 if distance<9 else 3))
+        authored_longitudinal=10 if sample else (20 if row_near_channel else (5 if distance<9 else 3))
+        # Long crop ribbons otherwise interpolate the curved field several
+        # centimetres below the denser subsoil mesh during shot 5. Retain the
+        # static row-count simplification, but bound each surviving ribbon's
+        # chord length so its rendered surface remains above the ground.
+        row_length=math.dist(corners[0],corners[1])
+        longitudinal=max(authored_longitudinal,math.ceil(row_length/CROP_LONGITUDINAL_STEP))
         end_inset=.014+.018*(.5+.5*math.sin(row*2.17+index*.61))
         for j in range(longitudinal+1):
             u=end_inset+(1-2*end_inset)*j/longitudinal
@@ -584,14 +598,30 @@ def channel_offset_points(points,offset):
     return result
 
 
+def densify_path(points,max_step):
+    dense=[]
+    for a,b in zip(points,points[1:]):
+        steps=max(1,math.ceil(math.dist(a,b)/max_step))
+        for step in range(steps):
+            t=step/steps
+            dense.append((a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t))
+    dense.append(points[-1])
+    return dense
+
+
 def channel_strip(name,inner_offset,outer_offset,inner_lift,outer_lift,mat):
-    inner=channel_offset_points(CHANNEL_CENTERLINE,inner_offset)
-    outer=channel_offset_points(CHANNEL_CENTERLINE,outer_offset)
+    # The ground has a half-unit local grid around the channel. Sampling the
+    # channel more finely keeps its water, slopes and shoulders on the same
+    # curved surface between control points instead of spanning multi-metre
+    # chords that the ground can visibly pierce.
+    path=densify_path(CHANNEL_CENTERLINE,CHANNEL_LONGITUDINAL_STEP)
+    inner=channel_offset_points(path,inner_offset)
+    outer=channel_offset_points(path,outer_offset)
     vertices=[];faces=[]
-    for i in range(len(CHANNEL_CENTERLINE)):
+    for i in range(len(path)):
         for (x,z),lift in ((inner[i],inner_lift),(outer[i],outer_lift)):
             vertices.append((x,height(x,z)+lift,z))
-    for i in range(len(CHANNEL_CENTERLINE)-1):
+    for i in range(len(path)-1):
         a=i*2
         faces.extend(upward_triangles(vertices,(a,a+2,a+3,a+1)))
     mesh_obj(name,vertices,faces,mat,land,True)
@@ -600,13 +630,13 @@ def channel_strip(name,inner_offset,outer_offset,inner_lift,outer_lift,mat):
 # One connected supply channel follows the north and east parcel edges. Its
 # mitered cross-section keeps water continuous through the turn while its low,
 # broad shoulders read as usable farm banks instead of a boxed retaining wall.
-channel_strip('Recessed connected irrigation',-CHANNEL_WATER_HALF_WIDTH,CHANNEL_WATER_HALF_WIDTH,-.032,-.032,water)
-channel_strip('Wet channel slopes',-CHANNEL_SLOPE_OUTER,-CHANNEL_WATER_HALF_WIDTH,-.004,-.032,wet_bank)
-channel_strip('Wet channel slopes',CHANNEL_WATER_HALF_WIDTH,CHANNEL_SLOPE_OUTER,-.032,-.004,wet_bank)
-channel_strip('Raised irrigation bank shoulders',-CHANNEL_OUTER,-CHANNEL_BANK_CREST,0,.014,track)
-channel_strip('Raised irrigation bank shoulders',-CHANNEL_BANK_CREST,-CHANNEL_SLOPE_OUTER,.014,-.004,track)
-channel_strip('Raised irrigation bank shoulders',CHANNEL_SLOPE_OUTER,CHANNEL_BANK_CREST,-.004,.014,track)
-channel_strip('Raised irrigation bank shoulders',CHANNEL_BANK_CREST,CHANNEL_OUTER,.014,0,track)
+channel_strip('Recessed connected irrigation',-CHANNEL_WATER_HALF_WIDTH,CHANNEL_WATER_HALF_WIDTH,-.025,-.025,water)
+channel_strip('Wet channel slopes',-CHANNEL_SLOPE_OUTER,-CHANNEL_WATER_HALF_WIDTH,-.003,-.025,wet_bank)
+channel_strip('Wet channel slopes',CHANNEL_WATER_HALF_WIDTH,CHANNEL_SLOPE_OUTER,-.025,-.003,wet_bank)
+channel_strip('Raised irrigation bank shoulders',-CHANNEL_OUTER,-CHANNEL_BANK_CREST,0,.009,track)
+channel_strip('Raised irrigation bank shoulders',-CHANNEL_BANK_CREST,-CHANNEL_SLOPE_OUTER,.009,-.003,track)
+channel_strip('Raised irrigation bank shoulders',CHANNEL_SLOPE_OUTER,CHANNEL_BANK_CREST,-.003,.009,track)
+channel_strip('Raised irrigation bank shoulders',CHANNEL_BANK_CREST,CHANNEL_OUTER,.009,0,track)
 
 planted_parcel([(-2.50,-2.30),(2.45,-2.30),(2.45,2.27),(-2.50,2.27)],greens[1],1,sample=True)
 # A farm track joins the outer banks. It follows a shared parcel edge and stays

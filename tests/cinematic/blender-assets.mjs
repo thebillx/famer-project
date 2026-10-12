@@ -15,6 +15,76 @@ const pointSegmentDistance=(point,a,b)=>{
  return Math.hypot(point.x-(a[0]+dx*t),point.z-(a[1]+dz*t));
 };
 const channelDistance=point=>Math.min(...channelCenterline.slice(0,-1).map((a,index)=>pointSegmentDistance(point,a,channelCenterline[index+1])));
+const deformedY=(point,flatten)=>point.y+(point.x*point.x+point.z*point.z)/80*flatten;
+const triangleInteriorSamples=vertices=>[
+ [.34,.33,.33],[.60,.20,.20],[.20,.60,.20],[.20,.20,.60],
+].map(weights=>new THREE.Vector3(
+ vertices.reduce((sum,point,index)=>sum+point.x*weights[index],0),
+ vertices.reduce((sum,point,index)=>sum+point.y*weights[index],0),
+ vertices.reduce((sum,point,index)=>sum+point.z*weights[index],0),
+));
+function surfaceHeightSampler(mesh,flatten){
+ const position=mesh.geometry.attributes.position,index=mesh.geometry.index,cell=.5,buckets=new Map();
+ for(let offset=0;offset<index.count;offset+=3){
+  const vertices=[0,1,2].map(step=>new THREE.Vector3().fromBufferAttribute(position,index.getX(offset+step)));
+  for(const point of vertices)point.y=deformedY(point,flatten);
+  const bounds={
+   minX:Math.min(...vertices.map(point=>point.x)),maxX:Math.max(...vertices.map(point=>point.x)),
+   minZ:Math.min(...vertices.map(point=>point.z)),maxZ:Math.max(...vertices.map(point=>point.z)),
+  };
+  const triangle={vertices,index:offset/3};
+  for(let x=Math.floor(bounds.minX/cell);x<=Math.floor(bounds.maxX/cell);x++){
+   for(let z=Math.floor(bounds.minZ/cell);z<=Math.floor(bounds.maxZ/cell);z++){
+    const key=`${x},${z}`;if(!buckets.has(key))buckets.set(key,[]);buckets.get(key).push(triangle);
+   }
+  }
+ }
+ return (x,z)=>{
+  let top=null;
+  for(const triangle of buckets.get(`${Math.floor(x/cell)},${Math.floor(z/cell)}`)||[]){
+   const [a,b,c]=triangle.vertices;
+   const denominator=(b.z-c.z)*(a.x-c.x)+(c.x-b.x)*(a.z-c.z);
+   if(Math.abs(denominator)<1e-10)continue;
+   const wa=((b.z-c.z)*(x-c.x)+(c.x-b.x)*(z-c.z))/denominator;
+   const wb=((c.z-a.z)*(x-c.x)+(a.x-c.x)*(z-c.z))/denominator;
+   const wc=1-wa-wb;
+   if(wa>=-1e-7&&wb>=-1e-7&&wc>=-1e-7){
+    const y=wa*a.y+wb*b.y+wc*c.y;
+    if(!top||y>top.y)top={y,triangle:triangle.index};
+   }
+  }
+  return top;
+ };
+}
+function assertTerrainSurfaceContinuity(model){
+ const ground=model.children.find(mesh=>mesh.name==='Dry earth');
+ const surfaces=[
+  {label:'parcel',minimum:.006,meshes:model.children.filter(mesh=>mesh.name.startsWith('Rice field'))},
+  {label:'crop',minimum:.006,meshes:model.children.filter(mesh=>mesh.name==='Rice rows')},
+  {label:'water',minimum:.006,meshes:model.children.filter(mesh=>mesh.name==='Irrigation water')},
+  {label:'bank',minimum:.006,meshes:model.children.filter(mesh=>mesh.name==='Field tracks'||mesh.name==='Wet channel earth')},
+ ];
+ for(const flatten of [0,.785,.92]){
+  const groundHeight=surfaceHeightSampler(ground,flatten);
+  for(const surface of surfaces){
+   let minimum=Infinity,samples=0;
+   for(const mesh of surface.meshes){
+    const position=mesh.geometry.attributes.position,index=mesh.geometry.index;
+    for(let offset=0;offset<index.count;offset+=3){
+     const vertices=[0,1,2].map(step=>new THREE.Vector3().fromBufferAttribute(position,index.getX(offset+step)));
+     for(const point of vertices)point.y=deformedY(point,flatten);
+     for(const point of triangleInteriorSamples(vertices)){
+      const groundPoint=groundHeight(point.x,point.z);if(!groundPoint)continue;
+      minimum=Math.min(minimum,point.y-groundPoint.y);samples++;
+     }
+    }
+   }
+   assert.ok(samples>0,`${surface.label} has interior samples over the continuous ground footprint`);
+   assert.ok(minimum>=surface.minimum,`${surface.label} clears runtime-deformed ground inside triangles at flatten ${flatten}: ${minimum}`);
+   console.log(`PASS terrain continuity ${surface.label}: ${samples} interior samples, ${(minimum*1000).toFixed(2)} mm minimum clearance at flatten ${flatten}`);
+  }
+ }
+}
 const surfaceDir=new URL('../../apps/web/public/cinematic/textures/surfaces/',import.meta.url);
 const surfaceFiles=readdirSync(surfaceDir).filter(file=>file.endsWith('.png'));
 assert.deepEqual(surfaceFiles.sort(),[
@@ -71,7 +141,7 @@ for(const name of ['spacecraft','farmland','tree']){
      const eastArm=Math.abs(point.x-3.18)<.19&&point.z>-18.9&&point.z<3.25;
      assert.ok(northArm||eastArm,'Water stays in the connected L-shaped channel instead of boxing the sample');
      const surface=-(point.x*point.x+point.z*point.z)/80+.05+Math.sin(point.x*.52)*Math.sin(point.z*.43)*.035;
-     assert.ok(Math.abs(point.y-surface+.032)<.002,'Water is consistently recessed below the authored terrain');
+     assert.ok(Math.abs(point.y-surface+.025)<.002,'Water is consistently recessed below the authored terrain');
     }
    }
    if(name==='farmland'&&(mesh.name.startsWith('Rice field')||mesh.name==='Rice rows')){
@@ -91,6 +161,7 @@ for(const name of ['spacecraft','farmland','tree']){
     ray.set(new THREE.Vector3(x,5,z),down);
     assert.equal(ray.intersectObject(tracks,false).length,0,'Dry access banks must stop at the water edge');
    }
+   assertTerrainSurfaceContinuity(model);
   }
   assert.equal(triangles,asset.triangles);totalTriangles+=triangles;
   const bounds=new THREE.Box3().setFromObject(model),size=bounds.getSize(new THREE.Vector3());
