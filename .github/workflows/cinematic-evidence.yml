@@ -64,8 +64,8 @@ jobs:
         run: |
           # Preserve the owner's reviewed visual baseline across evidence-only
           # correction commits; otherwise a capture fix compares identical art.
-          baseline_sha="7d3de6e0fc74cdb0c1cf0b16ce4db4bd45af5347"
-          baseline_reason="independently reviewed shot-6 visual baseline for this bounded art pass"
+          baseline_sha="527d30f2b01c27e82beca9eec74e163d29a93bd8"
+          baseline_reason="independently reviewed geometry baseline for this bounded shot-6 correction"
           echo "sha=$baseline_sha" >> "$GITHUB_OUTPUT"
           echo "reason=$baseline_reason" >> "$GITHUB_OUTPUT"
           echo "Cinematic comparison baseline: $baseline_sha ($baseline_reason)"

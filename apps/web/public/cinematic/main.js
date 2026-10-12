@@ -147,7 +147,7 @@ export function mountJourney(root){
   stars.material.opacity=.78*(1-smooth(.36,.49,p));stars.visible=p<.51;
   terrain.visible=p>=.405;terrain.userData.localDetail.value=detail;
   const flatten=terrain.userData.update(p);
-  terrain.userData.boundary.visible=p>=.50;terrain.userData.boundary.material.transparent=true;terrain.userData.boundary.material.opacity=smooth(.50,.56,p);
+  terrain.userData.boundary.material.transparent=true;terrain.userData.boundary.material.opacity=smooth(.50,.56,p);
   // Let the spherical basemap leave as the camera commits to the local terrain.
   // Keeping it underneath the flattening mesh produces stray geographic green
   // islands through gaps between synthetic plots in shots 5–6.
@@ -231,7 +231,12 @@ export function mountJourney(root){
  });
  // Exact scroll checkpoints avoid timing-dependent capture in software WebGL.
  // Ordinary visits and user navigation still use the continuous scroll easing.
- const diagnostics={snapshot:()=>structuredClone(state),sampleCamera,SHOTS,seekCheckpoint:p=>{
+ const diagnostics={snapshot:()=>structuredClone(state),sampleCamera,SHOTS,setTerrainDebug:(layer='all',wireframe=false)=>{
+  if(!active)throw new Error('Journey is not active');
+  const terrainDebug=terrain.userData.setDebug({layer,wireframe});
+  renderScene();writeDiagnostics({terrainDebug});
+  return structuredClone(state);
+ },seekCheckpoint:p=>{
   if(!active)throw new Error('Journey is not active');
   moveTo(p);target=getProgress();progress=target;apply(progress);renderScene();
   return structuredClone(state);

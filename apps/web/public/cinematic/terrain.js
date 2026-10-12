@@ -21,7 +21,9 @@ function detail(material,transition,role){
 export function buildTerrain(assets,{mobile=false,day=null,rotation=new THREE.Matrix3(),surfaceMaps={}}={}){
  const group=decodeMeshAsset(assets.farmland,0,surfaceMaps);group.name='Blender agricultural landscape · synthetic demonstration';
  const transition={detail:{value:day?0:1},flatten:{value:0},map:{value:day},rotation:{value:rotation}};
- for(const mesh of group.children){mesh.castShadow=mesh.name==='Field tracks'||mesh.name==='Wet channel earth';mesh.receiveShadow=true;if(day)detail(mesh.material,transition,mesh.name);}
+ const layerFor=name=>name==='Dry earth'?'ground':name.startsWith('Rice field')?'parcel':name==='Rice rows'?'crop':name==='Irrigation water'?'water':name==='Field tracks'||name==='Wet channel earth'?'bank':'other';
+ const surfaceMeshes=[...group.children];
+ for(const mesh of surfaceMeshes){mesh.userData.terrainLayer=layerFor(mesh.name);mesh.castShadow=mesh.name==='Field tracks'||mesh.name==='Wet channel earth';mesh.receiveShadow=true;if(day)detail(mesh.material,transition,mesh.name);}
  const cropRows=group.children.find(mesh=>mesh.name==='Rice rows');
  const prototypes=(assets.tree.variants||[assets.tree]).map((_,index)=>decodeMeshAsset(assets.tree,index,surfaceMaps));
  const random=seededRandom(21),count=mobile?22:34,clusterCount=mobile?8:11,dummy=new THREE.Object3D();
@@ -52,16 +54,34 @@ export function buildTerrain(assets,{mobile=false,day=null,rotation=new THREE.Ma
  }
  const boundary=new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(points,true,'centripetal'),256,.014,6,true),new THREE.MeshBasicMaterial({color:0xf1c88a}));
  boundary.material.onBeforeCompile=shader=>{shader.uniforms.fieldFlatten=transition.flatten;shader.vertexShader=shader.vertexShader.replace('#include <common>','#include <common>\nuniform float fieldFlatten;').replace('#include <begin_vertex>','#include <begin_vertex>\ntransformed.y+=dot(position.xz,position.xz)/80.*fieldFlatten;');};
- boundary.name='Sample field boundary';group.add(boundary);group.userData.boundary=boundary;group.userData.localDetail=transition.detail;
+ boundary.name='Sample field boundary';boundary.visible=false;group.add(boundary);group.userData.boundary=boundary;group.userData.localDetail=transition.detail;
+ const debugState={layer:'all',wireframe:false};let currentProgress=0;
+ const applyDebugVisibility=()=>{
+  for(const mesh of surfaceMeshes)mesh.visible=(debugState.layer==='all'||mesh.userData.terrainLayer===debugState.layer)&&!(mesh===cropRows&&currentProgress<.505);
+  for(const {instances} of trees)instances.visible=(debugState.layer==='all'||debugState.layer==='trees')&&currentProgress>=.465;
+  boundary.visible=debugState.layer==='all'&&currentProgress>=.50;
+ };
+ group.userData.setDebug=({layer='all',wireframe=false}={})=>{
+  if(!['all','ground','parcel','crop','bank','water','trees'].includes(layer))throw new Error('Unknown terrain debug layer');
+  debugState.layer=layer;
+  const nextWireframe=Boolean(wireframe);
+  if(debugState.wireframe!==nextWireframe){
+   debugState.wireframe=nextWireframe;
+   for(const material of new Set(surfaceMeshes.map(mesh=>mesh.material))){material.wireframe=nextWireframe;material.needsUpdate=true;}
+  }
+  applyDebugVisibility();
+  return {...debugState};
+ };
+ group.userData.debugState=debugState;
  group.userData.update=p=>{
+  currentProgress=p;
   const flatten=.92*smooth(.465,.59,p);transition.flatten.value=flatten;
-  if(cropRows)cropRows.visible=p>=.505;
   const matrix=new THREE.Matrix4();
   for(const {instances,placement} of trees){
-   instances.visible=p>=.465;
    placement.forEach((source,i)=>{matrix.copy(source);const e=matrix.elements;e[13]+=(e[12]*e[12]+e[14]*e[14])/80*flatten;instances.setMatrixAt(i,matrix);});
    instances.instanceMatrix.needsUpdate=true;
   }
+  applyDebugVisibility();
   return flatten;
  };
  return group;

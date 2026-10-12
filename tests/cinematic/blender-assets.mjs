@@ -4,6 +4,17 @@ import * as THREE from '../../apps/web/public/cinematic/vendor.js';
 import {decodeMeshAsset} from '../../apps/web/public/cinematic/mesh-assets.js';
 import {buildEvidence,sampleEvidence} from '../../apps/web/public/cinematic/demo-evidence.js';
 let totalBytes=0,totalTriangles=0;
+const channelCenterline=[
+ [-18.65,3.02],[-14,3.02],[-9.4,3.02],[-5.2,3.02],[-3,3.02],[-.8,3.02],
+ [1.2,3.02],[3.18,3.02],[3.18,1.1],[3.18,-1],[3.18,-3.2],[3.18,-5.5],
+ [3.18,-8],[3.18,-12],[3.18,-16],[3.18,-18.65],
+];
+const pointSegmentDistance=(point,a,b)=>{
+ const dx=b[0]-a[0],dz=b[1]-a[1],lengthSquared=dx*dx+dz*dz;
+ const t=Math.max(0,Math.min(1,((point.x-a[0])*dx+(point.z-a[1])*dz)/lengthSquared));
+ return Math.hypot(point.x-(a[0]+dx*t),point.z-(a[1]+dz*t));
+};
+const channelDistance=point=>Math.min(...channelCenterline.slice(0,-1).map((a,index)=>pointSegmentDistance(point,a,channelCenterline[index+1])));
 const surfaceDir=new URL('../../apps/web/public/cinematic/textures/surfaces/',import.meta.url);
 const surfaceFiles=readdirSync(surfaceDir).filter(file=>file.endsWith('.png'));
 assert.deepEqual(surfaceFiles.sort(),[
@@ -41,7 +52,7 @@ for(const name of ['spacecraft','farmland','tree']){
     const n=new THREE.Vector3().fromBufferAttribute(normal,i);
     assert.ok(n.length()>.98&&n.length()<1.02,'Packed normals preserve unit length');
    }
-   if(name==='farmland'&&['Irrigation water','Field tracks','Wet channel earth'].includes(mesh.name)){
+   if(name==='farmland'&&(['Irrigation water','Field tracks','Wet channel earth','Rice rows'].includes(mesh.name)||mesh.name.startsWith('Rice field'))){
     for(let i=0;i<index.count;i+=3){
      const a=new THREE.Vector3().fromBufferAttribute(position,index.getX(i));
      const b=new THREE.Vector3().fromBufferAttribute(position,index.getX(i+1));
@@ -53,14 +64,20 @@ for(const name of ['spacecraft','farmland','tree']){
    if(name==='farmland'&&mesh.name==='Irrigation water'){
     const points=[];
     for(let i=0;i<position.count;i++)points.push(new THREE.Vector3().fromBufferAttribute(position,i));
-    assert.ok(points.some(point=>point.x<-6),'Connected irrigation reaches the surrounding northern parcels');
-    assert.ok(points.some(point=>point.z<-8),'Connected irrigation reaches the eastern access corridor');
+    assert.ok(points.some(point=>point.x<-18.5),'Connected irrigation leaves the northern landscape without visible bank endpoints');
+    assert.ok(points.some(point=>point.z<-18.5),'Connected irrigation leaves the eastern landscape without visible bank endpoints');
     for(const point of points){
-     const northArm=Math.abs(point.z-3.02)<.17&&point.x>-7.6&&point.x<3.4;
-     const eastArm=Math.abs(point.x-3.18)<.19&&point.z>-10.7&&point.z<3.25;
+     const northArm=Math.abs(point.z-3.02)<.17&&point.x>-18.9&&point.x<3.4;
+     const eastArm=Math.abs(point.x-3.18)<.19&&point.z>-18.9&&point.z<3.25;
      assert.ok(northArm||eastArm,'Water stays in the connected L-shaped channel instead of boxing the sample');
      const surface=-(point.x*point.x+point.z*point.z)/80+.05+Math.sin(point.x*.52)*Math.sin(point.z*.43)*.035;
-     assert.ok(Math.abs(point.y-surface+.052)<.002,'Water is consistently recessed below the authored terrain');
+     assert.ok(Math.abs(point.y-surface+.032)<.002,'Water is consistently recessed below the authored terrain');
+    }
+   }
+   if(name==='farmland'&&(mesh.name.startsWith('Rice field')||mesh.name==='Rice rows')){
+    for(let i=0;i<position.count;i++){
+     const point=new THREE.Vector3().fromBufferAttribute(position,i);
+     assert.ok(channelDistance(point)>=.55,'Parcel and crop geometry must clear the complete connected irrigation bank');
     }
    }
   }
@@ -68,8 +85,8 @@ for(const name of ['spacecraft','farmland','tree']){
    const tracks=model.children.find(mesh=>mesh.name==='Field tracks');
    const ray=new THREE.Raycaster(),down=new THREE.Vector3(0,-1,0);
    const samples=[];
-   for(let x=-7.2;x<=3.0;x+=.24)samples.push([x,3.02]);
-   for(let z=-10.3;z<=2.8;z+=.24)samples.push([3.18,z]);
+   for(let x=-18.4;x<=3.0;x+=.24)samples.push([x,3.02]);
+   for(let z=-18.4;z<=2.8;z+=.24)samples.push([3.18,z]);
    for(const [x,z] of samples){
     ray.set(new THREE.Vector3(x,5,z),down);
     assert.equal(ray.intersectObject(tracks,false).length,0,'Dry access banks must stop at the water edge');
