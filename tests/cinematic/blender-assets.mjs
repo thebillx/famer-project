@@ -16,6 +16,46 @@ const pointSegmentDistance=(point,a,b)=>{
 };
 const channelDistance=point=>Math.min(...channelCenterline.slice(0,-1).map((a,index)=>pointSegmentDistance(point,a,channelCenterline[index+1])));
 const deformedY=(point,flatten)=>point.y+(point.x*point.x+point.z*point.z)/80*flatten;
+function assertParcelChannelEdge(model){
+ const parcels=model.children.filter(mesh=>mesh.name.startsWith('Rice field'));
+ const ray=new THREE.Raycaster(),down=new THREE.Vector3(0,-1,0),rightCanalSamples=[];
+ for(let z=-17.5;z<=2;z+=.13){
+  let firstHit=null;
+  for(let clearance=.54;clearance<=.76;clearance+=.002){
+   ray.set(new THREE.Vector3(3.18+clearance,5,z),down);
+   if(ray.intersectObjects(parcels,false).length){firstHit=clearance;break;}
+  }
+  if(firstHit!==null)rightCanalSamples.push(firstHit);
+ }
+ assert.ok(rightCanalSamples.length>=130,'Right-hand canal has representative parcel-edge samples');
+ assert.ok(Math.min(...rightCanalSamples)>=.56,'Parcel silhouette preserves the authored bank clearance');
+ const discardedCellSteps=rightCanalSamples.filter(clearance=>clearance>.59&&clearance<.70);
+ assert.ok(discardedCellSteps.length<=8,
+  `Right-hand parcel edge follows the clipped contour instead of repeated discarded-cell teeth (${discardedCellSteps.length} stepped samples)`);
+ for(const mesh of parcels){
+  const position=mesh.geometry.attributes.position,index=mesh.geometry.index,byPoint=new Map(),triangles=[];
+  const pointKey=point=>point.toArray().map(value=>value.toFixed(4)).join(',');
+  for(let offset=0;offset<index.count;offset+=3){
+   const points=[0,1,2].map(step=>new THREE.Vector3().fromBufferAttribute(position,index.getX(offset+step)));
+   const triangle={points,keys:points.map(pointKey),area:Math.abs(
+    (points[1].x-points[0].x)*(points[2].z-points[0].z)-(points[1].z-points[0].z)*(points[2].x-points[0].x)
+   )/2};
+   triangles.push(triangle);
+   for(const key of triangle.keys){if(!byPoint.has(key))byPoint.set(key,[]);byPoint.get(key).push(triangle);}
+  }
+  const seen=new Set();
+  for(const start of triangles){
+   if(seen.has(start))continue;
+   const pending=[start];seen.add(start);let area=0;
+   while(pending.length){
+    const triangle=pending.pop();area+=triangle.area;
+    for(const key of triangle.keys)for(const neighbor of byPoint.get(key))if(!seen.has(neighbor)){seen.add(neighbor);pending.push(neighbor);}
+   }
+   assert.ok(area>=.01,`Parcel clipping must not leave an isolated surface fleck (${area} scene²)`);
+  }
+ }
+ console.log(`PASS parcel canal silhouette: ${rightCanalSamples.length} samples, ${discardedCellSteps.length} local junction transitions`);
+}
 const triangleInteriorSamples=vertices=>[
  [.34,.33,.33],[.60,.20,.20],[.20,.60,.20],[.20,.20,.60],
 ].map(weights=>new THREE.Vector3(
@@ -162,6 +202,7 @@ for(const name of ['spacecraft','farmland','tree']){
     assert.equal(ray.intersectObject(tracks,false).length,0,'Dry access banks must stop at the water edge');
    }
    assertTerrainSurfaceContinuity(model);
+   assertParcelChannelEdge(model);
   }
   assert.equal(triangles,asset.triangles);totalTriangles+=triangles;
   const bounds=new THREE.Box3().setFromObject(model),size=bounds.getSize(new THREE.Vector3());

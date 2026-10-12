@@ -450,6 +450,59 @@ def planted_parcel(corners,mat,index,sample=False):
             v.append((x,height(x,z)+.001+parcel_relief(index,u,vv,sample),z))
         return vertex_cache[key]
 
+    def channel_clearance(parameter):
+        x,z=parcel_point(corners,*parameter)
+        return channel_distance(x,z)-CHANNEL_PARCEL_CLEARANCE
+
+    def channel_boundary_point(start,end,start_clearance,end_clearance):
+        # Both adjacent triangles solve the same shared edge, so the clipped
+        # parcel boundary remains watertight instead of following discarded
+        # grid cells as a repeated sawtooth. Bisection follows the actual
+        # channel-distance contour, including the mitered corner.
+        inside,outside=(start,end) if start_clearance>=0 else (end,start)
+        kept_endpoint=inside
+        for _ in range(14):
+            midpoint=((inside[0]+outside[0])*.5,(inside[1]+outside[1])*.5)
+            if channel_clearance(midpoint)>=0:inside=midpoint
+            else:outside=midpoint
+        boundary=((inside[0]+outside[0])*.5,(inside[1]+outside[1])*.5)
+        # A contour that passes extremely close to a retained vertex otherwise
+        # exports a sub-pixel triangle whose quantized corners can read as an
+        # isolated green fleck. Snap only toward the safe, retained endpoint;
+        # never move a point into the channel clearance.
+        if math.dist(parcel_point(corners,*boundary),parcel_point(corners,*kept_endpoint))<.008:
+            return kept_endpoint
+        return boundary
+
+    def add_clipped_triangle(parameters):
+        clearances=[channel_clearance(parameter) for parameter in parameters]
+        clipped=[]
+        previous,previous_clearance=parameters[-1],clearances[-1]
+        for current,current_clearance in zip(parameters,clearances):
+            previous_kept=previous_clearance>=0
+            current_kept=current_clearance>=0
+            if current_kept:
+                if not previous_kept:
+                    clipped.append(channel_boundary_point(previous,current,previous_clearance,current_clearance))
+                clipped.append(current)
+            elif previous_kept:
+                clipped.append(channel_boundary_point(previous,current,previous_clearance,current_clearance))
+            previous,previous_clearance=current,current_clearance
+        cleaned=[]
+        for parameter in clipped:
+            point=parcel_point(corners,*parameter)
+            # The runtime container quantizes positions to roughly 0.0006
+            # scene units. Collapse contour intersections closer than that so
+            # export cannot turn a microscopic sliver into a vertical face.
+            if not cleaned or math.dist(point,parcel_point(corners,*cleaned[-1]))>7e-4:
+                cleaned.append(parameter)
+        if len(cleaned)>1 and math.dist(parcel_point(corners,*cleaned[0]),parcel_point(corners,*cleaned[-1]))<=7e-4:
+            cleaned.pop()
+        world=[parcel_point(corners,*parameter) for parameter in cleaned]
+        signed_area=sum(a[0]*b[1]-b[0]*a[1] for a,b in zip(world,world[1:]+world[:1]))
+        if len(cleaned)>=3 and abs(signed_area)>1e-6:
+            f.append(tuple(parcel_vertex(u,vv) for u,vv in cleaned))
+
     def add_surface_cell(u0,u1,v0,v1,depth=0):
         # Keep the runtime winding upward after Blender's axis conversion.
         # The order matches the original connected parcel grid: advance along
@@ -469,15 +522,37 @@ def planted_parcel(corners,mat,index,sample=False):
             for bounds in ((u0,uc,v0,vc),(uc,u1,v0,vc),(uc,u1,vc,v1),(u0,uc,vc,v1)):
                 add_surface_cell(*bounds,depth+1)
             return
-        # At the final local subdivision, retain only cells whose complete
-        # footprint clears the authored outer bank. No green parcel slivers can
-        # bridge the water or wet slope after runtime globe deformation.
-        samples=points+[center]
-        if all(channel_distance(x,z)>=CHANNEL_PARCEL_CLEARANCE for x,z in samples):
-            f.append(tuple(parcel_vertex(u,vv) for u,vv in params))
+        # Clip only the final boundary cells against the authored clearance.
+        # Dropping a whole mixed cell exposed its diagonal grid edge and made
+        # the right-hand canal read as repeated triangular teeth. Two stable
+        # triangles give the distance contour a continuous local boundary
+        # without adding subdivisions to unaffected parcel surfaces.
+        add_clipped_triangle((params[0],params[1],params[2]))
+        add_clipped_triangle((params[0],params[2],params[3]))
 
     for j in range(steps):
         for i in range(steps):add_surface_cell(i/steps,(i+1)/steps,j/steps,(j+1)/steps)
+    if not sample:
+        # A parcel that crosses the L-channel can leave a minute disconnected
+        # corner after contour clipping. It renders as a lone green triangle at
+        # the bank junction, so remove only components below visible parcel
+        # scale while retaining every coherent surface on either channel side.
+        faces_by_vertex={}
+        for face_index,face in enumerate(f):
+            for vertex in face:faces_by_vertex.setdefault(vertex,[]).append(face_index)
+        seen=set();kept_faces=[]
+        for start in range(len(f)):
+            if start in seen:continue
+            pending=[start];seen.add(start);component=[];area=0
+            while pending:
+                face_index=pending.pop();component.append(face_index);face=f[face_index]
+                points=[(v[vertex][0],v[vertex][2]) for vertex in face]
+                area+=abs(sum(a[0]*b[1]-b[0]*a[1] for a,b in zip(points,points[1:]+points[:1])))/2
+                for vertex in face:
+                    for neighbor in faces_by_vertex[vertex]:
+                        if neighbor not in seen:seen.add(neighbor);pending.append(neighbor)
+            if area>=.012:kept_faces.extend(f[index] for index in component)
+        f[:]=kept_faces
     mesh_obj('Sample field' if sample else 'Adjoining cultivated parcel',v,f,mat,land,True)
     # Crops follow each parcel's planting axis. Distant rows remain low ribbons;
     # low uneven ridges retain depth without subpixel plant triangles.
