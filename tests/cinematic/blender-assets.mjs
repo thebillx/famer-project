@@ -12,10 +12,11 @@ assert.deepEqual(surfaceFiles.sort(),[
  'leaf-color.png','leaf-normal.png','leaf-roughness.png',
  'metal-color.png','metal-normal.png','metal-roughness.png',
  'soil-color.png','soil-normal.png','soil-roughness.png',
+ 'solar-color.png','solar-normal.png','solar-roughness.png',
  'water-color.png','water-normal.png','water-roughness.png',
 ],'Authored surfaces publish complete color, normal, and roughness maps');
 const surfaceBytes=surfaceFiles.reduce((total,file)=>total+statSync(new URL(file,surfaceDir)).size,0);
-assert.ok(surfaceBytes<=1.6*1024*1024,`Surface maps stay under the 1.6 MiB transfer budget (${surfaceBytes} bytes)`);
+assert.ok(surfaceBytes<=1.85*1024*1024,`Surface maps stay under the 1.85 MiB transfer budget (${surfaceBytes} bytes)`);
 for(const name of ['spacecraft','farmland','tree']){
  const url=new URL(`../../apps/web/public/cinematic/models/${name}.mesh.json`,import.meta.url);
  totalBytes+=statSync(url).size;
@@ -47,6 +48,15 @@ for(const name of ['spacecraft','farmland','tree']){
      const c=new THREE.Vector3().fromBufferAttribute(position,index.getX(i+2));
      const normal=b.sub(a).cross(c.sub(a));
      assert.ok(normal.y>1e-7,`${mesh.name} triangle ${i/3} must face upward for overhead visibility`);
+    }
+   }
+   if(name==='farmland'&&mesh.name==='Field tracks'){
+    for(let i=0;i<index.count;i+=3){
+     const points=[0,1,2].map(offset=>new THREE.Vector3().fromBufferAttribute(position,index.getX(i+offset)));
+     const center=points[0].clone().add(points[1]).add(points[2]).multiplyScalar(1/3);
+     const crossesVerticalWater=Math.abs(Math.abs(center.x)-3.12)<.145&&center.z>-2.795&&center.z<2.795;
+     const crossesHorizontalWater=Math.abs(Math.abs(center.z)-2.95)<.145&&center.x>-2.965&&center.x<2.965;
+     assert.ok(!crossesVerticalWater&&!crossesHorizontalWater,`Canal bank triangle ${i/3} must not bridge across perpendicular water`);
     }
    }
   }

@@ -6,7 +6,7 @@ function bytes(text) {
  return out;
 }
 
-const SURFACES=new Set(['soil','crop','water','foil','metal','leaf']);
+const SURFACES=new Set(['soil','crop','water','foil','solar','metal','leaf']);
 
 // One texture set per authored surface, shared across material batches and tree
 // instances. The caller owns disposal, just like the existing Earth textures.
@@ -48,8 +48,8 @@ export function decodeMeshAsset(data,variantIndex=0,surfaceMaps={}) {
   geometry.computeBoundingSphere();
   const surface=m.material.surface;
   if(surface&&!SURFACES.has(surface))throw new Error('Unsupported authored surface');
-  const response=m.name==='Photovoltaic cells'?1.35:surface==='foil'?1.42:surface==='metal'?1.2:surface==='water'?1.5:surface==='leaf' ? .7 : 1.0;
-  const optical=m.name==='Photovoltaic cells'?{iridescence:.18,iridescenceIOR:1.35,iridescenceThicknessRange:[110,260],specularIntensity:1}:surface==='water'?{ior:1.333,reflectivity:.56}:{};
+  const response=surface==='solar'?2.05:surface==='foil'?1.44:surface==='metal'?1.2:surface==='water'?1.5:surface==='leaf' ? .7 : 1.0;
+  const optical=surface==='solar'?{iridescence:.16,iridescenceIOR:1.42,iridescenceThicknessRange:[105,235],specularIntensity:1.14}:surface==='water'?{ior:1.333,reflectivity:.56}:{};
   const material=new THREE.MeshPhysicalMaterial({color:new THREE.Color().setRGB(...m.material.color),metalness:m.material.metalness,roughness:m.material.roughness,clearcoat:m.material.clearcoat,clearcoatRoughness:surface==='water'?.08:.24,envMapIntensity:response,side:m.material.doubleSided?THREE.DoubleSide:THREE.FrontSide,...optical,...(surfaceMaps[surface]||{})});
   if(surface)material.normalScale.setScalar(m.material.normalStrength??.5);
   const mesh=new THREE.Mesh(geometry,material);mesh.name=m.name;mesh.castShadow=mesh.receiveShadow=true;group.add(mesh);

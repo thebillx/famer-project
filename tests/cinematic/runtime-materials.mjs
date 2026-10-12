@@ -34,7 +34,7 @@ const mapRoles=new Set();
 for(const data of [spacecraftData,farmland,tree])for(const variant of data.variants||[data])for(const mesh of variant.meshes){
  if(mesh.material.surface)mapRoles.add(mesh.material.surface);
 }
-assert.deepEqual([...mapRoles].sort(),['crop','foil','leaf','metal','soil','water'],'All exported authored surface roles are known');
+assert.deepEqual([...mapRoles].sort(),['crop','foil','leaf','metal','soil','solar','water'],'All exported authored surface roles are known');
 
 const loadedTextures=[];
 const maps=await loadSurfaceMaps([spacecraftData,farmland,tree],{loadAsync:async url=>{
@@ -87,9 +87,12 @@ for(const name of ['Photovoltaic cells','Recessed optical glass','MLI · champag
  }
 }
 const solar=spacecraft.children.find(mesh=>mesh.name==='Photovoltaic cells')?.material;
-assert.equal(solar?.iridescence,.18,'Solar cells retain an angle-dependent physical response');
-assert.equal(solar?.envMapIntensity,1.35,'Solar cells retain a readable orbital reflection');
-assert.ok(spacecraft.children.find(mesh=>mesh.name==='MLI · champagne gold')?.material.envMapIntensity>1.3,'Folded foil keeps a controlled orbital reflection');
+assert.equal(solar?.map,maps.solar.map,'Solar cells receive their authored color response');
+assert.equal(solar?.normalMap,maps.solar.normalMap,'Solar cells receive restrained micro-surface normals');
+assert.equal(solar?.roughnessMap,maps.solar.roughnessMap,'Solar cells receive authored reflection roughness');
+assert.equal(solar?.iridescence,.16,'Solar cells retain a restrained angle-dependent physical response');
+assert.equal(solar?.envMapIntensity,2.05,'Solar cells retain a readable orbital reflection');
+assert.ok(spacecraft.children.find(mesh=>mesh.name==='MLI · champagne gold')?.material.envMapIntensity>1.4,'Folded foil keeps a controlled orbital reflection');
 const terrain=buildTerrain({farmland,tree},{day:{},rotation:undefined});
 const water=terrain.children.find(mesh=>mesh.name==='Irrigation water');
 const wetBank=terrain.children.find(mesh=>mesh.name==='Wet channel earth');
@@ -100,6 +103,10 @@ water.material.onBeforeCompile(shader);
 assert.equal(shader.uniforms.surfaceKind.value,4,'Irrigation plane uses the view-dependent water branch');
 assert.match(shader.fragmentShader,/viewFacing/);
 assert.match(shader.fragmentShader,/fresnel/);
+assert.match(shader.fragmentShader,/bankShadow/);
+assert.match(shader.vertexShader,/agriculturalViewNormal=normalize\(normalMatrix\*objectNormal\)/,'Water view response uses the flattened authored surface normal');
+assert.match(shader.fragmentShader,/normalize\(agriculturalViewNormal\)/,'Water Fresnel uses a varying that is in scope before the color fragment');
+assert.doesNotMatch(shader.fragmentShader,/normalize\(normal\)/,'Color-fragment water code does not reference the later normal-fragment local');
 assert.match(shader.fragmentShader,/localDetail/);
 const wetShader={uniforms:{},vertexShader:'#include <common>\n#include <beginnormal_vertex>\n#include <begin_vertex>',fragmentShader:'#include <common>\n#include <normal_fragment_begin>\n#include <roughnessmap_fragment>\n#include <metalnessmap_fragment>\n#include <color_fragment>'};
 wetBank.material.onBeforeCompile(wetShader);

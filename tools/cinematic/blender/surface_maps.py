@@ -24,19 +24,22 @@ def build_surfaces(output):
     ordered=np.partition(np.stack(distances),1,axis=0)
     cracks=np.exp(-np.maximum(0,np.sqrt(ordered[1])-np.sqrt(ordered[0]))*220)
     soil=(.54+broad*.65+grain*.10-cracks*.16)
-    straw=np.maximum(0,np.sin(2*np.pi*(x*41+y*7))-.83)*np.maximum(0,np.sin(2*np.pi*y*23))
-    crop=.48+broad*.18+grain*.12+straw*.55
+    blades=np.maximum(0,np.sin(2*np.pi*(x*13+y*3))-.72)*np.maximum(0,np.sin(2*np.pi*(y*9-x*2))-.28)
+    crop=.48+broad*.20+grain*.09+blades*.24
     water=sum(np.sin(2*np.pi*(x*a+y*b)+c)*w for a,b,c,w in [(3,1,.2,.10),(7,-2,1,.045),(17,3,.8,.02),(31,-5,2,.008)])
-    # Broad triangular facets plus narrow crease valleys make the normal map
-    # respond like folded metallic blanket rather than padded waves.
-    fold_a=(2/np.pi)*np.arcsin(np.sin(2*np.pi*(x*2.2+y*.72)+.52*np.sin(2*np.pi*y*2)))
-    fold_b=(2/np.pi)*np.arcsin(np.sin(2*np.pi*(x*.75-y*2.8)+.38*np.sin(2*np.pi*x*1.5)))
-    crease=np.exp(-np.abs(np.sin(2*np.pi*(x*1.35+y*1.85)+.6))*42)
-    foil=.11*fold_a+.065*fold_b-.038*crease
+    # Hierarchical slack, buckling and crease scales produce an irregular metal
+    # blanket highlight without turning the whole face into large triangles.
+    slack=np.sin(2*np.pi*(x*1.08+y*.31)+.45*np.sin(2*np.pi*y*.82))
+    buckle=np.sin(2*np.pi*(x*.58-y*2.05)+.31*np.sin(2*np.pi*x*1.7))
+    crinkle=np.sin(2*np.pi*(x*6.8+y*4.7)+.40*np.sin(2*np.pi*(x-y)*1.3))
+    crease_a=np.exp(-np.abs(np.sin(2*np.pi*(x*.92+y*1.37)+.4))*34)
+    crease_b=np.exp(-np.abs(np.sin(2*np.pi*(x*2.1-y*.63)+1.1))*48)
+    foil=.075*slack+.035*buckle+.010*crinkle-.020*crease_a-.010*crease_b
+    solar=.5+.018*np.sin(2*np.pi*x*52)+.010*np.sin(2*np.pi*(y*11+x*2))
     vein=np.exp(-abs(x-.5)*180)+.45*np.exp(-abs(np.sin((y-abs(x-.5)*.7)*np.pi*12))*30)
     leaf=.55+.12*broad+.09*vein+.02*grain
     brushed=.5+.025*np.sin(y*np.pi*300)+grain*.018
-    roles={'soil':(soil,.86,1.7),'crop':(crop,.88,1.1),'water':(water,.19,.6),'foil':(foil,.31,1.0),'metal':(brushed,.28,.18),'leaf':(leaf,.87,.5)}
+    roles={'soil':(soil,.86,1.7),'crop':(crop,.88,.72),'water':(water,.19,.52),'foil':(foil,.29,.86),'solar':(solar,.17,.24),'metal':(brushed,.28,.18),'leaf':(leaf,.87,.5)}
     result={}
     for role,(height,rough,strength) in roles.items():
         dx=(np.roll(height,-1,axis=1)-np.roll(height,1,axis=1))*strength
@@ -44,9 +47,10 @@ def build_surfaces(output):
         normal=np.stack((-dx*12,-dy*12,np.ones_like(dx)),axis=-1)
         normal/=np.linalg.norm(normal,axis=-1,keepdims=True)
         normal=normal*.5+.5
-        if role=='crop': color=np.stack((.81+straw*.17,.86+straw*.11,.72+straw*.14),axis=-1)*(.85+grain[...,None]*.12+broad[...,None]*.15)
+        if role=='crop': color=np.stack((.80+blades*.08,.87+blades*.07,.70+blades*.05),axis=-1)*(.86+grain[...,None]*.08+broad[...,None]*.14)
         elif role=='soil': color=np.stack((soil*.40+.66,soil*.35+.61,soil*.28+.54),axis=-1)
         elif role=='leaf': color=np.stack((leaf*.32+.61,leaf*.30+.72,leaf*.24+.45),axis=-1)
+        elif role=='solar': color=np.stack((.54+solar*.10,.68+solar*.16,.88+solar*.10),axis=-1)
         else: color=np.repeat((.92+height*.10)[...,None],3,axis=-1)
         roughness=np.repeat(np.clip(rough+(height-np.mean(height))*.18,.08,.98)[...,None],3,axis=-1)
         # Three.js multiplies roughnessMap.g by exported roughness.
