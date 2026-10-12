@@ -53,17 +53,18 @@ cells = material("Photovoltaic cells", (.026, .082, .205), .48, .19, .72)
 glass = material("Recessed optical glass", (.005, .025, .029), .26, .14, .9)
 copper = material("Harness copper", (.24, .10, .035), .75, .37)
 soil = material("Dry earth", (.18, .118, .067), 0, .96)
-track = material("Field tracks", (.24, .16, .095), 0, .94)
-wet_bank = material("Wet channel earth", (.075, .060, .040), 0, .88)
-water = material("Irrigation water", (.026, .056, .054), 0, .19, .64)
-foliage = material("Tree foliage", (.18, .285, .075), 0, .96)
-foliage_light = material("Tree foliage · sunlit leaves", (.285, .385, .105), 0, .94)
+track = material("Field tracks", (.195, .140, .090), 0, .94)
+damp_bank = material("Damp channel shoulder", (.170, .120, .078), 0, .91)
+wet_bank = material("Wet channel earth", (.145, .105, .070), 0, .86)
+water = material("Irrigation water", (.018, .052, .055), 0, .12, .82)
+foliage = material("Tree foliage", (.155, .285, .080), 0, .87)
+foliage_light = material("Tree foliage · sunlit leaves", (.285, .405, .125), 0, .84)
 bark = material("Tree bark", (.17, .11, .062), 0, .96)
 greens = [material(f"Rice field {i}", c, 0, .92) for i, c in enumerate([
-    (.095, .17, .066), (.13, .19, .073), (.18, .195, .070),
-    (.105, .156, .059), (.17, .21, .082),
+    (.085, .145, .060), (.110, .165, .065), (.145, .180, .074),
+    (.090, .140, .057), (.135, .180, .076),
 ])]
-crop = material("Rice rows", (.10, .165, .059), 0, .97)
+crop_rows = material("Rice rows", (.090, .145, .052), 0, .90)
 
 
 def collection(name):
@@ -562,18 +563,23 @@ def planted_parcel(corners,mat,index,sample=False):
     # The demonstration parcel keeps enough rows to read as cultivated land.
     # Neighbouring parcels use wider, varied spacing so the aerial view does
     # not collapse into an implausibly uniform pinstripe grid.
-    spacing=.15 if sample else (.32,.41,.52)[index%3]
+    spacing=.15 if sample else (.34,.43,.54)[index%3]
     rows=max(6,round(width/spacing))
     center=parcel_point(corners,.5,.5)
     distance=math.hypot(center[0],center[1])
     # Static distance-based simplification drops subpixel ridges on far parcels;
     # it is authored geometry rather than a dynamic runtime LOD system.
-    row_step=2 if not sample and distance>10 else 1
+    row_step=3 if not sample and distance>12 else 2 if not sample and distance>7.5 else 1
     vertices=[];faces=[]
     for row in range(1,rows,row_step):
-        vv=(row+.065*math.sin(row*1.71+index*.43))/rows;start=len(vertices)
-        ridge_half=min(spacing*.15,.026 if sample else .052)
-        crown_height=.011 if sample else (.018 if distance<8 else .012)
+        # Low-frequency spacing drift reads as planting passes rather than a
+        # mathematically repeated stripe field. It stays deterministic and is
+        # bounded well inside the parcel edge.
+        vv=(row+.105*math.sin(row*.73+index*.43)+.035*math.sin(row*2.11-index*.29))/rows
+        start=len(vertices)
+        row_scale=.82+.18*math.sin(row*.61+index*.83)**2
+        ridge_half=min(spacing*.14,.025 if sample else .048)*row_scale
+        crown_height=(.0105 if sample else .015 if distance<7.5 else .007 if distance<12 else .0045)*row_scale
         cross=((-ridge_half,.003),(-ridge_half*.52,crown_height*.48),(0,crown_height),
                (ridge_half*.52,crown_height*.48),(ridge_half,.003))
         row_near_channel=not sample and any(
@@ -587,7 +593,7 @@ def planted_parcel(corners,mat,index,sample=False):
         # chord length so its rendered surface remains above the ground.
         row_length=math.dist(corners[0],corners[1])
         longitudinal=max(authored_longitudinal,math.ceil(row_length/CROP_LONGITUDINAL_STEP))
-        end_inset=.014+.018*(.5+.5*math.sin(row*2.17+index*.61))
+        end_inset=.018+.040*(.5+.5*math.sin(row*.81+index*.61))
         for j in range(longitudinal+1):
             u=end_inset+(1-2*end_inset)*j/longitudinal
             drift=.010*math.sin(row*1.31+j*.73+index*.49)
@@ -602,7 +608,9 @@ def planted_parcel(corners,mat,index,sample=False):
                 face=(a,a+len(cross),a+len(cross)+1,a+1)
                 if sample or all(channel_distance(vertices[n][0],vertices[n][2])>=CHANNEL_PARCEL_CLEARANCE for n in face):
                     faces.extend(upward_triangles(vertices,face))
-    mesh_obj('Batched raised planting beds',vertices,faces,crop,land,True)
+    # One shared row material preserves batching; the parcel colors beneath and
+    # the varied authored spacing carry the coherent plot-to-plot variation.
+    mesh_obj('Batched raised planting beds',vertices,faces,crop_rows,land,True)
 
 
 ground_mesh()
@@ -709,8 +717,8 @@ channel_strip('Recessed connected irrigation',-CHANNEL_WATER_HALF_WIDTH,CHANNEL_
 channel_strip('Wet channel slopes',-CHANNEL_SLOPE_OUTER,-CHANNEL_WATER_HALF_WIDTH,-.003,-.025,wet_bank)
 channel_strip('Wet channel slopes',CHANNEL_WATER_HALF_WIDTH,CHANNEL_SLOPE_OUTER,-.025,-.003,wet_bank)
 channel_strip('Raised irrigation bank shoulders',-CHANNEL_OUTER,-CHANNEL_BANK_CREST,0,.009,track)
-channel_strip('Raised irrigation bank shoulders',-CHANNEL_BANK_CREST,-CHANNEL_SLOPE_OUTER,.009,-.003,track)
-channel_strip('Raised irrigation bank shoulders',CHANNEL_SLOPE_OUTER,CHANNEL_BANK_CREST,-.003,.009,track)
+channel_strip('Damp irrigation bank transition',-CHANNEL_BANK_CREST,-CHANNEL_SLOPE_OUTER,.009,-.003,damp_bank)
+channel_strip('Damp irrigation bank transition',CHANNEL_SLOPE_OUTER,CHANNEL_BANK_CREST,-.003,.009,damp_bank)
 channel_strip('Raised irrigation bank shoulders',CHANNEL_BANK_CREST,CHANNEL_OUTER,.009,0,track)
 
 planted_parcel([(-2.50,-2.30),(2.45,-2.30),(2.45,2.27),(-2.50,2.27)],greens[1],1,sample=True)
@@ -755,9 +763,14 @@ def add_leaf(base, direction, length, width, material, batches, roll=0):
     group["faces"].extend(tuple(offset + i for i in face) for face in top)
 
 
-def canopy_mass(parent,name,center,scale,mat,rng,phase):
-    """Create one fused, lobed crown rather than a cluster of canopy balls."""
-    longitude=16;latitude=9;vertices=[];faces=[]
+def canopy_mass(parent,name,center,scale,mat,rng,phase,yaw=0):
+    """Create one low-density branch-aligned foliage cluster.
+
+    A crown uses seven overlapping clusters at primary limb tips. The bounded
+    9-by-5 topology keeps the silhouette organic at shot-6 distance without
+    spending triangles on invisible leaf-scale detail.
+    """
+    longitude=9;latitude=5;vertices=[];faces=[]
     # Shared poles prevent the top and underside from becoming radial caps.
     vertices.append((center[0],center[1]+scale[1],center[2]))
     for ring in range(1,latitude):
@@ -765,10 +778,10 @@ def canopy_mass(parent,name,center,scale,mat,rng,phase):
         shoulder=math.sin(theta)
         vertical=math.cos(theta)
         for segment in range(longitude):
-            angle=math.tau*segment/longitude
-            lobes=(.23*math.sin(angle*3+phase)+.105*math.sin(angle*5-theta*1.7+phase*.4))
-            crown_taper=.88+.12*math.sin(theta*.78)
-            radial=shoulder*crown_taper*(1+lobes*shoulder+.025*rng.uniform(-1,1))
+            angle=yaw+math.tau*segment/longitude
+            lobes=(.26*math.sin(angle*3+phase)+.12*math.sin(angle*5-theta*1.7+phase*.4))
+            crown_taper=.84+.16*math.sin(theta*.78)
+            radial=shoulder*crown_taper*(1+lobes*shoulder+.04*rng.uniform(-1,1))
             x=center[0]+math.cos(angle)*scale[0]*radial
             z=center[2]+math.sin(angle)*scale[2]*radial
             # A shallow asymmetric underside exposes trunk and first-order limbs.
@@ -793,15 +806,24 @@ def canopy_mass(parent,name,center,scale,mat,rng,phase):
 
 
 
-# Three branched silhouettes at a believable crop-edge scale. A single lobed
-# crown holds together at aerial distance; a bounded set of folded leaves and
-# visible primary limbs break its outline without producing dotted foliage.
+# Three branched silhouettes at a believable crop-edge scale. Seven overlapping
+# branch-aligned clusters form a coherent crown while leaving narrow sky gaps
+# around primary limbs at the shot-6 distance.
 tree_specs=[(.98,.54,1.48),(1.18,.43,1.85),(.78,.65,1.29)]
 for variant_index,(trunk_height,spread,crown_height) in enumerate(tree_specs):
     parent=tree_variants[variant_index];rng=random.Random(730+variant_index);leaf_batches={}
     tapered_branch(parent,'Tapered living trunk',(0,0,0),(.045,trunk_height,0),.049,.013,sides=9)
-    canopy_mass(parent,'Fused asymmetric crown',(0,trunk_height*1.06,0),
-                (spread*.97,crown_height*.30,spread*.90),foliage,rng,variant_index*.93+.4)
+    crown_layouts=[
+        [(-.50,-.03,.12,.40,.18,.34),(-.27,.10,-.13,.48,.21,.40),(.04,.18,.02,.52,.24,.46),(.34,.09,-.10,.43,.20,.38),(.52,-.05,.15,.34,.17,.30),(-.10,-.12,.22,.42,.18,.38),(.22,-.10,.25,.38,.17,.34)],
+        [(-.45,-.06,-.10,.36,.18,.32),(-.24,.08,.13,.44,.21,.37),(.02,.20,-.02,.48,.25,.42),(.30,.11,.12,.40,.20,.35),(.48,-.04,-.11,.33,.17,.29),(-.12,-.11,-.23,.38,.18,.34),(.20,-.09,-.24,.35,.17,.31)],
+        [(-.53,-.04,.14,.42,.18,.36),(-.28,.09,-.12,.48,.20,.41),(.01,.17,.03,.50,.23,.45),(.33,.08,-.13,.44,.19,.38),(.54,-.05,.12,.36,.16,.31),(-.13,-.12,.25,.41,.17,.36),(.23,-.10,.27,.39,.16,.34)],
+    ]
+    for cluster,(ox,oy,oz,sx,sy,sz) in enumerate(crown_layouts[variant_index]):
+        canopy_mass(parent,'Layered asymmetric foliage crown',
+                    (ox*spread,trunk_height*1.02+crown_height*(.08+oy),oz*spread),
+                    (spread*sx,crown_height*sy,spread*sz),
+                    foliage_light if cluster in (1,2,3) else foliage,rng,
+                    variant_index*.93+cluster*.71+.4,yaw=cluster*.62-variant_index*.31)
     for branch in range(9):
         angle=branch*2.399+rng.uniform(-.25,.25)
         start=(.02,trunk_height*rng.uniform(.46,.90),0)
@@ -839,9 +861,9 @@ from surface_maps import build_surfaces, apply_surface
 surface_output=OUT.parent/'textures'/'surfaces'
 surface_images=build_surfaces(surface_output)
 for mat in bpy.data.materials:
-    role=('foil' if mat==gold else 'solar' if mat==cells else 'metal' if mat==silver else 'water' if mat==water else 'leaf' if mat in (foliage,foliage_light) else 'crop' if mat in greens or mat==crop else 'soil' if mat in (soil,track,wet_bank,bark) else None)
-    if role:apply_surface(mat,role,surface_images,.38 if role=='foil' else .16 if role=='solar' else .42 if role=='water' else .18 if mat==track else .4)
-    if mat in (foliage,foliage_light,crop):mat['doubleSided']=True
+    role=('foil' if mat==gold else 'solar' if mat==cells else 'metal' if mat==silver else 'water' if mat==water else 'leaf' if mat in (foliage,foliage_light) else 'crop' if mat in greens or mat==crop_rows else 'soil' if mat in (soil,track,damp_bank,wet_bank,bark) else None)
+    if role:apply_surface(mat,role,surface_images,.38 if role=='foil' else .16 if role=='solar' else .38 if role=='water' else .22 if mat==crop_rows else .18 if mat in (track,damp_bank) else .4)
+    if mat in (foliage,foliage_light,crop_rows):mat['doubleSided']=True
 for obj in bpy.data.objects:
     if obj.type!='MESH':continue
     uv=obj.data.uv_layers.active or obj.data.uv_layers.new(name='Authored surface UV')
@@ -851,8 +873,8 @@ for obj in bpy.data.objects:
         mat=obj.data.materials[polygon.material_index]
         # World-scale projections keep soil/crop detail from repeating as tiny
         # wallpaper across large parcels. Water uses still broader wave bands.
-        scale=(.42 if mat==water else .52 if mat in greens or mat==crop else
-               1.18 if mat==track else .78 if mat==wet_bank else .40 if mat==soil else 1.0)
+        scale=(.32 if mat==water else .46 if mat in greens or mat==crop_rows else
+               .62 if mat==track else .72 if mat==damp_bank else .82 if mat==wet_bank else .40 if mat==soil else 1.0)
         for loop in polygon.loop_indices:
             point=obj.matrix_world@obj.data.vertices[obj.data.loops[loop].vertex_index].co
             uv.data[loop].uv=(point[axes[0]]*scale,point[axes[1]]*scale)

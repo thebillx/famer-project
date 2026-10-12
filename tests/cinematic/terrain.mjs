@@ -10,7 +10,7 @@ const terrain = buildTerrain({farmland:asset('farmland'), tree:asset('tree')});
 terrain.updateMatrixWorld(true);
 const expectedLayers=new Map([
  ['Dry earth','ground'],['Rice rows','crop'],['Field tracks','bank'],
- ['Irrigation water','water'],['Wet channel earth','bank'],
+ ['Irrigation water','water'],['Damp channel shoulder','bank'],['Wet channel earth','bank'],
 ]);
 for(const mesh of terrain.children){
  if(mesh.name.startsWith('Rice field'))assert.equal(mesh.userData.terrainLayer,'parcel');

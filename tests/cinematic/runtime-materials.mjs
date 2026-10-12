@@ -95,8 +95,12 @@ assert.equal(solar?.envMapIntensity,2.05,'Solar cells retain a readable orbital 
 assert.ok(spacecraft.children.find(mesh=>mesh.name==='MLI · champagne gold')?.material.envMapIntensity>1.4,'Folded foil keeps a controlled orbital reflection');
 const terrain=buildTerrain({farmland,tree},{day:{},rotation:undefined});
 const water=terrain.children.find(mesh=>mesh.name==='Irrigation water');
+const dampBank=terrain.children.find(mesh=>mesh.name==='Damp channel shoulder');
 const wetBank=terrain.children.find(mesh=>mesh.name==='Wet channel earth');
 assert.ok(water?.material.onBeforeCompile,'Terrain water keeps its role material shader');
+assert.equal(water?.material.transparent,true,'Irrigation water retains a restrained view into the recessed bed');
+assert.equal(water?.material.opacity,.88,'Irrigation water blends the authored reflection with bank and bed contact');
+assert.ok(dampBank?.material.onBeforeCompile,'Damp canal shoulders keep their distinct material response');
 assert.ok(wetBank?.material.onBeforeCompile,'Wet canal slopes keep their distinct material response');
 const shader={uniforms:{},vertexShader:'#include <common>\n#include <beginnormal_vertex>\n#include <begin_vertex>',fragmentShader:'#include <common>\n#include <normal_fragment_begin>\n#include <roughnessmap_fragment>\n#include <metalnessmap_fragment>\n#include <color_fragment>'};
 water.material.onBeforeCompile(shader);
@@ -111,7 +115,10 @@ assert.doesNotMatch(shader.fragmentShader,/normalize\(normal\)/,'Color-fragment 
 assert.match(shader.fragmentShader,/localDetail/);
 const wetShader={uniforms:{},vertexShader:'#include <common>\n#include <beginnormal_vertex>\n#include <begin_vertex>',fragmentShader:'#include <common>\n#include <normal_fragment_begin>\n#include <roughnessmap_fragment>\n#include <metalnessmap_fragment>\n#include <color_fragment>'};
 wetBank.material.onBeforeCompile(wetShader);
-assert.equal(wetShader.uniforms.surfaceKind.value,5,'Channel slopes use the damp-soil branch');
+assert.equal(wetShader.uniforms.surfaceKind.value,6,'Channel slopes use the wet-soil branch');
+const dampShader={uniforms:{},vertexShader:'#include <common>\n#include <beginnormal_vertex>\n#include <begin_vertex>',fragmentShader:'#include <common>\n#include <normal_fragment_begin>\n#include <roughnessmap_fragment>\n#include <metalnessmap_fragment>\n#include <color_fragment>'};
+dampBank.material.onBeforeCompile(dampShader);
+assert.equal(dampShader.uniforms.surfaceKind.value,5,'Channel shoulders use the damp-soil branch');
 const treeMesh=decodeMeshAsset(tree,0,maps);
 const foliage=treeMesh.children.find(mesh=>mesh.name==='Tree foliage')?.material;
 assert.equal(foliage?.map,maps.leaf.map,'Tree foliage receives its authored color map');

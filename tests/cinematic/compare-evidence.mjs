@@ -30,11 +30,11 @@ try{
  const page=await browser.newPage({viewport:{width:1440,height:900},deviceScaleFactor:1});
  for(const viewport of ['desktop','small-mobile']){
   const items=[];
-  for(const shot of ['03','06'])for(const side of ['before','after']){
+  for(const shot of ['05','06','07'])for(const side of ['before','after']){
    const file=join(root,...(side==='before'?['before']:[]),viewport,`shot-${shot}.png`);
    items.push(`<figure><figcaption>${side.toUpperCase()} · SHOT ${shot}</figcaption><img src="data:image/png;base64,${(await readFile(file)).toString('base64')}"></figure>`);
   }
-  await page.setContent(`<style>body{margin:0;padding:20px;background:#09131b;color:white;font:16px system-ui}main{display:grid;grid-template-columns:1fr 1fr;gap:18px}figure{margin:0}img{width:100%}figcaption{padding:8px}</style><h1>${viewport} · Matched shots 3 and 6</h1><main>${items.join('')}</main>`);
+  await page.setContent(`<style>body{margin:0;padding:20px;background:#09131b;color:white;font:16px system-ui}main{display:grid;grid-template-columns:1fr 1fr;gap:18px}figure{margin:0}img{width:100%}figcaption{padding:8px}</style><h1>${viewport} · Matched terrain shots 5, 6 and 7</h1><main>${items.join('')}</main>`);
   await page.waitForFunction(()=>[...document.images].every(i=>i.complete&&i.naturalWidth));
   await page.screenshot({path:join(root,'comparison',`${viewport}-before-after.png`),fullPage:true});
  }

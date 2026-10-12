@@ -90,7 +90,7 @@ export function mountJourney(root){
    const rotation=new THREE.Matrix3().setFromMatrix4(new THREE.Matrix4().makeRotationFromQuaternion(earth.quaternion.clone().invert()));
    terrain=buildTerrain({farmland,tree},{mobile:innerWidth<760,day,rotation,surfaceMaps});scene.add(terrain);
    const fieldEnvironment=agriculturalEnvironment(renderer);resources.push(fieldEnvironment);
-   terrain.traverse(mesh=>{if(mesh.material?.isMeshStandardMaterial){mesh.material.envMap=fieldEnvironment.texture;mesh.material.envMapIntensity=mesh.name.includes('water')?1.45:mesh.name.includes('foliage')?.34:.42;}});
+   terrain.traverse(mesh=>{if(mesh.material?.isMeshStandardMaterial){mesh.material.envMap=fieldEnvironment.texture;mesh.material.envMapIntensity=mesh.name.includes('water')?2.05:mesh.name.includes('foliage')?.48:.42;}});
    evidence=buildEvidence();scene.add(evidence.group);
    beam=new THREE.Mesh(new THREE.CylinderGeometry(.008,.024,1,16,1,true),new THREE.MeshBasicMaterial({color:0xe8c99a,transparent:true,opacity:0,blending:THREE.AdditiveBlending,depthWrite:false,side:THREE.DoubleSide}));scene.add(beam);
    composer=new THREE.EffectComposer(renderer);composer.addPass(new THREE.RenderPass(scene,camera));
@@ -139,7 +139,9 @@ export function mountJourney(root){
   spacecraft.quaternion.copy(attitude).slerp(nadir,smooth(.235,.38,p));spacecraft.visible=p<.50;
   const descent=smooth(.41,.56,p),detail=smooth(.385,.455,p);
   const agriculturalLight=smooth(.43,.57,p);
-  sun.intensity=2.4+.55*agriculturalLight;fill.intensity=.66-.24*agriculturalLight;hemisphere.intensity=.56+.10*agriculturalLight;scene.environmentIntensity=.70-.24*agriculturalLight;
+  // During descent, preserve the warm key while restoring cool sky fill and
+  // environment response so crop ridges, bank slopes, and water retain depth.
+  sun.intensity=2.4-.12*agriculturalLight;fill.intensity=.66+.12*agriculturalLight;hemisphere.intensity=.56+.12*agriculturalLight;scene.environmentIntensity=.70+.08*agriculturalLight;
   // Keep the far edge atmospheric, but let the nearby parcels retain warm soil
   // and crop contrast instead of disappearing into a grey fog wash.
   scene.fog.density=.00055+descent*.0073;scene.fog.color.set(0x101c29).lerp(new THREE.Color(0x354b50),descent);
