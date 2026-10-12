@@ -50,14 +50,29 @@ for(const name of ['spacecraft','farmland','tree']){
      assert.ok(normal.y>1e-7,`${mesh.name} triangle ${i/3} must face upward for overhead visibility`);
     }
    }
-   if(name==='farmland'&&mesh.name==='Field tracks'){
-    for(let i=0;i<index.count;i+=3){
-     const points=[0,1,2].map(offset=>new THREE.Vector3().fromBufferAttribute(position,index.getX(i+offset)));
-     const center=points[0].clone().add(points[1]).add(points[2]).multiplyScalar(1/3);
-     const crossesVerticalWater=Math.abs(Math.abs(center.x)-3.12)<.145&&center.z>-2.795&&center.z<2.795;
-     const crossesHorizontalWater=Math.abs(Math.abs(center.z)-2.95)<.145&&center.x>-2.965&&center.x<2.965;
-     assert.ok(!crossesVerticalWater&&!crossesHorizontalWater,`Canal bank triangle ${i/3} must not bridge across perpendicular water`);
+   if(name==='farmland'&&mesh.name==='Irrigation water'){
+    const points=[];
+    for(let i=0;i<position.count;i++)points.push(new THREE.Vector3().fromBufferAttribute(position,i));
+    assert.ok(points.some(point=>point.x<-6),'Connected irrigation reaches the surrounding northern parcels');
+    assert.ok(points.some(point=>point.z<-8),'Connected irrigation reaches the eastern access corridor');
+    for(const point of points){
+     const northArm=Math.abs(point.z-3.02)<.17&&point.x>-7.6&&point.x<3.4;
+     const eastArm=Math.abs(point.x-3.18)<.19&&point.z>-10.7&&point.z<3.25;
+     assert.ok(northArm||eastArm,'Water stays in the connected L-shaped channel instead of boxing the sample');
+     const surface=-(point.x*point.x+point.z*point.z)/80+.05+Math.sin(point.x*.52)*Math.sin(point.z*.43)*.035;
+     assert.ok(Math.abs(point.y-surface+.052)<.002,'Water is consistently recessed below the authored terrain');
     }
+   }
+  }
+  if(name==='farmland'){
+   const tracks=model.children.find(mesh=>mesh.name==='Field tracks');
+   const ray=new THREE.Raycaster(),down=new THREE.Vector3(0,-1,0);
+   const samples=[];
+   for(let x=-7.2;x<=3.0;x+=.24)samples.push([x,3.02]);
+   for(let z=-10.3;z<=2.8;z+=.24)samples.push([3.18,z]);
+   for(const [x,z] of samples){
+    ray.set(new THREE.Vector3(x,5,z),down);
+    assert.equal(ray.intersectObject(tracks,false).length,0,'Dry access banks must stop at the water edge');
    }
   }
   assert.equal(triangles,asset.triangles);totalTriangles+=triangles;

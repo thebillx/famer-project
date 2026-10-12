@@ -16,17 +16,21 @@ def build_surfaces(output):
     rng = np.random.default_rng(41073)
     grain = rng.random((size, size)).astype(np.float32)
     broad = sum(np.sin(2*np.pi*(x*a+y*b)+c) * w for a,b,c,w in [(2,1,.7,.13),(3,-2,1.2,.09),(7,5,2.6,.06),(15,-11,.4,.03)])
-    # Periodic cell edges create soil clods, unlike unstructured color noise.
+    # Small periodic cell edges suggest broken soil aggregates. Large cells read
+    # as faceted polygons at the shot-6 altitude, so keep their contrast below
+    # the directional cultivation detail.
     distances=[]
-    for px,py in rng.random((28,2)):
+    for px,py in rng.random((72,2)):
         dx=np.minimum(abs(x-px),1-abs(x-px));dy=np.minimum(abs(y-py),1-abs(y-py))
         distances.append(dx*dx+dy*dy)
     ordered=np.partition(np.stack(distances),1,axis=0)
-    cracks=np.exp(-np.maximum(0,np.sqrt(ordered[1])-np.sqrt(ordered[0]))*220)
-    soil=(.54+broad*.65+grain*.10-cracks*.16)
-    blades=np.maximum(0,np.sin(2*np.pi*(x*13+y*3))-.72)*np.maximum(0,np.sin(2*np.pi*(y*9-x*2))-.28)
-    crop=.48+broad*.20+grain*.09+blades*.24
-    water=sum(np.sin(2*np.pi*(x*a+y*b)+c)*w for a,b,c,w in [(3,1,.2,.10),(7,-2,1,.045),(17,3,.8,.02),(31,-5,2,.008)])
+    cracks=np.exp(-np.maximum(0,np.sqrt(ordered[1])-np.sqrt(ordered[0]))*350)
+    fine_soil=sum(np.sin(2*np.pi*(x*a+y*b)+c)*w for a,b,c,w in [(11,7,.4,.045),(23,-17,1.1,.026),(41,19,2.3,.012)])
+    soil=(.54+broad*.40+fine_soil+grain*.055-cracks*.075)
+    row_phase=x*33+y*1.7+.045*np.sin(2*np.pi*(y*3-x*1.2))
+    blades=np.maximum(0,np.sin(2*np.pi*row_phase)-.87)
+    crop=.50+broad*.10+grain*.04+blades*.11
+    water=sum(np.sin(2*np.pi*(x*a+y*b)+c)*w for a,b,c,w in [(3,.45,.2,.070),(7,-1.2,1,.032),(17,2.2,.8,.014),(31,-4,2,.006)])
     # Hierarchical slack, buckling and crease scales produce an irregular metal
     # blanket highlight without turning the whole face into large triangles.
     slack=np.sin(2*np.pi*(x*1.08+y*.31)+.45*np.sin(2*np.pi*y*.82))
@@ -47,10 +51,11 @@ def build_surfaces(output):
         normal=np.stack((-dx*12,-dy*12,np.ones_like(dx)),axis=-1)
         normal/=np.linalg.norm(normal,axis=-1,keepdims=True)
         normal=normal*.5+.5
-        if role=='crop': color=np.stack((.80+blades*.08,.87+blades*.07,.70+blades*.05),axis=-1)*(.86+grain[...,None]*.08+broad[...,None]*.14)
-        elif role=='soil': color=np.stack((soil*.40+.66,soil*.35+.61,soil*.28+.54),axis=-1)
+        if role=='crop': color=np.stack((.81+blades*.05,.88+blades*.055,.72+blades*.035),axis=-1)*(.91+grain[...,None]*.035+broad[...,None]*.065)
+        elif role=='soil': color=np.stack((soil*.30+.70,soil*.27+.66,soil*.22+.59),axis=-1)
         elif role=='leaf': color=np.stack((leaf*.32+.61,leaf*.30+.72,leaf*.24+.45),axis=-1)
         elif role=='solar': color=np.stack((.54+solar*.10,.68+solar*.16,.88+solar*.10),axis=-1)
+        elif role=='water': color=np.stack((.76+water*.08,.88+water*.07,.91+water*.075),axis=-1)
         else: color=np.repeat((.92+height*.10)[...,None],3,axis=-1)
         roughness=np.repeat(np.clip(rough+(height-np.mean(height))*.18,.08,.98)[...,None],3,axis=-1)
         # Three.js multiplies roughnessMap.g by exported roughness.

@@ -55,7 +55,7 @@ copper = material("Harness copper", (.24, .10, .035), .75, .37)
 soil = material("Dry earth", (.18, .118, .067), 0, .96)
 track = material("Field tracks", (.24, .16, .095), 0, .94)
 wet_bank = material("Wet channel earth", (.075, .060, .040), 0, .88)
-water = material("Irrigation water", (.026, .041, .027), 0, .18, .48)
+water = material("Irrigation water", (.026, .056, .054), 0, .19, .64)
 foliage = material("Tree foliage", (.18, .285, .075), 0, .96)
 foliage_light = material("Tree foliage · sunlit leaves", (.285, .385, .105), 0, .94)
 bark = material("Tree bark", (.17, .11, .062), 0, .96)
@@ -300,6 +300,11 @@ def local_point(cx, cz, lx, lz, angle):
 
 
 SAMPLE_BOUNDS = (-2.50, 2.45, -2.30, 2.27)
+CHANNEL_CENTERLINE = [
+    (-7.4, 3.02), (-5.2, 3.02), (-3.0, 3.02), (-.8, 3.02),
+    (1.2, 3.02), (3.18, 3.02), (3.18, 1.1), (3.18, -1.0),
+    (3.18, -3.2), (3.18, -5.5), (3.18, -8.0), (3.18, -10.5),
+]
 
 
 def overlaps_sample(cx, cz, half_x, half_z, angle, clearance=.32):
@@ -321,18 +326,27 @@ def overlaps_sample(cx, cz, half_x, half_z, angle, clearance=.32):
     return not (separated_x or separated_z or separated_parcel_x or separated_parcel_z)
 
 
+def point_segment_distance(x, z, a, b):
+    dx, dz = b[0]-a[0], b[1]-a[1]
+    length_squared = dx*dx+dz*dz
+    t = max(0, min(1, ((x-a[0])*dx+(z-a[1])*dz)/length_squared))
+    return math.hypot(x-(a[0]+dx*t), z-(a[1]+dz*t))
+
+
 def channel_depth(x, z):
-    # Cut the continuous soil mesh beneath the complete bank profile. The
-    # sample footprint is untouched; the deepest part remains at the water.
-    side = min(abs(x-3.12), abs(x+3.12)) if -5.4 < z < 3.12 else 99
-    cross = min(abs(z-2.95), abs(z+2.95)) if abs(x) < 3.32 else 99
-    distance = min(side, cross)
-    return .17 * max(0, min(1, (.42-distance)/.24))
+    # Recess only the connected north/east supply channel. The previous four-
+    # sided cut read as a moat around the sample instead of farm irrigation.
+    distance = min(point_segment_distance(x, z, a, b)
+                   for a, b in zip(CHANNEL_CENTERLINE, CHANNEL_CENTERLINE[1:]))
+    return .115 * max(0, min(1, (.38-distance)/.24))
 
 
 def ground_mesh():
-    xs=sorted(set([i*.5 for i in range(-36,37)]+[v for c in (-3.12,3.12) for v in (c-.25,c-.15,c,c+.15,c+.25)]))
-    zs=sorted(set([i*.5 for i in range(-36,37)]+[v for c in (-2.95,2.95) for v in (c-.25,c-.15,c,c+.15,c+.25)]))
+    # Exact channel profile coordinates keep the subsoil under the authored
+    # slopes without paying for a dense grid across the whole landscape.
+    offsets=(-.42,-.30,-.20,-.12,0,.12,.20,.30,.42)
+    xs=sorted(set([i*.5 for i in range(-36,37)]+[3.18+v for v in offsets]+[-7.4,3.18]))
+    zs=sorted(set([i*.5 for i in range(-36,37)]+[3.02+v for v in offsets]+[-10.5,3.02]))
     # Keep the continuous subsoil clearly below cultivated parcel surfaces.
     # A sub-centimetre visual offset caused depth interference from the high
     # descent camera even though the meshes never intersected.
@@ -349,18 +363,51 @@ def parcel_point(corners,u,v):
             (a[1]*(1-u)+b[1]*u)*(1-v)+(d[1]*(1-u)+c[1]*u)*v)
 
 
-def ribbon(name,points,width,crest,mat=track):
+def ribbon_mesh(name,points,width,crest,mat=track,taper_start=False,taper_end=False):
     v=[];f=[]
     for i,(x,z) in enumerate(points):
         a=points[max(0,i-1)];b=points[min(len(points)-1,i+1)]
         dx,dz=b[0]-a[0],b[1]-a[1];length=math.hypot(dx,dz)
+        taper=.18 if (i==0 and taper_start) or (i==len(points)-1 and taper_end) else 1
         for offset,lift in ((-width,0),(-width*.45,crest),(width*.45,crest),(width,0)):
-            px,pz=x-dz/length*offset,z+dx/length*offset
-            v.append((px,height(px,pz)+lift,pz))
+            px,pz=x-dz/length*offset*taper,z+dx/length*offset*taper
+            v.append((px,height(px,pz)+lift*max(.25,taper),pz))
     for i in range(len(points)-1):
         for j in range(3):
             a=i*4+j;f.extend(upward_triangles(v,(a,a+4,a+5,a+1)))
     mesh_obj(name,v,f,mat,land,True)
+
+
+def ribbon(name,points,width,crest,mat=track):
+    """Author connected banks while leaving the supply channel unobstructed."""
+    dense=[]
+    for segment,(a,b) in enumerate(zip(points,points[1:])):
+        steps=max(1,math.ceil(math.dist(a,b)/.32))
+        for step in range(steps+(1 if segment==len(points)-2 else 0)):
+            t=step/steps
+            dense.append((a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t))
+    runs=[];current=[];current_start=0;clearance=.43+width
+    for index,point in enumerate(dense):
+        distance=min(point_segment_distance(point[0],point[1],a,b)
+                     for a,b in zip(CHANNEL_CENTERLINE,CHANNEL_CENTERLINE[1:]))
+        if distance>=clearance:
+            if not current:current_start=index
+            current.append(point)
+        elif current:
+            if len(current)>1:runs.append((current,current_start>0,True))
+            current=[]
+    if len(current)>1:runs.append((current,current_start>0,len(dense)-1>current_start+len(current)-1))
+    for run,taper_start,taper_end in runs:ribbon_mesh(name,run,width,crest,mat,taper_start,taper_end)
+
+
+def path_crosses_channel(points,clearance=.50):
+    for a,b in zip(points,points[1:]):
+        steps=max(1,math.ceil(math.dist(a,b)/.24))
+        for step in range(steps+1):
+            t=step/steps;x=a[0]+(b[0]-a[0])*t;z=a[1]+(b[1]-a[1])*t
+            if min(point_segment_distance(x,z,c,d) for c,d in zip(CHANNEL_CENTERLINE,CHANNEL_CENTERLINE[1:]))<clearance:
+                return True
+    return False
 
 
 def parcel_relief(index,u,v,sample=False):
@@ -390,22 +437,29 @@ def planted_parcel(corners,mat,index,sample=False):
     # The demonstration parcel keeps enough rows to read as cultivated land.
     # Neighbouring parcels use wider, varied spacing so the aerial view does
     # not collapse into an implausibly uniform pinstripe grid.
-    spacing=.19 if sample else (.32,.39,.46)[index%3]
+    spacing=.15 if sample else (.32,.41,.52)[index%3]
     rows=max(6,round(width/spacing))
+    center=parcel_point(corners,.5,.5)
+    distance=math.hypot(center[0],center[1])
+    # Far parcels retain directional cultivation structure but drop ridges that
+    # are smaller than a shot-6 pixel. Near rows keep real depth and contact.
+    row_step=2 if not sample and distance>10 else 1
     vertices=[];faces=[]
-    for row in range(1,rows):
-        vv=row/rows;start=len(vertices)
-        ridge_half=min(spacing*.19,.050 if sample else .080)
-        cross=((-ridge_half,.004),(-ridge_half*.55,.017),(0,.034),
-               (ridge_half*.55,.017),(ridge_half,.004))
-        longitudinal=8 if sample else 6
+    for row in range(1,rows,row_step):
+        vv=(row+.065*math.sin(row*1.71+index*.43))/rows;start=len(vertices)
+        ridge_half=min(spacing*.15,.026 if sample else .052)
+        crown_height=.011 if sample else (.018 if distance<8 else .012)
+        cross=((-ridge_half,.003),(-ridge_half*.52,crown_height*.48),(0,crown_height),
+               (ridge_half*.52,crown_height*.48),(ridge_half,.003))
+        longitudinal=10 if sample else (5 if distance<9 else 3)
+        end_inset=.014+.018*(.5+.5*math.sin(row*2.17+index*.61))
         for j in range(longitudinal+1):
-            u=.012+.976*j/longitudinal
-            drift=.012*math.sin(row*1.31+j*.73+index*.49)
+            u=end_inset+(1-2*end_inset)*j/longitudinal
+            drift=.010*math.sin(row*1.31+j*.73+index*.49)
             for lateral,lift in cross:
                 adjusted_v=vv+(lateral+drift)/width
                 x,z=parcel_point(corners,u,adjusted_v)
-                crown=lift*(.90+.10*math.sin(row*1.7+j*1.1))
+                crown=lift*(.88+.12*math.sin(row*1.7+j*1.1))
                 vertices.append((x,height(x,z)+parcel_relief(index,u,adjusted_v,sample)+crown,z))
         for j in range(longitudinal):
             for k in range(len(cross)-1):
@@ -435,18 +489,21 @@ def parcel_band(z0,z1,bottom,top):
     # rectangular grid across the entire landscape.
     for i in range(1,len(bottom)-1):
         mid=((bottom[i]+top[i])*.5+terrain_random.uniform(-.12,.12),(z0+z1)*.5)
-        ribbon('Shared parcel bank',[(bottom[i],z0),mid,(top[i],z1)],.085,.062)
+        points=[(bottom[i],z0),mid,(top[i],z1)]
+        # The channel already separates these parcels. Keeping clipped halves
+        # of a crossing divider creates paired rails at the bank junction.
+        if not path_crosses_channel(points):ribbon('Shared parcel bank',points,.085,.062)
 
 
 top_bands=[
-    (3.45,8.25,[-18,-10.8,-4.4,3.45,10.7,18],[-18,-12.2,-5.1,2.85,9.15,18]),
+    (3.52,8.25,[-18,-10.8,-4.4,3.45,10.7,18],[-18,-12.2,-5.1,2.85,9.15,18]),
     (8.25,13.15,[-18,-12.2,-5.1,2.85,9.15,18],[-18,-9.7,-2.25,6.25,12.9,18]),
     (13.15,18,[-18,-9.7,-2.25,6.25,12.9,18],[-18,-11.6,-4.6,4.7,11.1,18]),
 ]
 bottom_bands=[
     (-18,-12.7,[-18,-11.8,-4.2,4.5,11.4,18],[-18,-9.8,-2.7,5.8,12.7,18]),
     (-12.7,-7.35,[-18,-9.8,-2.7,5.8,12.7,18],[-18,-12.8,-6.1,2.4,9.8,18]),
-    (-7.35,-3.45,[-18,-12.8,-6.1,2.4,9.8,18],[-18,-10.5,-3.45,3.45,11.4,18]),
+    (-7.35,-2.65,[-18,-12.8,-6.1,2.4,9.8,18],[-18,-10.5,-2.82,3.76,11.4,18]),
 ]
 for band in bottom_bands+top_bands:parcel_band(*band)
 for _,z,_,edge in bottom_bands[:-1]+top_bands[:-1]:
@@ -455,63 +512,53 @@ for _,z,_,edge in bottom_bands[:-1]+top_bands[:-1]:
 # Side parcels close the agricultural fabric around the unchanged field and
 # its irrigation loop. Their single shared cross-bank connects to the outer
 # band network without creating another repeated row.
-for x0,x1 in [(-18,-3.45),(3.45,18)]:
+for x0,x1,central_top in [(-18,-2.82,2.58),(3.64,18,3.52)]:
     split=-.2 if x0<0 else .35
-    for z0,z1 in [(-3.45,split),(split,3.45)]:
+    for z0,z1 in [(-2.65,split),(split,central_top)]:
         corners=[(x0,z0),(x1,z0),(x1,z1),(x0,z1)]
         inset=[parcel_point(corners,u,v) for u,v in ((.018,.018),(.982,.018),(.982,.982),(.018,.982))]
         planted_parcel(inset,greens[(parcel_index*3)%len(greens)],parcel_index)
         parcel_index+=1
     ribbon('Shared parcel bank',[(x0,split),(x1,split)],.09,.064)
 
-IRRIGATION_X=3.12
-IRRIGATION_Z=2.95
+def channel_offset_points(points,offset):
+    result=[]
+    for i,point in enumerate(points):
+        before=points[max(0,i-1)];after=points[min(len(points)-1,i+1)]
+        incoming=Vector((point[0]-before[0],point[1]-before[1])) if i else Vector((after[0]-point[0],after[1]-point[1]))
+        outgoing=Vector((after[0]-point[0],after[1]-point[1])) if i<len(points)-1 else incoming.copy()
+        incoming.normalize();outgoing.normalize()
+        normal_a=Vector((-incoming.y,incoming.x));normal_b=Vector((-outgoing.y,outgoing.x))
+        miter=(normal_a+normal_b).normalized() if (normal_a+normal_b).length>.001 else normal_b
+        divisor=max(.55,abs(miter.dot(normal_a)))
+        displaced=Vector(point)+miter*(offset/divisor)
+        result.append((displaced.x,displaced.y))
+    return result
 
-def terrain_quad(vertices,faces,points):
-    start=len(vertices)
-    vertices.extend((x,height(x,z)+lift,z) for x,z,lift in points)
-    faces.extend(upward_triangles(vertices,(start,start+1,start+2,start+3)))
 
-
-def rectangular_band(name,inner_x,inner_z,outer_x,outer_z,inner_lift,outer_lift,mat):
-    """One continuous rectangular band without overlapping junction strips."""
+def channel_strip(name,inner_offset,outer_offset,inner_lift,outer_lift,mat):
+    inner=channel_offset_points(CHANNEL_CENTERLINE,inner_offset)
+    outer=channel_offset_points(CHANNEL_CENTERLINE,outer_offset)
     vertices=[];faces=[]
-    terrain_quad(vertices,faces,[(-outer_x,inner_z,inner_lift),(outer_x,inner_z,inner_lift),
-                                 (outer_x,outer_z,outer_lift),(-outer_x,outer_z,outer_lift)])
-    terrain_quad(vertices,faces,[(-outer_x,-outer_z,outer_lift),(outer_x,-outer_z,outer_lift),
-                                 (outer_x,-inner_z,inner_lift),(-outer_x,-inner_z,inner_lift)])
-    terrain_quad(vertices,faces,[(-outer_x,-inner_z,outer_lift),(-inner_x,-inner_z,inner_lift),
-                                 (-inner_x,inner_z,inner_lift),(-outer_x,inner_z,outer_lift)])
-    terrain_quad(vertices,faces,[(inner_x,-inner_z,inner_lift),(outer_x,-inner_z,outer_lift),
-                                 (outer_x,inner_z,outer_lift),(inner_x,inner_z,inner_lift)])
+    for i in range(len(CHANNEL_CENTERLINE)):
+        for (x,z),lift in ((inner[i],inner_lift),(outer[i],outer_lift)):
+            vertices.append((x,height(x,z)+lift,z))
+    for i in range(len(CHANNEL_CENTERLINE)-1):
+        a=i*2
+        faces.extend(upward_triangles(vertices,(a,a+2,a+3,a+1)))
     mesh_obj(name,vertices,faces,mat,land,True)
 
 
-# Build the field loop as nested continuous bands. The earlier crossing branch
-# ribbons placed dry shoulders across perpendicular water at all four corners,
-# which read as narrow rails and projecting strips after runtime flattening.
-rectangular_band('Recessed connected irrigation',IRRIGATION_X-.155,IRRIGATION_Z-.155,
-                 IRRIGATION_X+.155,IRRIGATION_Z+.155,-.078,-.078,water)
-rectangular_band('Wet channel slopes',IRRIGATION_X-.235,IRRIGATION_Z-.235,
-                 IRRIGATION_X-.155,IRRIGATION_Z-.155,.012,-.078,wet_bank)
-rectangular_band('Wet channel slopes',IRRIGATION_X+.155,IRRIGATION_Z+.155,
-                 IRRIGATION_X+.235,IRRIGATION_Z+.235,-.078,.012,wet_bank)
-for inner,outer,inner_lift,outer_lift in [
-    (IRRIGATION_X-.40,IRRIGATION_X-.31,.012,.082),
-    (IRRIGATION_X-.31,IRRIGATION_X-.235,.082,.012),
-]:
-    delta=IRRIGATION_X-inner
-    outer_delta=IRRIGATION_X-outer
-    rectangular_band('Raised irrigation bank shoulders',inner,IRRIGATION_Z-delta,
-                     outer,IRRIGATION_Z-outer_delta,inner_lift,outer_lift,track)
-for inner,outer,inner_lift,outer_lift in [
-    (IRRIGATION_X+.235,IRRIGATION_X+.31,.012,.082),
-    (IRRIGATION_X+.31,IRRIGATION_X+.40,.082,.012),
-]:
-    delta=inner-IRRIGATION_X
-    outer_delta=outer-IRRIGATION_X
-    rectangular_band('Raised irrigation bank shoulders',inner,IRRIGATION_Z+delta,
-                     outer,IRRIGATION_Z+outer_delta,inner_lift,outer_lift,track)
+# One connected supply channel follows the north and east parcel edges. Its
+# mitered cross-section keeps water continuous through the turn while its low,
+# broad shoulders read as usable farm banks instead of a boxed retaining wall.
+channel_strip('Recessed connected irrigation',-.12,.12,-.052,-.052,water)
+channel_strip('Wet channel slopes',-.20,-.12,.008,-.052,wet_bank)
+channel_strip('Wet channel slopes',.12,.20,-.052,.008,wet_bank)
+channel_strip('Raised irrigation bank shoulders',-.42,-.30,0,.034,track)
+channel_strip('Raised irrigation bank shoulders',-.30,-.20,.034,.008,track)
+channel_strip('Raised irrigation bank shoulders',.20,.30,.008,.034,track)
+channel_strip('Raised irrigation bank shoulders',.30,.42,.034,0,track)
 
 planted_parcel([(-2.50,-2.30),(2.45,-2.30),(2.45,2.27),(-2.50,2.27)],greens[1],1,sample=True)
 # A farm track joins the outer banks. It follows a shared parcel edge and stays
@@ -566,14 +613,14 @@ def canopy_mass(parent,name,center,scale,mat,rng,phase):
         vertical=math.cos(theta)
         for segment in range(longitude):
             angle=math.tau*segment/longitude
-            lobes=(.155*math.sin(angle*3+phase)+.072*math.sin(angle*5-theta*1.7+phase*.4))
+            lobes=(.23*math.sin(angle*3+phase)+.105*math.sin(angle*5-theta*1.7+phase*.4))
             crown_taper=.88+.12*math.sin(theta*.78)
             radial=shoulder*crown_taper*(1+lobes*shoulder+.025*rng.uniform(-1,1))
             x=center[0]+math.cos(angle)*scale[0]*radial
             z=center[2]+math.sin(angle)*scale[2]*radial
             # A shallow asymmetric underside exposes trunk and first-order limbs.
             y=(center[1]+vertical*scale[1]
-               +scale[1]*(.075*math.sin(angle*3+phase)+.035*math.sin(angle*5-phase*.6))*shoulder**1.5)
+               +scale[1]*(.115*math.sin(angle*3+phase)+.052*math.sin(angle*5-phase*.6))*shoulder**1.35)
             if vertical<-.45:y+=scale[1]*.16*(-vertical-.45)
             vertices.append((x,y,z))
     bottom=len(vertices);vertices.append((center[0]-.025,center[1]-scale[1]*.83,center[2]+.018))
