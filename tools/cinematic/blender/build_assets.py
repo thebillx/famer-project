@@ -57,15 +57,25 @@ track = material("Field tracks", (.195, .140, .090), 0, .94)
 damp_bank = material("Damp channel shoulder", (.170, .120, .078), 0, .91)
 wet_bank = material("Wet channel earth", (.145, .105, .070), 0, .86)
 green_verge = material("Vegetated sample verge", (.105, .145, .063), 0, .93)
-water = material("Irrigation water", (.018, .052, .055), 0, .12, .82)
+water = material("Irrigation water", (.028, .074, .072), 0, .095, .74)
+water_bsdf = water.node_tree.nodes.get("Principled BSDF")
+for input_name, value in (("IOR", 1.333), ("Transmission Weight", .18),
+                          ("Specular IOR Level", .46), ("Coat Roughness", .08)):
+    if input_name in water_bsdf.inputs:
+        water_bsdf.inputs[input_name].default_value = value
 foliage = material("Tree foliage", (.125, .255, .064), 0, .82, .025)
 foliage_light = material("Tree foliage · sunlit leaves", (.285, .420, .126), 0, .69, .045)
 bark = material("Tree bark", (.17, .11, .062), 0, .96)
 greens = [material(f"Rice field {i}", c, 0, .92) for i, c in enumerate([
-    (.085, .145, .060), (.110, .165, .065), (.145, .180, .074),
-    (.090, .140, .057), (.135, .180, .076),
+    (.074, .132, .048), (.139, .187, .073),
 ])]
-crop_rows = material("Rice rows", (.090, .145, .052), 0, .90)
+crop_rows = material("Rice rows", (.122, .184, .068), 0, .89)
+crop_bsdf = crop_rows.node_tree.nodes.get("Principled BSDF")
+crop_bsdf.inputs["Emission Color"].default_value = (.018, .035, .010, 1)
+crop_bsdf.inputs["Emission Strength"].default_value = .035
+fallow = material("Rice field · fallow earth", (.205, .145, .084), 0, .95)
+low_growth = material("Rice field · low growth", (.100, .135, .052), 0, .94)
+wet_paddy = material("Rice field · shallow wet", (.050, .100, .091), 0, .34, .18)
 
 
 def collection(name):
@@ -74,9 +84,16 @@ def collection(name):
     return c
 
 
-ship = collection("01 · Spacecraft / editable parts")
-land = collection("02 · Agricultural surface / editable parts")
-tree_root = collection("03 · Tree silhouettes")
+cameras_root = collection("00_CAMERAS")
+earth_root = collection("01_EARTH")
+ship = collection("02_SPACECRAFT")
+thailand_root = collection("03_THAILAND_FOCUS")
+descent_root = collection("04_DESCENT_LANDSCAPE")
+hero_root = collection("05_HERO_FARMLAND")
+tree_root = collection("06_VEGETATION")
+lighting_root = collection("07_LIGHTING")
+land = collection("08_EXPORT")
+reference_root = collection("09_REFERENCE")
 tree_variants = []
 for name in ("Round canopy", "Tall canopy", "Open crown"):
     variant = bpy.data.collections.new(f"Tree · {name}")
@@ -160,17 +177,29 @@ def tube(name, a, b, radius, mat, parent=ship, sides=12):
 
 
 def lathe(name, profile, mat, center=(0, 0, 0), parent=ship, segments=64):
-    v = []
+    v, rings = [], []
     for radius, z in profile:
-        for i in range(segments):
-            a = i * math.tau / segments
-            v.append((center[0] + math.cos(a) * radius, center[1] + math.sin(a) * radius, center[2] + z))
+        if abs(radius) < 1e-9:
+            rings.append([len(v)])
+            v.append((center[0], center[1], center[2] + z))
+        else:
+            ring = []
+            for i in range(segments):
+                a = i * math.tau / segments
+                ring.append(len(v))
+                v.append((center[0] + math.cos(a) * radius, center[1] + math.sin(a) * radius, center[2] + z))
+            rings.append(ring)
     f = []
-    for j in range(len(profile) - 1):
-        for i in range(segments):
-            k = j * segments + i
-            n = j * segments + (i + 1) % segments
-            f.append((k, n, n + segments, k + segments))
+    for before, after in zip(rings, rings[1:]):
+        if len(before) == 1:
+            for i in range(segments):
+                f.append((before[0], after[(i + 1) % segments], after[i]))
+        elif len(after) == 1:
+            for i in range(segments):
+                f.append((before[i], before[(i + 1) % segments], after[0]))
+        else:
+            for i in range(segments):
+                f.append((before[i], before[(i + 1) % segments], after[(i + 1) % segments], after[i]))
     return mesh_obj(name, v, f, mat, parent, True)
 
 
@@ -435,11 +464,14 @@ def parcel_relief(index,u,v,sample=False):
     above that datum prevents the ground from surfacing through parcel triangles
     when their tessellation differs during the globe-to-field deformation.
     """
-    amplitude=.018 if sample else .028
+    # A paddy is nearly level at this scale. Keep only broad drainage fall and
+    # shallow cultivation relief so neighboring parcels do not read as thick
+    # floating plates in the locked field cameras.
+    amplitude=.010 if sample else .016
     phase=index*.71
     wave=(.72*math.sin(u*math.tau*1.15+phase)*math.sin(v*math.pi*.82+phase*.37)
           +.28*math.sin((u*.55+v)*math.tau*1.7-phase*.41))
-    return amplitude*(.55+.45*wave)
+    return amplitude*(.58+.42*wave)
 
 
 def planted_parcel(corners,mat,index,sample=False):
@@ -450,7 +482,7 @@ def planted_parcel(corners,mat,index,sample=False):
         if key not in vertex_cache:
             x,z=parcel_point(corners,u,vv)
             vertex_cache[key]=len(v)
-            v.append((x,height(x,z)+.001+parcel_relief(index,u,vv,sample),z))
+            v.append((x,height(x,z)+.004+parcel_relief(index,u,vv,sample),z))
         return vertex_cache[key]
 
     def channel_clearance(parameter):
@@ -559,7 +591,34 @@ def planted_parcel(corners,mat,index,sample=False):
     mesh_obj('Sample field' if sample else 'Adjoining cultivated parcel',v,f,mat,land,True)
     # Crops follow each parcel's planting axis. Distant rows remain low ribbons;
     # low uneven ridges retain depth without subpixel plant triangles.
-    if index%7==0 and not sample:return
+    if (index%7==0 or mat in (fallow,wet_paddy)) and not sample:return
+    if sample:
+        # The locked shot-6 camera resolves individual planting clumps across
+        # the demonstration plot. Three crossed triangular blades per clump
+        # create real edge depth at a lower cost than continuous raised strips.
+        vertices=[];faces=[]
+        row_count,column_count=25,18
+        for row in range(row_count):
+            vv=.045+(row+.5)/row_count*.91
+            for column in range(column_count):
+                u=.055+(column+.5)/column_count*.89
+                u+=.009*math.sin(row*.81+column*.37)
+                x,z=parcel_point(corners,u,vv)
+                base=height(x,z)+.004+parcel_relief(index,u,vv,True)+.004
+                plant_height=.029+.014*(.5+.5*math.sin(row*.73+column*1.17))
+                spread=.008+.003*(.5+.5*math.sin(row*1.11-column*.49))
+                for blade in range(3):
+                    angle=blade*math.pi/3+.23*math.sin(row*.37+column*.61+blade)
+                    dx,dz=math.cos(angle),math.sin(angle)
+                    sideways=(-dz*spread,dx*spread)
+                    lean=.010*(.35+.65*math.sin(row*.47+column*.83+blade*1.3)**2)
+                    start=len(vertices)
+                    vertices.extend(((x+sideways[0],base,z+sideways[1]),
+                                     (x+dx*lean,base+plant_height,z+dz*lean),
+                                     (x-sideways[0],base,z-sideways[1])))
+                    faces.append((start,start+1,start+2))
+        mesh_obj('Batched rice planting clumps',vertices,faces,crop_rows,land,False)
+        return
     if index%3==1 and not sample:corners=[corners[1],corners[2],corners[3],corners[0]]
     width=math.dist(corners[0],corners[3])
     # The demonstration parcel keeps enough rows to read as cultivated land.
@@ -573,6 +632,7 @@ def planted_parcel(corners,mat,index,sample=False):
     # it is authored geometry rather than a dynamic runtime LOD system.
     row_step=3 if not sample and distance>12 else 2 if not sample and distance>7.5 else 1
     vertices=[];faces=[]
+    row_material = crop_rows
     for row in range(1,rows,row_step):
         # Low-frequency spacing drift reads as planting passes rather than a
         # mathematically repeated stripe field. It stays deterministic and is
@@ -604,7 +664,19 @@ def planted_parcel(corners,mat,index,sample=False):
                 x,z=parcel_point(corners,u,adjusted_v)
                 crown=lift*(.88+.12*math.sin(row*1.7+j*1.1))
                 vertices.append((x,height(x,z)+parcel_relief(index,u,adjusted_v,sample)+crown,z))
+        # Real planting passes have headlands and occasional short misses.
+        # Three bounded gaps break the model-like full-width ribbons while the
+        # shared planting direction remains legible from shots 5 and 6.
+        gap_centers = (
+            .23 + .035 * math.sin(index * .71 + row * .43),
+            .52 + .028 * math.sin(index * .37 - row * .61),
+            .78 + .032 * math.sin(index * .53 + row * .29),
+        )
+        gap_half = .010 if sample else .014
         for j in range(longitudinal):
+            segment_center=(j+.5)/longitudinal
+            if any(abs(segment_center-center)<gap_half for center in gap_centers):
+                continue
             for k in range(len(cross)-1):
                 a=start+j*len(cross)+k
                 face=(a,a+len(cross),a+len(cross)+1,a+1)
@@ -612,7 +684,7 @@ def planted_parcel(corners,mat,index,sample=False):
                     faces.extend(upward_triangles(vertices,face))
     # One shared row material preserves batching; the parcel colors beneath and
     # the varied authored spacing carry the coherent plot-to-plot variation.
-    mesh_obj('Batched raised planting beds',vertices,faces,crop_rows,land,True)
+    mesh_obj('Batched raised planting beds',vertices,faces,row_material,land,True)
 
 
 ground_mesh()
@@ -624,13 +696,28 @@ ground_mesh()
 parcel_index=0
 
 
+def parcel_material(index):
+    """Deterministic land-cover states for the descent composition.
+
+    Materials change in coherent whole parcels.  This avoids the previous
+    wall-to-wall green plates while retaining one authored agricultural fabric.
+    """
+    if index in (4, 17, 24):
+        return fallow
+    if index in (8, 21):
+        return wet_paddy
+    if index in (12, 28):
+        return low_growth
+    return greens[(index * 3 + index // 4) % len(greens)]
+
+
 def parcel_band(z0,z1,bottom,top):
     global parcel_index
     assert len(bottom)==len(top)
     for i in range(len(bottom)-1):
         corners=[(bottom[i],z0),(bottom[i+1],z0),(top[i+1],z1),(top[i],z1)]
         inset=[parcel_point(corners,u,v) for u,v in ((.018,.018),(.982,.018),(.982,.982),(.018,.982))]
-        planted_parcel(inset,greens[(parcel_index*5+i*2)%len(greens)],parcel_index)
+        planted_parcel(inset,parcel_material(parcel_index),parcel_index)
         parcel_index+=1
     # Dividers terminate at shared band edges instead of continuing as a
     # rectangular grid across the entire landscape.
@@ -664,7 +751,7 @@ for x0,x1,central_top in [(-18,-2.82,2.58),(3.64,18,3.52)]:
     for z0,z1 in [(-2.65,split),(split,central_top)]:
         corners=[(x0,z0),(x1,z0),(x1,z1),(x0,z1)]
         inset=[parcel_point(corners,u,v) for u,v in ((.018,.018),(.982,.018),(.982,.982),(.018,.982))]
-        planted_parcel(inset,greens[(parcel_index*3)%len(greens)],parcel_index)
+        planted_parcel(inset,parcel_material(parcel_index),parcel_index)
         parcel_index+=1
     ribbon('Shared parcel bank',[(x0,split),(x1,split)],.09,.064)
 
@@ -704,7 +791,13 @@ def channel_strip(name,inner_offset,outer_offset,inner_lift,outer_lift,mat,cente
     outer=channel_offset_points(path,outer_offset)
     vertices=[];faces=[]
     for i in range(len(path)):
-        for (x,z),lift in ((inner[i],inner_lift),(outer[i],outer_lift)):
+        for side,((x,z),lift) in enumerate(((inner[i],inner_lift),(outer[i],outer_lift))):
+            if mat==water:
+                # Millimetre-scale, multi-directional ripples shape real
+                # specular normals. They preserve the approved water footprint
+                # and replace a perfectly flat ribbon without painted bands.
+                lift+=(.0024*math.sin(x*1.73+z*.63+side*1.4)
+                       +.0012*math.sin(x*.58-z*2.31+side*.7))
             vertices.append((x,height(x,z)+lift,z))
     for i in range(len(path)-1):
         a=i*2
@@ -734,6 +827,10 @@ planted_parcel([(-2.50,-2.30),(2.45,-2.30),(2.45,2.27),(-2.50,2.27)],greens[1],1
 # A farm track joins the outer banks. It follows a shared parcel edge and stays
 # entirely outside the sample/NDVI boundary and descending camera corridor.
 ribbon('Farm access track',[(-18,-7.1),(-7.7,-7.1),(-3.45,-7.1),(3.45,-7.1),(8,-7.1),(18,-7.1)],.13,.045)
+# A second, gently wandering lane establishes a larger landscape hierarchy in
+# the high descent camera.  It stays well clear of the accepted sample boundary
+# and is clipped by the existing channel-aware ribbon helper.
+ribbon('Secondary farm access track',[(-11.6,-18),(-10.6,-11),(-10.9,-3.4),(-10.1,4.2),(-11.0,11.8),(-9.4,18)],.17,.038)
 
 
 def tapered_branch(parent, name, start, end, base_radius, tip_radius, mat=bark, sides=8):
@@ -772,68 +869,17 @@ def add_leaf(base, direction, length, width, material, batches, roll=0):
     group["faces"].extend(tuple(offset + i for i in face) for face in top)
 
 
-def canopy_mass(parent,name,center,scale,mat,rng,phase,yaw=0,longitude=16,latitude=8):
-    """Create one smooth, asymmetric foliage cluster around a supporting limb."""
-    vertices=[];faces=[]
-    # Shared poles prevent the top and underside from becoming radial caps.
-    vertices.append((center[0],center[1]+scale[1],center[2]))
-    for ring in range(1,latitude):
-        theta=math.pi*ring/latitude
-        shoulder=math.sin(theta)
-        vertical=math.cos(theta)
-        for segment in range(longitude):
-            angle=yaw+math.tau*segment/longitude
-            lobes=(.11*math.sin(angle*5+phase)+.045*math.sin(angle*7-theta*1.7+phase*.4))
-            crown_taper=.88+.12*math.sin(theta*.78)
-            radial=shoulder*crown_taper*(1+lobes*shoulder+.025*rng.uniform(-1,1))
-            x=center[0]+math.cos(angle)*scale[0]*radial
-            z=center[2]+math.sin(angle)*scale[2]*radial
-            # A shallow asymmetric underside exposes trunk and first-order limbs.
-            y=(center[1]+vertical*scale[1]
-               +scale[1]*(.115*math.sin(angle*3+phase)+.052*math.sin(angle*5-phase*.6))*shoulder**1.35)
-            if vertical<-.45:y+=scale[1]*.16*(-vertical-.45)
-            vertices.append((x,y,z))
-    bottom=len(vertices);vertices.append((center[0]-.025,center[1]-scale[1]*.83,center[2]+.018))
-    for segment in range(longitude):
-        nxt=(segment+1)%longitude
-        faces.append((0,1+nxt,1+segment))
-    for ring in range(latitude-2):
-        row=1+ring*longitude;next_row=row+longitude
-        for segment in range(longitude):
-            nxt=(segment+1)%longitude
-            faces.extend(((row+segment,next_row+segment,next_row+nxt),(row+segment,next_row+nxt,row+nxt)))
-    last=1+(latitude-2)*longitude
-    for segment in range(longitude):
-        nxt=(segment+1)%longitude
-        faces.append((last+segment,bottom,last+nxt))
-    return mesh_obj(name,vertices,faces,mat,parent,True)
-
-
-
 # Three branched silhouettes at a believable crop-edge scale. Variant one is
-# the representative shot-6 tree: small branch-attached foliage clusters keep
-# readable crown gaps and leaf-scale edge breakup without a denser solid shell.
+# the representative shot-6 tree. Foliage is built from branch-attached leaf
+# sprays rather than closed ellipsoids, leaving genuine crown gaps and visible
+# first-order structure at the presentation cameras.
 tree_specs=[(.98,.54,1.48),(1.18,.43,1.85),(.78,.65,1.29)]
 for variant_index,(trunk_height,spread,crown_height) in enumerate(tree_specs):
     parent=tree_variants[variant_index];rng=random.Random(730+variant_index);leaf_batches={}
     tapered_branch(parent,'Tapered living trunk',(0,0,0),(.045,trunk_height,0),.049,.013,sides=9)
-    crown_layouts=[
-        [(-.58,-.02,.18,.34,.17,.31),(-.42,.12,-.24,.37,.18,.33),(-.17,.20,.20,.39,.19,.35),(.10,.25,-.15,.41,.20,.36),(.34,.13,.23,.37,.18,.33),(.56,-.01,-.18,.33,.16,.30),(-.10,-.10,-.25,.31,.15,.28),(.20,-.08,.27,.30,.15,.27)],
-        [(-.44,-.06,-.10,.41,.21,.37),(-.21,.09,.13,.49,.24,.42),(.04,.20,-.02,.54,.28,.47),(.33,.10,.12,.45,.23,.40),(.50,-.04,-.11,.38,.20,.34)],
-        [(-.51,-.04,.14,.47,.21,.41),(-.25,.09,-.12,.53,.23,.46),(.04,.17,.03,.56,.26,.50),(.36,.08,-.13,.49,.22,.43),(.55,-.05,.12,.41,.19,.36)],
-    ]
-    cluster_indices=(0,2,4,6) if variant_index==0 else (0,1,3,4)
-    cluster_scale=1 if variant_index==0 else .76
-    for cluster in cluster_indices:
-        ox,oy,oz,sx,sy,sz=crown_layouts[variant_index][cluster]
-        canopy_mass(parent,'Open branch-attached foliage cluster',
-                    (ox*spread,trunk_height*1.02+crown_height*(.08+oy),oz*spread),
-                    (spread*sx*cluster_scale,crown_height*sy*(.92 if variant_index else 1),spread*sz*cluster_scale),
-                    foliage_light if cluster%3 else foliage,rng,
-                    variant_index*.93+cluster*.71+.4,yaw=cluster*.62-variant_index*.31,
-                    longitude=12,latitude=6)
     primary_ends=[]
-    for branch in range(9):
+    branch_count=(11,9,10)[variant_index]
+    for branch in range(branch_count):
         angle=branch*2.399+rng.uniform(-.25,.25)
         start=(.02,trunk_height*rng.uniform(.46,.90),0)
         end=(math.cos(angle)*spread*rng.uniform(.62,.92),rng.uniform(trunk_height*.86,crown_height),math.sin(angle)*spread*rng.uniform(.62,.92))
@@ -844,7 +890,7 @@ for variant_index,(trunk_height,spread,crown_height) in enumerate(tree_specs):
         for spray in (-.34,0,.34):
             leaf_angle=angle+spray
             direction=(math.cos(leaf_angle),rng.uniform(.24,.62),math.sin(leaf_angle))
-            length=rng.uniform(.105,.150) if variant_index==0 else rng.uniform(.095,.140)
+            length=rng.uniform(.135,.205) if variant_index==0 else rng.uniform(.120,.185)
             shade=foliage_light if spray>=0 else foliage
             add_leaf(end,direction,length,length*.24,shade,leaf_batches,spray*.8)
         for twig in range(2):
@@ -860,18 +906,18 @@ for variant_index,(trunk_height,spread,crown_height) in enumerate(tree_specs):
                 for side in (-1,1):
                     leaf_angle=twig_angle+side*rng.uniform(.48,.82)
                     direction=(math.cos(leaf_angle),rng.uniform(.24,.72),math.sin(leaf_angle))
-                    length=rng.uniform(.070,.105)
+                    length=rng.uniform(.085,.135)
                     shade=foliage_light if side>0 and rng.random()>.38 else foliage
                     add_leaf(location,direction,length,length*rng.uniform(.20,.27),shade,leaf_batches,side*rng.uniform(.35,.95))
-    # Branch-attached leaf fans break the cluster edges at the near shot-6
-    # camera. They merge into the four small crown masses at distance without
-    # allocating a solid shell or dense geometry to every tree.
+    # Branch-attached fans overlap into an open crown at distance. Their
+    # irregular elevation and scale retain negative spaces instead of forming
+    # another smooth solid blob.
     for cluster,end in enumerate(primary_ends+[(0,trunk_height*.96,0)]):
-        leaf_count=(14 if cluster<len(primary_ends) else 18) if variant_index==0 else (10 if cluster<len(primary_ends) else 14)
+        leaf_count=(26 if cluster<len(primary_ends) else 32) if variant_index==0 else (20 if cluster<len(primary_ends) else 26)
         for leaf in range(leaf_count):
             angle=math.tau*(leaf/leaf_count)+rng.uniform(-.16,.16)+cluster*.71
-            direction=(math.cos(angle)*rng.uniform(.72,1.0),rng.uniform(-.16,.82),math.sin(angle)*rng.uniform(.72,1.0))
-            length=rng.uniform(.105,.185) if variant_index==0 else rng.uniform(.095,.170)
+            direction=(math.cos(angle)*rng.uniform(.66,1.0),rng.uniform(-.22,.88),math.sin(angle)*rng.uniform(.66,1.0))
+            length=rng.uniform(.135,.235) if variant_index==0 else rng.uniform(.115,.205)
             shade=foliage_light if (leaf+cluster)%3 else foliage
             add_leaf(end,direction,length,length*rng.uniform(.24,.34),shade,leaf_batches,rng.uniform(-1.1,1.1))
     for leaf_batch in leaf_batches.values():
@@ -885,8 +931,8 @@ from surface_maps import build_surfaces, apply_surface
 surface_output=OUT.parent/'textures'/'surfaces'
 surface_images=build_surfaces(surface_output)
 for mat in bpy.data.materials:
-    role=('foil' if mat==gold else 'solar' if mat==cells else 'metal' if mat==silver else 'water' if mat==water else 'leaf' if mat in (foliage,foliage_light) else 'crop' if mat in greens or mat in (crop_rows,green_verge) else 'soil' if mat in (soil,track,damp_bank,wet_bank,bark) else None)
-    if role:apply_surface(mat,role,surface_images,.38 if role=='foil' else .16 if role=='solar' else 1.08 if role=='water' else .22 if mat==crop_rows else .18 if mat in (track,damp_bank,green_verge) else .4)
+    role=('foil' if mat==gold else 'solar' if mat==cells else 'metal' if mat==silver else 'water' if mat in (water,wet_paddy) else 'leaf' if mat in (foliage,foliage_light) else 'crop' if mat in greens or mat in (crop_rows,green_verge,low_growth) else 'soil' if mat in (soil,track,damp_bank,wet_bank,bark,fallow) else None)
+    if role:apply_surface(mat,role,surface_images,.38 if role=='foil' else .16 if role=='solar' else .82 if role=='water' else .20 if mat==crop_rows else .16 if mat in (track,damp_bank,green_verge) else .4)
     if mat in (foliage,foliage_light,crop_rows):mat['doubleSided']=True
 for obj in bpy.data.objects:
     if obj.type!='MESH':continue
@@ -897,11 +943,37 @@ for obj in bpy.data.objects:
         mat=obj.data.materials[polygon.material_index]
         # World-scale projections keep soil/crop detail from repeating as tiny
         # wallpaper across large parcels. Water uses still broader wave bands.
-        scale=(.21 if mat==water else 3.0 if mat in (foliage,foliage_light) else .46 if mat in greens or mat in (crop_rows,green_verge) else
-               .62 if mat==track else .72 if mat==damp_bank else .82 if mat==wet_bank else .40 if mat==soil else 1.0)
+        scale=(.15 if mat in (water,wet_paddy) else 2.6 if mat in (foliage,foliage_light) else .24 if mat in greens or mat in (crop_rows,green_verge,low_growth) else
+               .22 if mat==track else .27 if mat==damp_bank else .31 if mat==wet_bank else .16 if mat in (soil,fallow) else 1.0)
         for loop in polygon.loop_indices:
             point=obj.matrix_world@obj.data.vertices[obj.data.loops[loop].vertex_index].co
             uv.data[loop].uv=(point[axes[0]]*scale,point[axes[1]]*scale)
+
+
+# Add the locked-camera master scene after runtime UV authoring.  The compact
+# exporter below still reads only 02_SPACECRAFT, 08_EXPORT and the three tree
+# prototype collections, so review-only Earth/camera/light objects cannot leak
+# into the browser payload.
+from static_scene import author_master_scene
+master_report = author_master_scene(
+    repo_root=ROOT,
+    evidence_root=EVIDENCE,
+    collections={
+        "cameras": cameras_root,
+        "earth": earth_root,
+        "spacecraft": ship,
+        "thailand": thailand_root,
+        "descent": descent_root,
+        "hero": hero_root,
+        "vegetation": tree_root,
+        "lighting": lighting_root,
+        "export": land,
+        "reference": reference_root,
+    },
+    tree_variants=tree_variants,
+    sample_bounds=SAMPLE_BOUNDS,
+    height_fn=height,
+)
 
 
 def export_collection(coll, filename, include_data=False, destination=OUT):
@@ -982,5 +1054,5 @@ scene["AgriScope"] = "Original conceptual EO spacecraft and synthetic agricultur
 scene["Asset license"] = "Original project artwork; no third-party spacecraft model"
 scene["Export schema"] = "Material-batched quantized true meshes, decoded by mesh-assets.js"
 bpy.ops.wm.save_as_mainfile(filepath=str(EVIDENCE / "AgriScope-Cinematic-Assets.blend"))
-(EVIDENCE / "asset-build.json").write_text(json.dumps({"blender": bpy.app.version_string, "assets": stats}, indent=2))
+(EVIDENCE / "asset-build.json").write_text(json.dumps({"blender": bpy.app.version_string, "assets": stats, "staticScene": master_report}, indent=2))
 print("Saved editable Blender source", flush=True)

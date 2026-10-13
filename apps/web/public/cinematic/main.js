@@ -1,7 +1,7 @@
 import * as THREE from './vendor.js';
 import {buildSpacecraft} from './spacecraft.js';
 import {buildEarth,buildStarfield} from './earth.js';
-import {buildTerrain} from './terrain.js';
+import {bindTerrainEnvironment,buildTerrain} from './terrain.js';
 import {buildEvidence,DEMO} from './demo-evidence.js';
 import {loadMeshData,loadSurfaceMaps} from './mesh-assets.js';
 import {spaceEnvironment,agriculturalEnvironment} from './space-light.js';
@@ -90,7 +90,7 @@ export function mountJourney(root){
    const rotation=new THREE.Matrix3().setFromMatrix4(new THREE.Matrix4().makeRotationFromQuaternion(earth.quaternion.clone().invert()));
    terrain=buildTerrain({farmland,tree},{mobile:innerWidth<760,day,rotation,surfaceMaps});scene.add(terrain);
    const fieldEnvironment=agriculturalEnvironment(renderer);resources.push(fieldEnvironment);
-   terrain.traverse(mesh=>{if(mesh.material?.isMeshStandardMaterial){mesh.material.envMap=fieldEnvironment.texture;mesh.material.envMapIntensity=mesh.name.includes('water')?1.65:mesh.name.includes('foliage')?.48:.42;}});
+   bindTerrainEnvironment(terrain,fieldEnvironment.texture);
    evidence=buildEvidence();scene.add(evidence.group);
    beam=new THREE.Mesh(new THREE.CylinderGeometry(.008,.024,1,16,1,true),new THREE.MeshBasicMaterial({color:0xe8c99a,transparent:true,opacity:0,blending:THREE.AdditiveBlending,depthWrite:false,side:THREE.DoubleSide}));scene.add(beam);
    composer=new THREE.EffectComposer(renderer);composer.addPass(new THREE.RenderPass(scene,camera));
@@ -158,6 +158,10 @@ export function mountJourney(root){
   earth.userData.atmosphere.material.uniforms.opacity.value=1-smooth(.41,.53,p);
   earth.userData.clouds.visible=p<.49;earth.userData.clouds.material.opacity=.38*(1-smooth(.35,.49,p));
   earth.userData.clouds.rotation.y=.008*smooth(.20,.49,p);
+  earth.userData.cloudShadow.visible=p<.49;earth.userData.cloudShadow.material.opacity=.16*(1-smooth(.35,.49,p));
+  earth.userData.cloudShadow.rotation.y=earth.userData.clouds.rotation.y-.0018;
+  earth.userData.thailandFocus.visible=p<.455;
+  earth.userData.thailandFocus.material.opacity=.72*smooth(.31,.355,p)*(1-smooth(.425,.455,p));
   const payload=spacecraft.localToWorld(spacecraft.userData.payloadPosition.clone()),ground=new THREE.Vector3(0,.12,0),direction=payload.clone().sub(ground);
   beam.position.copy(payload).add(ground).multiplyScalar(.5);beam.scale.y=direction.length();beam.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),direction.normalize());
   beam.visible=p>=.25&&p<=.43;beam.material.opacity=.07*smooth(.25,.30,p)*(1-smooth(.37,.43,p));
@@ -194,7 +198,7 @@ export function mountJourney(root){
   const phase=[0,1,3,6,9].reduce((a,i)=>i<=shot?i:a,0);
   [...$('rail').children].forEach((b,i)=>b.setAttribute('aria-current',String(i===(mobile?phase:shot))));
   $('bottom-left').firstChild.textContent=p<.08?'SCROLL TO EXPLORE ':p>.93?'YOUR AGRISCOPE WORKSPACE ':'EARTH OBSERVATION / THAILAND ';
-  writeDiagnostics({p:+p.toFixed(6),shot:shot+1,camera:camera.position.toArray(),look:key.target.toArray(),fov:camera.fov,terrain:terrain.visible,localDetail:detail,flatten,cloudOpacity:earth.userData.clouds.material.opacity,cloudRotation:earth.userData.clouds.rotation.y,atmosphere:earth.userData.atmosphere.material.uniforms.opacity.value,beamOpacity:beam.material.opacity,beamPosition:beam.position.toArray(),beamAttitude:beam.quaternion.toArray(),fog:scene.fog.density,fieldOpacity,evidenceOpacity,attitude:spacecraft.quaternion.toArray(),spacecraftPosition:spacecraft.position.toArray(),beam:beam.visible,evidence:sample,viewport:[innerWidth,innerHeight]});
+  writeDiagnostics({p:+p.toFixed(6),shot:shot+1,camera:camera.position.toArray(),look:key.target.toArray(),fov:camera.fov,terrain:terrain.visible,localDetail:detail,flatten,cloudOpacity:earth.userData.clouds.material.opacity,cloudRotation:earth.userData.clouds.rotation.y,cloudShadowOpacity:earth.userData.cloudShadow.material.opacity,thailandFocusOpacity:earth.userData.thailandFocus.material.opacity,atmosphere:earth.userData.atmosphere.material.uniforms.opacity.value,beamOpacity:beam.material.opacity,beamPosition:beam.position.toArray(),beamAttitude:beam.quaternion.toArray(),fog:scene.fog.density,fieldOpacity,evidenceOpacity,attitude:spacecraft.quaternion.toArray(),spacecraftPosition:spacecraft.position.toArray(),beam:beam.visible,evidence:sample,viewport:[innerWidth,innerHeight]});
  }
  function animate(time){
   if(!active)return;raf=requestAnimationFrame(animate);if(document.hidden)return;

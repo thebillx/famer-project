@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import * as THREE from '../../apps/web/public/cinematic/vendor.js';
 import {decodeMeshAsset,loadSurfaceMaps} from '../../apps/web/public/cinematic/mesh-assets.js';
-import {buildTerrain} from '../../apps/web/public/cinematic/terrain.js';
+import {bindTerrainEnvironment,buildTerrain} from '../../apps/web/public/cinematic/terrain.js';
 
 const load=async name=>JSON.parse(await readFile(new URL(`../../apps/web/public/cinematic/models/${name}.mesh.json`,import.meta.url)));
 const encode=(values,Type)=>{
@@ -95,6 +95,7 @@ assert.equal(solar?.envMapIntensity,2.05,'Solar cells retain a readable orbital 
 assert.ok(spacecraft.children.find(mesh=>mesh.name==='MLI · champagne gold')?.material.envMapIntensity>1.4,'Folded foil keeps a controlled orbital reflection');
 const terrain=buildTerrain({farmland,tree},{day:{},rotation:undefined,surfaceMaps:maps});
 const water=terrain.children.find(mesh=>mesh.name==='Irrigation water');
+const shallowWet=terrain.children.find(mesh=>mesh.name==='Rice field · shallow wet');
 const dampBank=terrain.children.find(mesh=>mesh.name==='Damp channel shoulder');
 const wetBank=terrain.children.find(mesh=>mesh.name==='Wet channel earth');
 assert.ok(water?.material.onBeforeCompile,'Terrain water keeps its role material shader');
@@ -102,6 +103,11 @@ assert.equal(water?.material.transparent,true,'Irrigation water retains a restra
 assert.equal(water?.material.opacity,.94,'Irrigation water keeps the authored reflection legible over the recessed bed');
 assert.ok(dampBank?.material.onBeforeCompile,'Damp canal shoulders keep their distinct material response');
 assert.ok(wetBank?.material.onBeforeCompile,'Wet canal slopes keep their distinct material response');
+assert.equal(shallowWet?.material.userData.surface,'water','Decoded shallow wet paddy retains its authored semantic surface role');
+const fieldEnvironment={name:'focused terrain environment fixture'};
+bindTerrainEnvironment(terrain,fieldEnvironment);
+assert.equal(shallowWet.material.envMap,fieldEnvironment,'Shallow wet paddy receives the agricultural environment');
+assert.equal(shallowWet.material.envMapIntensity,1.65,'Shallow wet paddy reaches the semantic water environment branch');
 const shader={uniforms:{},vertexShader:'#include <common>\n#include <beginnormal_vertex>\n#include <begin_vertex>',fragmentShader:'#include <common>\n#include <normal_fragment_begin>\n#include <roughnessmap_fragment>\n#include <metalnessmap_fragment>\n#include <color_fragment>\n#include <opaque_fragment>'};
 water.material.onBeforeCompile(shader);
 assert.equal(shader.uniforms.surfaceKind.value,4,'Irrigation plane uses the physical water material branch');
@@ -115,6 +121,9 @@ assert.doesNotMatch(shader.fragmentShader,/bankShadow|canalAxis|3\.12|2\.95/,'Wa
 assert.match(shader.vertexShader,/agriculturalViewNormal=normalize\(normalMatrix\*objectNormal\)/,'Water view response uses the flattened authored surface normal');
 assert.doesNotMatch(shader.fragmentShader,/normalize\(agriculturalViewNormal\)|normalize\(normal\)/,'Water color does not duplicate the physical material Fresnel calculation');
 assert.match(shader.fragmentShader,/localDetail/);
+const shallowWetShader={uniforms:{},vertexShader:'#include <common>\n#include <beginnormal_vertex>\n#include <begin_vertex>',fragmentShader:'#include <common>\n#include <normal_fragment_begin>\n#include <roughnessmap_fragment>\n#include <metalnessmap_fragment>\n#include <color_fragment>'};
+shallowWet.material.onBeforeCompile(shallowWetShader);
+assert.equal(shallowWetShader.uniforms.surfaceKind.value,4,'Shallow wet paddy reaches the semantic water roughness and tint branch');
 const wetShader={uniforms:{},vertexShader:'#include <common>\n#include <beginnormal_vertex>\n#include <begin_vertex>',fragmentShader:'#include <common>\n#include <normal_fragment_begin>\n#include <roughnessmap_fragment>\n#include <metalnessmap_fragment>\n#include <color_fragment>'};
 wetBank.material.onBeforeCompile(wetShader);
 assert.equal(wetShader.uniforms.surfaceKind.value,6,'Channel slopes use the wet-soil branch');

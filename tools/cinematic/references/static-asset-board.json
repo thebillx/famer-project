@@ -1,0 +1,156 @@
+{
+  "schema": 1,
+  "kind": "static-asset-reference-board",
+  "createdForBaseline": "adbd060ef07c88e7fb2decacf9609daa1e5018c1",
+  "entries": [
+    {
+      "assetSet": "Earth system",
+      "localFile": "apps/web/public/cinematic/textures/earth-day.jpg",
+      "sourceUrl": "https://threejs.org/examples/textures/planets/",
+      "contentIdentity": "NASA Blue Marble-derived global Earth surface distributed in the official Three.js examples",
+      "capturedOrDownloadedAt": "2026-10-09T00:00:00+07:00",
+      "timeBasis": "Project acquisition record in CREDITS.md; exact wall-clock time was not recorded.",
+      "intendedUse": "Earth surface color and geographic scale",
+      "sha256": "2faa400d1eade3bc44caf6750d1b772bd9bbb6d87362c02bc7c3304e78fa0a9d",
+      "licenseOrUsage": "Bundled runtime asset with Three.js MIT notice and NASA context credit; see apps/web/public/cinematic/CREDITS.md."
+    },
+    {
+      "assetSet": "Earth system",
+      "localFile": "apps/web/public/cinematic/textures/earth-clouds.png",
+      "sourceUrl": "https://threejs.org/examples/textures/planets/",
+      "contentIdentity": "Global cloud layer distributed in the official Three.js examples",
+      "capturedOrDownloadedAt": "2026-10-09T00:00:00+07:00",
+      "timeBasis": "Project acquisition record in CREDITS.md; exact wall-clock time was not recorded.",
+      "intendedUse": "Independent cloud depth and rotation",
+      "sha256": "5f9612e4f4040975a195dd0d14e89c9ba72bd6bdd22e1454db4fcefb92d37d38",
+      "licenseOrUsage": "Bundled runtime asset with Three.js MIT notice and NASA context credit; see apps/web/public/cinematic/CREDITS.md."
+    },
+    {
+      "assetSet": "Earth system",
+      "localFile": "apps/web/public/cinematic/textures/earth-night.png",
+      "sourceUrl": "https://threejs.org/examples/textures/planets/",
+      "contentIdentity": "Global night-light layer distributed in the official Three.js examples",
+      "capturedOrDownloadedAt": "2026-10-09T00:00:00+07:00",
+      "timeBasis": "Project acquisition record in CREDITS.md; exact wall-clock time was not recorded.",
+      "intendedUse": "Restrained city response only where visible",
+      "sha256": "0564fa57f5fade2f65e56d3ad59b3c6bf5e32c44f60370a3e46fd367b0cabaee",
+      "licenseOrUsage": "Bundled runtime asset with Three.js MIT notice and NASA context credit; see apps/web/public/cinematic/CREDITS.md."
+    },
+    {
+      "assetSet": "Spacecraft hero / atmosphere",
+      "localFile": "tools/cinematic/references/earth-limb-and-spacecraft.jpg",
+      "sourceUrl": "https://edolus.com/",
+      "contentIdentity": "Textured Earth limb, blue atmospheric rim and a foreground spacecraft with bright solar-panel reflections.",
+      "capturedOrDownloadedAt": "2026-10-11T16:57:56.863333+00:00",
+      "timeBasis": "Original screenshot file modification time; capture harness did not record an independent timestamp.",
+      "intendedUse": "Visual guidance for composition, shaped reflections, atmospheric depth and material separation only.",
+      "sha256": "563b9c99775e4dc0887ef36b1e54e7cd3e3379fbe2bce348ad0c888d5ba4a8f0",
+      "licenseOrUsage": "Third-party reference; review evidence only. Not incorporated into runtime or Blender assets."
+    },
+    {
+      "assetSet": "Spacecraft hero / atmosphere",
+      "localFile": "tools/cinematic/references/orbital-spacecraft.jpg",
+      "sourceUrl": "https://edolus.com/",
+      "contentIdentity": "Spacecraft silhouetted against textured Earth and a blue limb; reflective bus panels and gridded solar array.",
+      "capturedOrDownloadedAt": "2026-10-11T16:58:00.493138+00:00",
+      "timeBasis": "Original screenshot file modification time; capture harness did not record an independent timestamp.",
+      "intendedUse": "Visual guidance for composition, shaped reflections, atmospheric depth and material separation only.",
+      "sha256": "8a459484e4e36c1727c0018616af18c9e8a480fe15cee5189b9a1d52fa9b9531",
+      "licenseOrUsage": "Third-party reference; review evidence only. Not incorporated into runtime or Blender assets."
+    },
+    {
+      "assetSet": "Spacecraft hero / atmosphere",
+      "localFile": "tools/cinematic/references/spacecraft-in-cloud.jpg",
+      "sourceUrl": "https://edolus.com/",
+      "contentIdentity": "Spacecraft within a pale cloud layer, with distant surfaces softened by atmosphere; no Earth limb visible.",
+      "capturedOrDownloadedAt": "2026-10-11T16:58:06.258521+00:00",
+      "timeBasis": "Original screenshot file modification time; capture harness did not record an independent timestamp.",
+      "intendedUse": "Visual guidance for composition, shaped reflections, atmospheric depth and material separation only.",
+      "sha256": "6863f5e493bff3924d8d509ddee8236deea37043870298fc982ee8ac2b1df81f",
+      "licenseOrUsage": "Third-party reference; review evidence only. Not incorporated into runtime or Blender assets."
+    },
+    {
+      "assetSet": "Thailand focus",
+      "localFile": "tools/cinematic/references/natural-earth-thailand.geojson",
+      "sourceUrl": "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/v5.1.2/geojson/ne_10m_admin_0_countries.geojson",
+      "contentIdentity": "Thailand mainland boundary extracted from Natural Earth 1:10m Admin 0 Countries v5.1.2 and simplified to a 0.02-degree visual locator.",
+      "capturedOrDownloadedAt": "2026-10-13T18:17:15.493654+00:00",
+      "timeBasis": "Recorded when the version-pinned 1:10m source was extracted for this milestone.",
+      "intendedUse": "Geographically credible localized outline geometry for shot 4; not a surveyed or ownership boundary.",
+      "sha256": "e215e539d574c1469f9795e2813bca1fbba73e0221ad06a8e6b87ba06c3a89e6",
+      "licenseOrUsage": "Natural Earth data is public domain: https://www.naturalearthdata.com/about/terms-of-use/."
+    },
+    {
+      "assetSet": "Descent landscape / hero farmland / tropical vegetation",
+      "artifactFile": "reference/undp/fe900ab0239ffcee.jpeg",
+      "sourceUrl": "https://www.undp.org/sites/g/files/zskgke326/files/styles/image_with_credit_caption_1392_x_651_/public/2025-06/4g3a7176_large.jpeg?itok=DMnk_Uig",
+      "contentIdentity": "UNDP Thailand field photograph showing a vegetated rice paddy shoulder, wet soil edge and shallow reflective water.",
+      "capturedOrDownloadedAt": "2026-10-12T13:23:55.412650+00:00",
+      "timeBasis": "Local downloaded reference file modification time.",
+      "intendedUse": "Visual guidance for wet/dry transitions, crop scale and irrigation-edge shape only.",
+      "sha256": "e08083e1079b89960893ab968e84274ab0d5411d7ed2f1da51e42c7a6dc72bb4",
+      "licenseOrUsage": "UNDP third-party editorial reference; artifact review evidence only. Not bundled into the application or Blender source."
+    },
+    {
+      "assetSet": "Descent landscape / hero farmland / tropical vegetation",
+      "artifactFile": "reference/undp/99638978903cdb0b.jpeg",
+      "sourceUrl": "https://www.undp.org/sites/g/files/zskgke326/files/styles/image_carousel_desktop/public/2025-06/4g3a7220_large.jpeg?itok=1G6UCEsc",
+      "contentIdentity": "UNDP Thailand construction photograph; visually verified as excavation rather than agricultural aerial terrain.",
+      "capturedOrDownloadedAt": "2026-10-12T13:23:55.412823+00:00",
+      "timeBasis": "Local downloaded reference file modification time.",
+      "intendedUse": "Traceability only; excluded from farmland look development.",
+      "sha256": "f888893a0a6e67c3b6888db0eb2dbe702c4e382edf052338319fc197ba1d76ff",
+      "licenseOrUsage": "UNDP third-party editorial reference; artifact review evidence only. Not bundled into the application or Blender source."
+    },
+    {
+      "assetSet": "Descent landscape / hero farmland / tropical vegetation",
+      "artifactFile": "reference/undp/01fe54f89bd8a096.jpeg",
+      "sourceUrl": "https://www.undp.org/sites/g/files/zskgke326/files/styles/image_carousel_desktop/public/2025-06/undp_phitsanulokday_2_051_large.jpeg?itok=-DDUzsJo",
+      "contentIdentity": "UNDP Thailand group photograph at a construction site; visually verified as unrelated to agricultural terrain.",
+      "capturedOrDownloadedAt": "2026-10-12T13:23:55.412750+00:00",
+      "timeBasis": "Local downloaded reference file modification time.",
+      "intendedUse": "Traceability only; excluded from farmland look development.",
+      "sha256": "a3f82d4527a92496c0759c50af8b6c11236dc2ab56b4e701c30abd6368a5356d",
+      "licenseOrUsage": "UNDP third-party editorial reference; artifact review evidence only. Not bundled into the application or Blender source."
+    },
+    {
+      "assetSet": "Descent landscape / hero farmland / tropical vegetation",
+      "artifactFile": "reference/undp/739338933e16ebbe.jpeg",
+      "sourceUrl": "https://www.undp.org/sites/g/files/zskgke326/files/styles/image_with_credit_caption_1392_x_651_/public/2025-06/undp_phitsanulokday_2_062_large.jpeg?itok=5S9N_DRy",
+      "contentIdentity": "UNDP Thailand portrait; visually verified as unrelated to agricultural terrain or vegetation.",
+      "capturedOrDownloadedAt": "2026-10-12T13:23:55.412750+00:00",
+      "timeBasis": "Local downloaded reference file modification time.",
+      "intendedUse": "Traceability only; excluded from farmland look development.",
+      "sha256": "e525780e76334115ea7f99f18b5ff5ba38100af6f602f669e4a7aaab16185fae",
+      "licenseOrUsage": "UNDP third-party editorial reference; artifact review evidence only. Not bundled into the application or Blender source."
+    },
+    {
+      "assetSet": "Descent landscape / hero farmland / irrigation",
+      "artifactFile": "reference/commons/aerial-rangsit-canal.jpg",
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File:Aerial_view_of_Rangsit_Canal.jpg",
+      "contentIdentity": "Aerial photograph of Thailand's Rangsit Canal showing long connected water, strong angle-dependent reflection and the scale relationship between the waterway, roads and surrounding land parcels.",
+      "capturedOrDownloadedAt": "2026-10-14T01:39:36+07:00",
+      "timeBasis": "Local downloaded reference file modification time recorded immediately after the version shown on Wikimedia Commons was retrieved.",
+      "intendedUse": "Visual guidance for Thai irrigation hierarchy, water continuity, aerial scale and reflected-light response only.",
+      "sha256": "67c284f99e5946b7087ec3621fe6ad9974f1cc85e93e0e55746586d1431e5786",
+      "licenseOrUsage": "Paul_012, CC BY-SA 3.0 via Wikimedia Commons. Reference evidence only; pixels are not incorporated into runtime or Blender assets."
+    },
+    {
+      "assetSet": "Hero farmland / tropical vegetation",
+      "artifactFile": "reference/commons/tan-trees-rice-field.jpg",
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File:Tan_trees-Rice_field@Supphaya_-_panoramio.jpg",
+      "contentIdentity": "Field-edge palmyra groups in a Thai rice landscape, with readable trunks, irregular crown spacing, overlapping silhouettes and open air between groups.",
+      "capturedOrDownloadedAt": "2026-10-14T01:39:36+07:00",
+      "timeBasis": "Local downloaded reference file modification time recorded immediately after the version shown on Wikimedia Commons was retrieved.",
+      "intendedUse": "Visual guidance for tropical field-edge grouping, trunk visibility, crown gaps, silhouette scale and aerial perspective only.",
+      "sha256": "33f72a6119b02e41784e039abdb034f9137829abff1b925a9ffd36bb94bbebf3",
+      "licenseOrUsage": "::::=UT=::::, CC BY-SA 3.0 via Wikimedia Commons. Reference evidence only; pixels are not incorporated into runtime or Blender assets."
+    }
+  ],
+  "rules": [
+    "Reference imagery is guidance only unless its stated licence permits bundling.",
+    "No Edolus, UNDP or AI-generated pixels are incorporated into runtime textures or geometry.",
+    "Scene identities for Edolus captures were verified from visible pixels in the existing manifest.",
+    "No Edolus-equivalence claim is made."
+  ]
+}

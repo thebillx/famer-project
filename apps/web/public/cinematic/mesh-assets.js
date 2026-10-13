@@ -51,6 +51,7 @@ export function decodeMeshAsset(data,variantIndex=0,surfaceMaps={}) {
   const response=surface==='solar'?2.05:surface==='foil'?1.44:surface==='metal'?1.2:surface==='water'?1.7:surface==='leaf' ? .7 : 1.0;
   const optical=surface==='solar'?{iridescence:.16,iridescenceIOR:1.42,iridescenceThicknessRange:[105,235],specularIntensity:1.14}:surface==='water'?{ior:1.333,transparent:true,opacity:.94,depthWrite:true}:{};
   const material=new THREE.MeshPhysicalMaterial({color:new THREE.Color().setRGB(...m.material.color),metalness:m.material.metalness,roughness:m.material.roughness,clearcoat:m.material.clearcoat,clearcoatRoughness:surface==='water'?.08:.24,envMapIntensity:response,side:m.material.doubleSided?THREE.DoubleSide:THREE.FrontSide,...optical,...(surfaceMaps[surface]||{})});
+  material.userData.surface=surface||null;
   if(surface)material.normalScale.setScalar(m.material.normalStrength??.5);
   const mesh=new THREE.Mesh(geometry,material);mesh.name=m.name;mesh.castShadow=mesh.receiveShadow=true;group.add(mesh);
  }

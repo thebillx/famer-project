@@ -177,13 +177,17 @@ for(const name of ['spacecraft','farmland','tree']){
     for(let i=0;i<position.count;i++)points.push(new THREE.Vector3().fromBufferAttribute(position,i));
     assert.ok(points.some(point=>point.x<-18.5),'Connected irrigation leaves the northern landscape without visible bank endpoints');
     assert.ok(points.some(point=>point.z<-18.5),'Connected irrigation leaves the eastern landscape without visible bank endpoints');
+   const waterRelief=[];
     for(const point of points){
      const northArm=Math.abs(point.z-3.02)<.17&&point.x>-18.9&&point.x<3.4;
      const eastArm=Math.abs(point.x-3.18)<.19&&point.z>-18.9&&point.z<3.25;
      assert.ok(northArm||eastArm,'Water stays in the connected L-shaped channel instead of boxing the sample');
      const surface=-(point.x*point.x+point.z*point.z)/80+.05+Math.sin(point.x*.52)*Math.sin(point.z*.43)*.035;
-     assert.ok(Math.abs(point.y-surface+.025)<.002,'Water is consistently recessed below the authored terrain');
+     const relief=point.y-surface+.025;waterRelief.push(relief);
+     assert.ok(Math.abs(relief)<.0038,'Authored water ripples remain millimetre-scale around the recessed channel datum');
+     assert.ok(point.y<surface-.021,'Every water vertex remains recessed below the authored terrain');
     }
+   assert.ok(Math.min(...waterRelief)<-.003&&Math.max(...waterRelief)>.003,'Water includes restrained multi-directional surface shape instead of a perfectly flat ribbon');
    }
    if(name==='farmland'&&(mesh.name.startsWith('Rice field')||mesh.name.startsWith('Rice rows'))){
     for(let i=0;i<position.count;i++){

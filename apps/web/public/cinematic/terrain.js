@@ -5,7 +5,8 @@ import {seededRandom,smooth} from './timeline.js';
 export function fieldHeight(x,z){return -(x*x+z*z)/80+.05+Math.sin(x*.52)*Math.sin(z*.43)*.035;}
 
 function detail(material,transition,role){
- const surfaceKind=role.includes('Wet channel')?6:role.includes('Damp channel')?5:role.includes('water')?4:role.includes('tracks')||role.includes('bank')?3:role.includes('rows')?2:role.includes('Rice field')?1:0;
+ const surface=material.userData.surface;
+ const surfaceKind=role.includes('Wet channel')?6:role.includes('Damp channel')?5:surface==='water'?4:role.includes('tracks')||role.includes('bank')?3:role.includes('rows')?2:role.includes('Rice field')?1:0;
  material.onBeforeCompile=shader=>{
   shader.uniforms.fieldFlatten=transition.flatten;shader.uniforms.localDetail=transition.detail;shader.uniforms.globeMap=transition.map;shader.uniforms.globeRotation=transition.rotation;shader.uniforms.surfaceKind={value:surfaceKind};
   const localWaterNormal=surfaceKind===4?'\nobjectNormal.xz*=1.-.82*localDetail;':'';
@@ -17,6 +18,16 @@ function detail(material,transition,role){
    .replace('#include <color_fragment>','#include <color_fragment>\nfloat broadTone=fieldNoise(agriculturalPosition.xz*.43);\nfloat fineTone=fieldNoise(agriculturalPosition.xz*1.17+vec2(3.1,-1.7));\nfloat fieldPatch=broadTone*.64+fineTone*.36;\nfloat soilTone=fieldNoise(agriculturalPosition.xz*.84+vec2(-2.3,4.7));\nif(surfaceKind<.5){diffuseColor.rgb*=.95+.065*soilTone;diffuseColor.rgb*=mix(vec3(.955,.91,.84),vec3(1.02,1.,.95),fieldPatch);}\nelse if(surfaceKind<1.5){diffuseColor.rgb*=.965+.060*fieldPatch;diffuseColor.rgb*=vec3(1.+(fieldPatch-.5)*.018,1.+(soilTone-.5)*.022,.982);}\nelse if(surfaceKind<2.5){float rowTone=mix(.96,1.02,fieldNoise(agriculturalPosition.xz*.31));diffuseColor.rgb*=rowTone;diffuseColor.rgb*=vec3(.965,1.,.95);}\nelse if(surfaceKind<3.5){diffuseColor.rgb*=.98+.025*soilTone;diffuseColor.rgb*=vec3(1.02,.995,.94);}\nelse if(surfaceKind<4.5){diffuseColor.rgb*=vec3(.78,.90,.92);}\nelse if(surfaceKind<5.5){diffuseColor.rgb*=.985+.020*soilTone;diffuseColor.rgb*=vec3(.99,.96,.89);}\nelse{diffuseColor.rgb*=.97+.020*soilTone;diffuseColor.rgb*=vec3(.97,.95,.87);}\nvec3 earthDirection=normalize(globeRotation*vec3(agriculturalPosition.x,agriculturalPosition.y+40.,agriculturalPosition.z));\nvec2 earthUV=vec2(fract(atan(earthDirection.z,-earthDirection.x)/6.2831853),asin(earthDirection.y)/3.14159265+.5);\nvec3 geographicColor=texture2D(globeMap,earthUV).rgb;\ndiffuseColor.rgb=mix(geographicColor,diffuseColor.rgb,localDetail);');
  };
  material.customProgramCacheKey=()=> `agriscope-blender-field-detail-v13-${surfaceKind}`;
+}
+
+export function bindTerrainEnvironment(group,environment){
+ group.traverse(mesh=>{
+  const material=mesh.material;
+  if(!material?.isMeshStandardMaterial)return;
+  material.envMap=environment;
+  const surface=material.userData.surface;
+  material.envMapIntensity=surface==='water'?1.65:surface==='leaf'?.48:.42;
+ });
 }
 
 export function buildTerrain(assets,{mobile=false,day=null,rotation=new THREE.Matrix3(),surfaceMaps={}}={}){

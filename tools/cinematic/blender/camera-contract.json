@@ -1,0 +1,845 @@
+{
+  "schema": 1,
+  "coordinateSystem": "Runtime right-handed coordinates (x right, y up, z forward); Blender conversion is (x,-z,y).",
+  "narrativeSequenceLocked": true,
+  "motionPolishExcluded": true,
+  "generatedFrom": {
+    "apps/web/public/cinematic/timeline.js": "96e383b8055ce51ff302cff2f034731515fbd34c88b62148b2aa9db2124941fa",
+    "apps/web/public/cinematic/main.js": "08a8461fda31f38d363fff26e3c4297109ebd6b36e90b825b117b1be1a6c98ff"
+  },
+  "thailandAnchor": {
+    "latitude": 15.87,
+    "longitude": 100.99,
+    "source": "apps/web/public/cinematic/earth.js"
+  },
+  "cameras": [
+    {
+      "shot": 1,
+      "progress": 0,
+      "slug": "earth-value",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "position": [
+        11,
+        20.8,
+        27
+      ],
+      "target": [
+        -4.8,
+        9,
+        0
+      ],
+      "fov": 46,
+      "textSafe": {
+        "left": 64,
+        "top": 102,
+        "right": 720,
+        "bottom": 836
+      },
+      "scene": {
+        "spacecraft": {
+          "visible": true,
+          "position": [
+            0,
+            13,
+            0
+          ],
+          "quaternion": [
+            -0.0767928974490709,
+            -0.11848027572305325,
+            -0.09886611380851593,
+            0.9850333835491908
+          ]
+        },
+        "earth": {
+          "surfaceVisible": true,
+          "cloudVisible": true,
+          "cloudOpacity": 0.38,
+          "cloudRotation": 0,
+          "cloudShadowOpacity": 0.16,
+          "thailandFocusOpacity": 0,
+          "atmosphereOpacity": 1
+        },
+        "terrain": {
+          "visible": false,
+          "localDetail": 0,
+          "flatten": 0
+        },
+        "lighting": {
+          "sun": 2.4,
+          "fill": 0.66,
+          "hemisphere": 0.56,
+          "environment": 0.7
+        },
+        "atmosphere": {
+          "fogDensity": 0.00055,
+          "backgroundMix": 0,
+          "from": "#060d15",
+          "to": "#13282f",
+          "fogFrom": "#101c29",
+          "fogTo": "#354b50"
+        }
+      }
+    },
+    {
+      "shot": 1,
+      "progress": 0,
+      "slug": "earth-value",
+      "viewport": "mobile",
+      "width": 375,
+      "height": 667,
+      "position": [
+        16.184,
+        26.464000000000002,
+        39.96
+      ],
+      "target": [
+        0.20000000000000018,
+        9,
+        0
+      ],
+      "fov": 52,
+      "textSafe": {
+        "left": 20,
+        "top": 82,
+        "right": 355,
+        "bottom": 638
+      },
+      "scene": {
+        "spacecraft": {
+          "visible": true,
+          "position": [
+            0,
+            13,
+            0
+          ],
+          "quaternion": [
+            -0.0767928974490709,
+            -0.11848027572305325,
+            -0.09886611380851593,
+            0.9850333835491908
+          ]
+        },
+        "earth": {
+          "surfaceVisible": true,
+          "cloudVisible": true,
+          "cloudOpacity": 0.38,
+          "cloudRotation": 0,
+          "cloudShadowOpacity": 0.16,
+          "thailandFocusOpacity": 0,
+          "atmosphereOpacity": 1
+        },
+        "terrain": {
+          "visible": false,
+          "localDetail": 0,
+          "flatten": 0
+        },
+        "lighting": {
+          "sun": 2.4,
+          "fill": 0.66,
+          "hemisphere": 0.56,
+          "environment": 0.7
+        },
+        "atmosphere": {
+          "fogDensity": 0.00055,
+          "backgroundMix": 0,
+          "from": "#060d15",
+          "to": "#13282f",
+          "fogFrom": "#101c29",
+          "fogTo": "#354b50"
+        }
+      }
+    },
+    {
+      "shot": 3,
+      "progress": 0.22,
+      "slug": "spacecraft-payload",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "position": [
+        3,
+        14.2,
+        6.4
+      ],
+      "target": [
+        0,
+        13.15,
+        1.2
+      ],
+      "fov": 43,
+      "textSafe": {
+        "left": 64,
+        "top": 102,
+        "right": 720,
+        "bottom": 836
+      },
+      "scene": {
+        "spacecraft": {
+          "visible": true,
+          "position": [
+            0,
+            13,
+            0
+          ],
+          "quaternion": [
+            -0.0767928974490709,
+            -0.11848027572305325,
+            -0.09886611380851593,
+            0.9850333835491908
+          ]
+        },
+        "earth": {
+          "surfaceVisible": true,
+          "cloudVisible": true,
+          "cloudOpacity": 0.38,
+          "cloudRotation": 0.00010890155397925286,
+          "cloudShadowOpacity": 0.16,
+          "thailandFocusOpacity": 0,
+          "atmosphereOpacity": 1
+        },
+        "terrain": {
+          "visible": false,
+          "localDetail": 0,
+          "flatten": 0
+        },
+        "lighting": {
+          "sun": 2.4,
+          "fill": 0.66,
+          "hemisphere": 0.56,
+          "environment": 0.7
+        },
+        "atmosphere": {
+          "fogDensity": 0.00055,
+          "backgroundMix": 0,
+          "from": "#060d15",
+          "to": "#13282f",
+          "fogFrom": "#101c29",
+          "fogTo": "#354b50"
+        }
+      }
+    },
+    {
+      "shot": 3,
+      "progress": 0.22,
+      "slug": "spacecraft-payload",
+      "viewport": "mobile",
+      "width": 375,
+      "height": 667,
+      "position": [
+        4.4399999999999995,
+        14.703999999999999,
+        8.895999999999999
+      ],
+      "target": [
+        0,
+        13.15,
+        1.2
+      ],
+      "fov": 49,
+      "textSafe": {
+        "left": 20,
+        "top": 82,
+        "right": 355,
+        "bottom": 638
+      },
+      "scene": {
+        "spacecraft": {
+          "visible": true,
+          "position": [
+            0,
+            13,
+            0
+          ],
+          "quaternion": [
+            -0.0767928974490709,
+            -0.11848027572305325,
+            -0.09886611380851593,
+            0.9850333835491908
+          ]
+        },
+        "earth": {
+          "surfaceVisible": true,
+          "cloudVisible": true,
+          "cloudOpacity": 0.38,
+          "cloudRotation": 0.00010890155397925286,
+          "cloudShadowOpacity": 0.16,
+          "thailandFocusOpacity": 0,
+          "atmosphereOpacity": 1
+        },
+        "terrain": {
+          "visible": false,
+          "localDetail": 0,
+          "flatten": 0
+        },
+        "lighting": {
+          "sun": 2.4,
+          "fill": 0.66,
+          "hemisphere": 0.56,
+          "environment": 0.7
+        },
+        "atmosphere": {
+          "fogDensity": 0.00055,
+          "backgroundMix": 0,
+          "from": "#060d15",
+          "to": "#13282f",
+          "fogFrom": "#101c29",
+          "fogTo": "#354b50"
+        }
+      }
+    },
+    {
+      "shot": 4,
+      "progress": 0.36,
+      "slug": "thailand-lock",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "position": [
+        4,
+        26,
+        17
+      ],
+      "target": [
+        0,
+        -1,
+        0
+      ],
+      "fov": 48,
+      "textSafe": {
+        "left": 64,
+        "top": 102,
+        "right": 720,
+        "bottom": 836
+      },
+      "scene": {
+        "spacecraft": {
+          "visible": true,
+          "position": [
+            15.835414398725066,
+            10.579043593376213,
+            -3.7926934273647954
+          ],
+          "quaternion": [
+            0.6710792582786814,
+            0.06761025818169514,
+            -0.08046869508344606,
+            0.7338979978227945
+          ]
+        },
+        "earth": {
+          "surfaceVisible": true,
+          "cloudVisible": true,
+          "cloudOpacity": 0.37446064139941687,
+          "cloudRotation": 0.004618475542252655,
+          "cloudShadowOpacity": 0.157667638483965,
+          "thailandFocusOpacity": 0.72,
+          "atmosphereOpacity": 1
+        },
+        "terrain": {
+          "visible": false,
+          "localDetail": 0,
+          "flatten": 0
+        },
+        "lighting": {
+          "sun": 2.4,
+          "fill": 0.66,
+          "hemisphere": 0.56,
+          "environment": 0.7
+        },
+        "atmosphere": {
+          "fogDensity": 0.00055,
+          "backgroundMix": 0,
+          "from": "#060d15",
+          "to": "#13282f",
+          "fogFrom": "#101c29",
+          "fogTo": "#354b50"
+        }
+      }
+    },
+    {
+      "shot": 4,
+      "progress": 0.36,
+      "slug": "thailand-lock",
+      "viewport": "mobile",
+      "width": 375,
+      "height": 667,
+      "position": [
+        5.904259259259259,
+        38.85375,
+        25.093101851851852
+      ],
+      "target": [
+        0,
+        -1,
+        0
+      ],
+      "fov": 54,
+      "textSafe": {
+        "left": 20,
+        "top": 82,
+        "right": 355,
+        "bottom": 638
+      },
+      "scene": {
+        "spacecraft": {
+          "visible": true,
+          "position": [
+            15.835414398725066,
+            10.579043593376213,
+            -3.7926934273647954
+          ],
+          "quaternion": [
+            0.6710792582786814,
+            0.06761025818169514,
+            -0.08046869508344606,
+            0.7338979978227945
+          ]
+        },
+        "earth": {
+          "surfaceVisible": true,
+          "cloudVisible": true,
+          "cloudOpacity": 0.37446064139941687,
+          "cloudRotation": 0.004618475542252655,
+          "cloudShadowOpacity": 0.157667638483965,
+          "thailandFocusOpacity": 0.72,
+          "atmosphereOpacity": 1
+        },
+        "terrain": {
+          "visible": false,
+          "localDetail": 0,
+          "flatten": 0
+        },
+        "lighting": {
+          "sun": 2.4,
+          "fill": 0.66,
+          "hemisphere": 0.56,
+          "environment": 0.7
+        },
+        "atmosphere": {
+          "fogDensity": 0.00055,
+          "backgroundMix": 0,
+          "from": "#060d15",
+          "to": "#13282f",
+          "fogFrom": "#101c29",
+          "fogTo": "#354b50"
+        }
+      }
+    },
+    {
+      "shot": 5,
+      "progress": 0.46,
+      "slug": "atmospheric-descent",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "position": [
+        3.5,
+        12,
+        9
+      ],
+      "target": [
+        0,
+        0,
+        0
+      ],
+      "fov": 48,
+      "textSafe": {
+        "left": 64,
+        "top": 102,
+        "right": 720,
+        "bottom": 836
+      },
+      "scene": {
+        "spacecraft": {
+          "visible": true,
+          "position": [
+            16.67202771265424,
+            10.309477158369361,
+            -4
+          ],
+          "quaternion": [
+            0.7028330970669006,
+            0.07762498094910315,
+            -0.07762498094910317,
+            0.7028330970669007
+          ]
+        },
+        "earth": {
+          "surfaceVisible": false,
+          "cloudVisible": true,
+          "cloudOpacity": 0.04486880466472298,
+          "cloudRotation": 0.007760875804666038,
+          "cloudShadowOpacity": 0.018892128279883364,
+          "thailandFocusOpacity": 0,
+          "atmosphereOpacity": 0.6238425925925923
+        },
+        "terrain": {
+          "visible": true,
+          "localDetail": 1,
+          "flatten": 0
+        },
+        "lighting": {
+          "sun": 2.3858309037900876,
+          "fill": 0.6741690962099126,
+          "hemisphere": 0.5741690962099126,
+          "environment": 0.7094460641399417
+        },
+        "atmosphere": {
+          "fogDensity": 0.0024425925925925943,
+          "backgroundMix": 0.25925925925925947,
+          "from": "#060d15",
+          "to": "#13282f",
+          "fogFrom": "#101c29",
+          "fogTo": "#354b50"
+        }
+      }
+    },
+    {
+      "shot": 5,
+      "progress": 0.46,
+      "slug": "atmospheric-descent",
+      "viewport": "mobile",
+      "width": 375,
+      "height": 667,
+      "position": [
+        4.83,
+        16.56,
+        12.419999999999998
+      ],
+      "target": [
+        0,
+        0,
+        0
+      ],
+      "fov": 54,
+      "textSafe": {
+        "left": 20,
+        "top": 82,
+        "right": 355,
+        "bottom": 638
+      },
+      "scene": {
+        "spacecraft": {
+          "visible": true,
+          "position": [
+            16.67202771265424,
+            10.309477158369361,
+            -4
+          ],
+          "quaternion": [
+            0.7028330970669006,
+            0.07762498094910315,
+            -0.07762498094910317,
+            0.7028330970669007
+          ]
+        },
+        "earth": {
+          "surfaceVisible": false,
+          "cloudVisible": true,
+          "cloudOpacity": 0.04486880466472298,
+          "cloudRotation": 0.007760875804666038,
+          "cloudShadowOpacity": 0.018892128279883364,
+          "thailandFocusOpacity": 0,
+          "atmosphereOpacity": 0.6238425925925923
+        },
+        "terrain": {
+          "visible": true,
+          "localDetail": 1,
+          "flatten": 0
+        },
+        "lighting": {
+          "sun": 2.3858309037900876,
+          "fill": 0.6741690962099126,
+          "hemisphere": 0.5741690962099126,
+          "environment": 0.7094460641399417
+        },
+        "atmosphere": {
+          "fogDensity": 0.0024425925925925943,
+          "backgroundMix": 0.25925925925925947,
+          "from": "#060d15",
+          "to": "#13282f",
+          "fogFrom": "#101c29",
+          "fogTo": "#354b50"
+        }
+      }
+    },
+    {
+      "shot": 6,
+      "progress": 0.56,
+      "slug": "sample-field-boundary",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "position": [
+        3.6,
+        5.7,
+        7.6
+      ],
+      "target": [
+        -0.4,
+        0.05,
+        0
+      ],
+      "fov": 46,
+      "textSafe": {
+        "left": 64,
+        "top": 102,
+        "right": 720,
+        "bottom": 836
+      },
+      "scene": {
+        "spacecraft": {
+          "visible": false,
+          "position": [
+            16.67202771265424,
+            10.309477158369361,
+            -4
+          ],
+          "quaternion": [
+            0.7028330970669006,
+            0.07762498094910315,
+            -0.07762498094910317,
+            0.7028330970669007
+          ]
+        },
+        "earth": {
+          "surfaceVisible": false,
+          "cloudVisible": false,
+          "cloudOpacity": 0,
+          "cloudRotation": 0.008,
+          "cloudShadowOpacity": 0,
+          "thailandFocusOpacity": 0,
+          "atmosphereOpacity": 0
+        },
+        "terrain": {
+          "visible": true,
+          "localDetail": 1,
+          "flatten": 0.7864601600000007
+        },
+        "lighting": {
+          "sun": 2.281749271137026,
+          "fill": 0.7782507288629739,
+          "hemisphere": 0.6782507288629739,
+          "environment": 0.7788338192419825
+        },
+        "atmosphere": {
+          "fogDensity": 0.00785,
+          "backgroundMix": 1,
+          "from": "#060d15",
+          "to": "#13282f",
+          "fogFrom": "#101c29",
+          "fogTo": "#354b50"
+        }
+      }
+    },
+    {
+      "shot": 6,
+      "progress": 0.56,
+      "slug": "sample-field-boundary",
+      "viewport": "mobile",
+      "width": 375,
+      "height": 667,
+      "position": [
+        4.73574074074074,
+        7.3042337962962955,
+        9.757907407407405
+      ],
+      "target": [
+        -0.4,
+        0.05,
+        0
+      ],
+      "fov": 52,
+      "textSafe": {
+        "left": 20,
+        "top": 82,
+        "right": 355,
+        "bottom": 638
+      },
+      "scene": {
+        "spacecraft": {
+          "visible": false,
+          "position": [
+            16.67202771265424,
+            10.309477158369361,
+            -4
+          ],
+          "quaternion": [
+            0.7028330970669006,
+            0.07762498094910315,
+            -0.07762498094910317,
+            0.7028330970669007
+          ]
+        },
+        "earth": {
+          "surfaceVisible": false,
+          "cloudVisible": false,
+          "cloudOpacity": 0,
+          "cloudRotation": 0.008,
+          "cloudShadowOpacity": 0,
+          "thailandFocusOpacity": 0,
+          "atmosphereOpacity": 0
+        },
+        "terrain": {
+          "visible": true,
+          "localDetail": 1,
+          "flatten": 0.7864601600000007
+        },
+        "lighting": {
+          "sun": 2.281749271137026,
+          "fill": 0.7782507288629739,
+          "hemisphere": 0.6782507288629739,
+          "environment": 0.7788338192419825
+        },
+        "atmosphere": {
+          "fogDensity": 0.00785,
+          "backgroundMix": 1,
+          "from": "#060d15",
+          "to": "#13282f",
+          "fogFrom": "#101c29",
+          "fogTo": "#354b50"
+        }
+      }
+    },
+    {
+      "shot": 10,
+      "progress": 0.95,
+      "slug": "application-handoff",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "position": [
+        0.8045075619533529,
+        10.530432306851312,
+        5.297590196793003
+      ],
+      "target": [
+        -0.8643608782798834,
+        0.05,
+        0
+      ],
+      "fov": 43,
+      "textSafe": {
+        "left": 64,
+        "top": 102,
+        "right": 720,
+        "bottom": 836
+      },
+      "scene": {
+        "spacecraft": {
+          "visible": false,
+          "position": [
+            16.67202771265424,
+            10.309477158369361,
+            -4
+          ],
+          "quaternion": [
+            0.7028330970669006,
+            0.07762498094910315,
+            -0.07762498094910317,
+            0.7028330970669007
+          ]
+        },
+        "earth": {
+          "surfaceVisible": false,
+          "cloudVisible": false,
+          "cloudOpacity": 0,
+          "cloudRotation": 0.008,
+          "cloudShadowOpacity": 0,
+          "thailandFocusOpacity": 0,
+          "atmosphereOpacity": 0
+        },
+        "terrain": {
+          "visible": true,
+          "localDetail": 1,
+          "flatten": 0.92
+        },
+        "lighting": {
+          "sun": 2.28,
+          "fill": 0.78,
+          "hemisphere": 0.68,
+          "environment": 0.7799999999999999
+        },
+        "atmosphere": {
+          "fogDensity": 0.00785,
+          "backgroundMix": 1,
+          "from": "#060d15",
+          "to": "#13282f",
+          "fogFrom": "#101c29",
+          "fogTo": "#354b50"
+        }
+      }
+    },
+    {
+      "shot": 10,
+      "progress": 0.95,
+      "slug": "application-handoff",
+      "viewport": "mobile",
+      "width": 375,
+      "height": 667,
+      "position": [
+        1.271790725218659,
+        13.46495335276968,
+        6.780915451895043
+      ],
+      "target": [
+        -0.8643608782798834,
+        0.05,
+        0
+      ],
+      "fov": 49,
+      "textSafe": {
+        "left": 20,
+        "top": 82,
+        "right": 355,
+        "bottom": 638
+      },
+      "scene": {
+        "spacecraft": {
+          "visible": false,
+          "position": [
+            16.67202771265424,
+            10.309477158369361,
+            -4
+          ],
+          "quaternion": [
+            0.7028330970669006,
+            0.07762498094910315,
+            -0.07762498094910317,
+            0.7028330970669007
+          ]
+        },
+        "earth": {
+          "surfaceVisible": false,
+          "cloudVisible": false,
+          "cloudOpacity": 0,
+          "cloudRotation": 0.008,
+          "cloudShadowOpacity": 0,
+          "thailandFocusOpacity": 0,
+          "atmosphereOpacity": 0
+        },
+        "terrain": {
+          "visible": true,
+          "localDetail": 1,
+          "flatten": 0.92
+        },
+        "lighting": {
+          "sun": 2.28,
+          "fill": 0.78,
+          "hemisphere": 0.68,
+          "environment": 0.7799999999999999
+        },
+        "atmosphere": {
+          "fogDensity": 0.00785,
+          "backgroundMix": 1,
+          "from": "#060d15",
+          "to": "#13282f",
+          "fogFrom": "#101c29",
+          "fogTo": "#354b50"
+        }
+      }
+    }
+  ]
+}
