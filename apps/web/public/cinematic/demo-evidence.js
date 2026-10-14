@@ -1,5 +1,5 @@
 import * as THREE from './vendor.js';
-import {fieldHeight} from './terrain.js';
+import {fieldHeight,TERRAIN_CURVE_DIVISOR} from './terrain.js';
 import {smooth} from './timeline.js';
 
 // Existing offline seed dates, values and masks. No public API or private field.
@@ -23,7 +23,7 @@ export function buildEvidence(){
  const geometry=THREE.mergeGeometries(cells);cells.forEach(g=>g.dispose());
  const uniforms={flatten:{value:0},comparison:{value:0},opacity:{value:0},before:{value:new THREE.Color(0x77a45b)},after:{value:new THREE.Color(0xc79358)}};
  const material=new THREE.ShaderMaterial({uniforms,transparent:true,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-1,
-  vertexShader:'uniform float flatten;varying float column;void main(){vec3 point=position;point.y+=dot(position.xz,position.xz)/80.*flatten;column=(floor((position.x+2.46)/4.86*8.)+.5)/8.;gl_Position=projectionMatrix*modelViewMatrix*vec4(point,1.);}',
+  vertexShader:`uniform float flatten;varying float column;void main(){vec3 point=position;point.y+=dot(position.xz,position.xz)/${TERRAIN_CURVE_DIVISOR}.*flatten;column=(floor((position.x+2.46)/4.86*8.)+.5)/8.;gl_Position=projectionMatrix*modelViewMatrix*vec4(point,1.);}`,
   fragmentShader:`varying float column;uniform float comparison;uniform float opacity;uniform vec3 before;uniform vec3 after;void main(){
    float t=smoothstep(column-.065,column+.065,comparison);
    gl_FragColor=vec4(mix(before,after,t),opacity);

@@ -2,6 +2,7 @@
   "schema": 1,
   "kind": "static-asset-reference-board",
   "createdForBaseline": "adbd060ef07c88e7fb2decacf9609daa1e5018c1",
+  "updatedForBaseline": "33ff90297342f5fffc57f155f814af22e0d1b5ac",
   "entries": [
     {
       "assetSet": "Earth system",
@@ -145,6 +146,72 @@
       "intendedUse": "Visual guidance for tropical field-edge grouping, trunk visibility, crown gaps, silhouette scale and aerial perspective only.",
       "sha256": "33f72a6119b02e41784e039abdb034f9137829abff1b925a9ffd36bb94bbebf3",
       "licenseOrUsage": "::::=UT=::::, CC BY-SA 3.0 via Wikimedia Commons. Reference evidence only; pixels are not incorporated into runtime or Blender assets."
+    },
+    {
+      "assetSet": "Descent landscape / Thai parcel hierarchy",
+      "artifactFile": "reference/correction/bangkok-agriculture-copernicus.png",
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File:Agricultural_landscape_surrounding_Bangkok,_Thailand_(Copernicus_2025-06-28).png",
+      "contentIdentity": "Visually verified Copernicus Sentinel-2 mosaic around Bangkok showing dense elongated agricultural plots, multiple parcel scales, coherent regional alignments and major drainage hierarchy.",
+      "capturedOrDownloadedAt": "2026-10-14T12:48:29+07:00",
+      "timeBasis": "Local file modification time recorded immediately after download from Wikimedia Commons.",
+      "intendedUse": "Visual guidance for parcel hierarchy, planting-direction regions, drainage scale and descent composition only.",
+      "sha256": "4512a380866645d12dbb46a3bd3afbc7dd4a383a306b389e4be3dfc2ce565b02",
+      "licenseOrUsage": "European Union Copernicus Sentinel-2 imagery, attribution required. Reference evidence only; pixels are not incorporated into runtime or Blender assets."
+    },
+    {
+      "assetSet": "Hero farmland / irrigation",
+      "artifactFile": "reference/correction/irrigation-bank-shallow-water.jpg",
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File:2011MarchScottNCraig_207_1.jpg",
+      "contentIdentity": "Visually verified shallow irrigation channel beside a planted field, with eroded soil face, narrow vegetated shoulder, wet water contact and farm access across the bank.",
+      "capturedOrDownloadedAt": "2026-10-14T12:48:31+07:00",
+      "timeBasis": "Local file modification time recorded immediately after download from Wikimedia Commons.",
+      "intendedUse": "Visual guidance for bank thickness, wet and dry soil transition, shallow water level and access scale only.",
+      "sha256": "8206a35911a2c811d78ec1d8b5371ed3dd30eb0bc39c796394eaf11ec24cf58f",
+      "licenseOrUsage": "SEJustice, CC BY-SA 3.0 via Wikimedia Commons. Reference evidence only; pixels are not incorporated into runtime or Blender assets."
+    },
+    {
+      "assetSet": "Hero farmland / field-edge vegetation",
+      "artifactFile": "reference/correction/mindful-farm-field-edge.jpg",
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File:2_weeks_at_Mindful_Farm_01.jpg",
+      "contentIdentity": "Visually verified northern Thailand farm edge with visible trunks, irregular tropical crown spacing, shrubs, banana forms and open negative space between vegetation groups.",
+      "capturedOrDownloadedAt": "2026-10-14T12:48:30+07:00",
+      "timeBasis": "Local file modification time recorded immediately after download from Wikimedia Commons.",
+      "intendedUse": "Visual guidance for attached branching, crown gaps, mixed vegetation scale and non-cloned grouping only.",
+      "sha256": "fd6445523354f6e4095e9b36c60554d295f525384ade24e468597d081cf7bc1a",
+      "licenseOrUsage": "MathieuL1984, CC BY-SA 4.0 via Wikimedia Commons. Reference evidence only; pixels are not incorporated into runtime or Blender assets."
+    },
+    {
+      "assetSet": "Hero farmland / crop mass and distant vegetation",
+      "artifactFile": "reference/correction/rice-thailand-evening.jpeg",
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File:Rice_In_Thailand_In_The_Evening_(133631447).jpeg",
+      "contentIdentity": "Visually verified Thai rice field showing crops as a continuous plant mass, fine blade scale, subtle density variation and an irregular distant tree line.",
+      "capturedOrDownloadedAt": "2026-10-14T12:48:33+07:00",
+      "timeBasis": "Local file modification time recorded immediately after download from Wikimedia Commons.",
+      "intendedUse": "Visual guidance for crop mass, missed-area subtlety, blade scale and distant vegetation silhouette only.",
+      "sha256": "3f9a9b28e27173a52b1c3d77d320afdb35ec4fa61a34782dd025bbfc4b6caad7",
+      "licenseOrUsage": "Chatchai Jomta, CC BY 3.0 via Wikimedia Commons. Reference evidence only; pixels are not incorporated into runtime or Blender assets."
+    },
+    {
+      "assetSet": "Spacecraft hero",
+      "artifactFile": "reference/correction/lcross-spacecraft-detail.jpg",
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File:LCROSS_-_Shepherding_Spacecraft.jpg",
+      "contentIdentity": "Visually verified LCROSS spacecraft integration photograph showing large and small MLI folds, exposed structural rails, fasteners, panel breakup and separated metallic responses.",
+      "capturedOrDownloadedAt": "2026-10-14T12:48:32+07:00",
+      "timeBasis": "Local file modification time recorded immediately after download from Wikimedia Commons.",
+      "intendedUse": "Visual guidance for MLI fold hierarchy, secondary hardware, bevel highlights and bus material separation only.",
+      "sha256": "1f89337626380afbe09f08b854eb892f7e0deced75263fc8b6024664b170f607",
+      "licenseOrUsage": "NASA public domain via Wikimedia Commons. Reference evidence only; pixels are not incorporated into runtime or Blender assets."
+    },
+    {
+      "assetSet": "Earth system",
+      "artifactFile": "reference/correction/earth-limb-sage.webp",
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File:Earth-limb-sage-iii.webp",
+      "contentIdentity": "Visually verified orbital Earth-limb photograph showing a thin layered blue atmosphere, dark upper space, warm lower scattering and cloud depth below the limb.",
+      "capturedOrDownloadedAt": "2026-10-14T12:48:33+07:00",
+      "timeBasis": "Local file modification time recorded immediately after download from Wikimedia Commons.",
+      "intendedUse": "Visual guidance for limb thickness, color falloff, cloud separation and atmospheric depth only.",
+      "sha256": "1c6736446bbf24196947543488f00d14235698b513f9343b74f16aa8c02b1da3",
+      "licenseOrUsage": "NASA public domain via Wikimedia Commons. Reference evidence only; pixels are not incorporated into runtime or Blender assets."
     }
   ],
   "rules": [

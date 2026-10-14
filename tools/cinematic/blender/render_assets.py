@@ -75,6 +75,10 @@ def configure(record):
     set_material_opacity("MAT_THAILAND_FOCUS_GOLD", state["earth"]["thailandFocusOpacity"])
 
     terrain_visible = state["terrain"]["visible"]
+    haze = bpy.data.objects["FIELD_AERIAL_HAZE_REVIEW_VOLUME"]
+    haze.hide_render = not terrain_visible
+    haze_volume = bpy.data.materials["MAT_FIELD_AERIAL_HAZE"].node_tree.nodes["FIELD_AERIAL_HAZE_VOLUME"]
+    haze_volume.inputs["Density"].default_value = state["atmosphere"]["fogDensity"] * .62 if terrain_visible else 0
     for obj in bpy.data.collections["08_EXPORT"].objects:
         obj.hide_render = not terrain_visible
         if obj.type == "MESH" and obj.data.shape_keys:
@@ -82,7 +86,8 @@ def configure(record):
     for obj in bpy.data.collections["VEGETATION_PLACEMENTS_DESKTOP"].objects:
         obj.hide_render = not (terrain_visible and record["progress"] >= .465)
         x, z = obj["runtime_x"], obj["runtime_z"]
-        obj.location.z = obj["runtime_base_height"] + (x * x + z * z) / 80 * state["terrain"]["flatten"]
+        divisor = obj.get("runtime_curve_divisor", scene.get("terrain_curve_divisor", 1800.0))
+        obj.location.z = obj["runtime_base_height"] + (x * x + z * z) / divisor * state["terrain"]["flatten"]
     boundary = bpy.data.objects["SAMPLE_BOUNDARY_STATIC_PARITY"]
     boundary.hide_render = not (terrain_visible and record["progress"] >= .50)
 
@@ -182,7 +187,7 @@ for record in locked:
     for material in review_materials:
         material.diffuse_color = original_diffuse[material.name]
 
-    if record["shot"] in (5, 6):
+    if record["shot"] in (3, 5, 6):
         scene.render.engine = "BLENDER_WORKBENCH"
         scene.display.shading.light = "STUDIO"
         scene.display.shading.color_type = "MATERIAL"

@@ -2,7 +2,8 @@ import * as THREE from './vendor.js';
 import {decodeMeshAsset} from './mesh-assets.js';
 import {seededRandom,smooth} from './timeline.js';
 
-export function fieldHeight(x,z){return -(x*x+z*z)/80+.05+Math.sin(x*.52)*Math.sin(z*.43)*.035;}
+export const TERRAIN_CURVE_DIVISOR=1800;
+export function fieldHeight(x,z){return -(x*x+z*z)/TERRAIN_CURVE_DIVISOR+.07+Math.sin(x*.115+.4)*.034+Math.cos(z*.097-.8)*.027+Math.sin((x+z)*.205)*.016;}
 
 function detail(material,transition,role){
  const surface=material.userData.surface;
@@ -10,7 +11,7 @@ function detail(material,transition,role){
  material.onBeforeCompile=shader=>{
   shader.uniforms.fieldFlatten=transition.flatten;shader.uniforms.localDetail=transition.detail;shader.uniforms.globeMap=transition.map;shader.uniforms.globeRotation=transition.rotation;shader.uniforms.surfaceKind={value:surfaceKind};
   const localWaterNormal=surfaceKind===4?'\nobjectNormal.xz*=1.-.82*localDetail;':'';
-  shader.vertexShader=shader.vertexShader.replace('#include <common>','#include <common>\nuniform float fieldFlatten;\nuniform float localDetail;\nvarying vec3 agriculturalPosition;\nvarying vec3 agriculturalViewNormal;\nvarying vec3 geographicNormal;').replace('#include <beginnormal_vertex>',`#include <beginnormal_vertex>\nobjectNormal.xz*=1.-fieldFlatten;${localWaterNormal}\nobjectNormal=normalize(objectNormal);\nagriculturalViewNormal=normalize(normalMatrix*objectNormal);`).replace('#include <begin_vertex>','#include <begin_vertex>\nagriculturalPosition = position;\ntransformed.y+=dot(position.xz,position.xz)/80.*fieldFlatten;\ngeographicNormal = normalize(normalMatrix*vec3(position.x,position.y+40.,position.z));');
+  shader.vertexShader=shader.vertexShader.replace('#include <common>','#include <common>\nuniform float fieldFlatten;\nuniform float localDetail;\nvarying vec3 agriculturalPosition;\nvarying vec3 agriculturalViewNormal;\nvarying vec3 geographicNormal;').replace('#include <beginnormal_vertex>',`#include <beginnormal_vertex>\nobjectNormal.xz*=1.-fieldFlatten;${localWaterNormal}\nobjectNormal=normalize(objectNormal);\nagriculturalViewNormal=normalize(normalMatrix*objectNormal);`).replace('#include <begin_vertex>',`#include <begin_vertex>\nagriculturalPosition = position;\ntransformed.y+=dot(position.xz,position.xz)/${TERRAIN_CURVE_DIVISOR}.*fieldFlatten;\ngeographicNormal = normalize(normalMatrix*vec3(position.x,position.y+40.,position.z));`);
   shader.fragmentShader=shader.fragmentShader.replace('#include <common>','#include <common>\nvarying vec3 agriculturalPosition;\nvarying vec3 agriculturalViewNormal;\nvarying vec3 geographicNormal;\nuniform float localDetail;\nuniform float surfaceKind;\nuniform sampler2D globeMap;\nuniform mat3 globeRotation;\nfloat fieldHash(vec2 p){return fract(sin(dot(p,vec2(12.9898,78.233)))*43758.5453);}\nfloat fieldNoise(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(fieldHash(i),fieldHash(i+vec2(1.,0.)),f.x),mix(fieldHash(i+vec2(0.,1.)),fieldHash(i+vec2(1.,1.)),f.x),f.y);}')
    .replace('#include <normal_fragment_begin>','#include <normal_fragment_begin>\nnormal=normalize(mix(geographicNormal,normal,localDetail));')
    .replace('#include <roughnessmap_fragment>','#include <roughnessmap_fragment>\nroughnessFactor=mix(.87,roughnessFactor,localDetail);\nfloat surfaceRoughness=fieldNoise(agriculturalPosition.xz*.68);\nif(surfaceKind>5.5)roughnessFactor=clamp(roughnessFactor+(surfaceRoughness-.5)*.055,.74,.93);\nelse if(surfaceKind>4.5)roughnessFactor=clamp(roughnessFactor+(surfaceRoughness-.5)*.05,.78,.95);\nelse if(surfaceKind>3.5)roughnessFactor=clamp(roughnessFactor+(surfaceRoughness-.5)*.035,.07,.18);\nelse roughnessFactor=clamp(roughnessFactor+(surfaceRoughness-.5)*.06,.52,.99);')
@@ -64,8 +65,8 @@ export function buildTerrain(assets,{mobile=false,day=null,rotation=new THREE.Ma
   const [ax,az]=vertices[edge],[bx,bz]=vertices[(edge+1)%4];
   for(let i=0;i<24;i++){const t=i/24,x=ax+(bx-ax)*t,z=az+(bz-az)*t;points.push(new THREE.Vector3(x,fieldHeight(x,z)+.052,z));}
  }
- const boundary=new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(points,true,'centripetal'),256,.014,6,true),new THREE.MeshBasicMaterial({color:0xf1c88a}));
- boundary.material.onBeforeCompile=shader=>{shader.uniforms.fieldFlatten=transition.flatten;shader.vertexShader=shader.vertexShader.replace('#include <common>','#include <common>\nuniform float fieldFlatten;').replace('#include <begin_vertex>','#include <begin_vertex>\ntransformed.y+=dot(position.xz,position.xz)/80.*fieldFlatten;');};
+ const boundary=new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(points),new THREE.LineBasicMaterial({color:0xf1c88a,transparent:true,opacity:0,depthTest:false,depthWrite:false,toneMapped:false}));
+ boundary.material.onBeforeCompile=shader=>{shader.uniforms.fieldFlatten=transition.flatten;shader.vertexShader=shader.vertexShader.replace('#include <common>','#include <common>\nuniform float fieldFlatten;').replace('#include <begin_vertex>',`#include <begin_vertex>\ntransformed.y+=dot(position.xz,position.xz)/${TERRAIN_CURVE_DIVISOR}.*fieldFlatten;`);};
  boundary.name='Sample field boundary';boundary.visible=false;group.add(boundary);group.userData.boundary=boundary;group.userData.localDetail=transition.detail;
  const debugState={layer:'all',wireframe:false};let currentProgress=0;
  const applyDebugVisibility=()=>{
@@ -90,7 +91,7 @@ export function buildTerrain(assets,{mobile=false,day=null,rotation=new THREE.Ma
   const flatten=.92*smooth(.465,.59,p);transition.flatten.value=flatten;
   const matrix=new THREE.Matrix4();
   for(const {instances,placement} of trees){
-   placement.forEach((source,i)=>{matrix.copy(source);const e=matrix.elements;e[13]+=(e[12]*e[12]+e[14]*e[14])/80*flatten;instances.setMatrixAt(i,matrix);});
+   placement.forEach((source,i)=>{matrix.copy(source);const e=matrix.elements;e[13]+=(e[12]*e[12]+e[14]*e[14])/TERRAIN_CURVE_DIVISOR*flatten;instances.setMatrixAt(i,matrix);});
    instances.instanceMatrix.needsUpdate=true;
   }
   applyDebugVisibility();

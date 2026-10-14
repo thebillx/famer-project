@@ -87,15 +87,15 @@ def atmosphere_material():
     output = nodes.new("ShaderNodeOutputMaterial")
     transparent = nodes.new("ShaderNodeBsdfTransparent")
     emission = nodes.new("ShaderNodeEmission")
-    emission.inputs["Color"].default_value = (0.12, 0.43, 0.78, 1)
-    emission.inputs["Strength"].default_value = 0.36
+    emission.inputs["Color"].default_value = (0.10, 0.34, 0.66, 1)
+    emission.inputs["Strength"].default_value = 0.27
     layer = nodes.new("ShaderNodeLayerWeight")
-    layer.inputs["Blend"].default_value = 0.30
+    layer.inputs["Blend"].default_value = 0.18
     ramp = nodes.new("ShaderNodeValToRGB")
-    ramp.color_ramp.elements[0].position = 0.12
-    ramp.color_ramp.elements[1].position = 0.82
+    ramp.color_ramp.elements[0].position = 0.56
+    ramp.color_ramp.elements[1].position = 0.94
     ramp.color_ramp.elements[0].color = (0, 0, 0, 1)
-    ramp.color_ramp.elements[1].color = (0.42, 0.68, 1.0, 1)
+    ramp.color_ramp.elements[1].color = (0.25, 0.56, 1.0, 1)
     mix = nodes.new("ShaderNodeMixShader")
     links.new(layer.outputs["Facing"], ramp.inputs["Fac"])
     links.new(ramp.outputs["Color"], mix.inputs["Fac"])
@@ -106,7 +106,7 @@ def atmosphere_material():
         material.surface_render_method = "DITHERED"
     except (AttributeError, TypeError):
         pass
-    material.diffuse_color = (0.12, 0.43, 0.78, 0.25)
+    material.diffuse_color = (0.10, 0.34, 0.66, 0.18)
     return material
 
 
@@ -149,9 +149,9 @@ def earth_system(root, collection, thailand_collection, repo_root):
     atmo_material = atmosphere_material()
     for name, radius, segments, rings, material in (
         ("EARTH_SURFACE", 40, 128, 80, surface_material),
-        ("EARTH_CLOUD_SHADOW", 40.035, 96, 64, shadow_material),
-        ("EARTH_CLOUD_LAYER", 40.15, 112, 72, cloud_material),
-        ("EARTH_ATMOSPHERE_SHELL", 40.72, 112, 72, atmo_material),
+        ("EARTH_CLOUD_SHADOW", 40.045, 96, 64, shadow_material),
+        ("EARTH_CLOUD_LAYER", 40.18, 112, 72, cloud_material),
+        ("EARTH_ATMOSPHERE_SHELL", 40.34, 112, 72, atmo_material),
     ):
         bpy.ops.mesh.primitive_uv_sphere_add(segments=segments, ring_count=rings, radius=radius)
         obj = bpy.context.object
@@ -198,6 +198,9 @@ def earth_system(root, collection, thailand_collection, repo_root):
         pass
     outline.data.materials.append(focus_material)
     outline["source"] = "Natural Earth 5.1.2 public-domain country boundary"
+    outline["geodetic_anchor_latitude"] = 15.87
+    outline["geodetic_anchor_longitude"] = 100.99
+    outline["attached_radius"] = 40.09
     return earth_root
 
 
@@ -255,8 +258,28 @@ def author_lighting(collection):
     light("LIGHT_SKY_REFLECTION", "AREA", (-4, 24, 18), 560, (.48, .66, .78),
           size=24, diffuse_factor=.10, specular_factor=1.0)
 
+    haze_material = bpy.data.materials.new("MAT_FIELD_AERIAL_HAZE")
+    haze_material.use_nodes = True
+    haze_nodes = haze_material.node_tree.nodes
+    haze_links = haze_material.node_tree.links
+    haze_nodes.clear()
+    output = haze_nodes.new("ShaderNodeOutputMaterial")
+    volume = haze_nodes.new("ShaderNodeVolumePrincipled")
+    volume.name = "FIELD_AERIAL_HAZE_VOLUME"
+    volume.inputs["Color"].default_value = (.20, .29, .30, 1)
+    volume.inputs["Density"].default_value = 0
+    volume.inputs["Anisotropy"].default_value = .08
+    haze_links.new(volume.outputs["Volume"], output.inputs["Volume"])
+    bpy.ops.mesh.primitive_cube_add(size=1, location=(0, 0, 5.5))
+    haze = bpy.context.object
+    haze.name = "FIELD_AERIAL_HAZE_REVIEW_VOLUME"
+    haze.scale = (38, 38, 13)
+    haze.data.materials.append(haze_material)
+    move_to_collection(haze, collection)
+    haze.hide_render = True
 
-def add_flatten_shape_keys(export_collection):
+
+def add_flatten_shape_keys(export_collection, curvature_divisor):
     count = 0
     for obj in export_collection.objects:
         if obj.type != "MESH" or len(obj.data.vertices) == 0:
@@ -264,9 +287,10 @@ def add_flatten_shape_keys(export_collection):
         basis = obj.shape_key_add(name="BASIS")
         flattened = obj.shape_key_add(name="FIELD_FLATTEN_MAX")
         for base, target in zip(basis.data, flattened.data):
-            target.co.z = base.co.z + (base.co.x * base.co.x + base.co.y * base.co.y) / 80 * .92
+            target.co.z = base.co.z + (base.co.x * base.co.x + base.co.y * base.co.y) / curvature_divisor * .92
         flattened.value = 0
         obj["runtime_flatten_max"] = .92
+        obj["runtime_curve_divisor"] = curvature_divisor
         count += 1
     return count
 
@@ -284,7 +308,7 @@ def js_seeded_random(seed=21):
         yield ((t ^ (t & 0xFFFFFFFF) >> 14) & 0xFFFFFFFF) / 4294967296
 
 
-def author_tree_placements(vegetation_collection, variants, height_fn):
+def author_tree_placements(vegetation_collection, variants, height_fn, curvature_divisor):
     placements = bpy.data.collections.new("VEGETATION_PLACEMENTS_DESKTOP")
     vegetation_collection.children.link(placements)
     for variant in variants:
@@ -321,6 +345,7 @@ def author_tree_placements(vegetation_collection, variants, height_fn):
             obj["runtime_z"] = z
             obj["runtime_base_height"] = height_fn(x, z)
             obj["runtime_instance"] = index
+            obj["runtime_curve_divisor"] = curvature_divisor
             instances.append(obj)
     return instances
 
@@ -337,8 +362,8 @@ def add_sample_boundary(hero_collection, bounds, height_fn):
             points.append(to_blender((x, height_fn(x, z) + .052, z)))
     curve = bpy.data.curves.new("CURVE_SAMPLE_BOUNDARY", "CURVE")
     curve.dimensions = "3D"
-    curve.bevel_depth = .014
-    curve.bevel_resolution = 2
+    curve.bevel_depth = .004
+    curve.bevel_resolution = 1
     spline = curve.splines.new("POLY")
     spline.points.add(len(points) - 1)
     for point, value in zip(spline.points, points):
@@ -351,13 +376,14 @@ def add_sample_boundary(hero_collection, bounds, height_fn):
     bsdf = material.node_tree.nodes.get("Principled BSDF")
     bsdf.inputs["Base Color"].default_value = (.92, .58, .24, 1)
     bsdf.inputs["Emission Color"].default_value = (.92, .48, .12, 1)
-    bsdf.inputs["Emission Strength"].default_value = 1.0
-    bsdf.inputs["Roughness"].default_value = .42
+    bsdf.inputs["Emission Strength"].default_value = .22
+    bsdf.inputs["Roughness"].default_value = .56
     obj.data.materials.append(material)
     return obj
 
 
-def author_master_scene(*, repo_root, evidence_root, collections, tree_variants, sample_bounds, height_fn):
+def author_master_scene(*, repo_root, evidence_root, collections, tree_variants, sample_bounds, height_fn,
+                        curvature_divisor):
     contract_path = repo_root / "tools/cinematic/blender/camera-contract.json"
     contract, cameras = author_cameras(collections["cameras"], contract_path)
     earth = earth_system(None, collections["earth"], collections["thailand"], repo_root)
@@ -373,8 +399,8 @@ def author_master_scene(*, repo_root, evidence_root, collections, tree_variants,
     for obj in collections["export"].objects:
         destination = collections["hero"] if any(token.lower() in obj.name.lower() for token in hero_names) else collections["descent"]
         link_once(obj, destination)
-    flatten_meshes = add_flatten_shape_keys(collections["export"])
-    instances = author_tree_placements(collections["vegetation"], tree_variants, height_fn)
+    flatten_meshes = add_flatten_shape_keys(collections["export"], curvature_divisor)
+    instances = author_tree_placements(collections["vegetation"], tree_variants, height_fn, curvature_divisor)
     boundary = add_sample_boundary(collections["hero"], sample_bounds, height_fn)
     boundary.hide_render = True
 
@@ -396,6 +422,7 @@ def author_master_scene(*, repo_root, evidence_root, collections, tree_variants,
     scene["source_of_truth"] = "Blender master + deterministic compact runtime exports"
     scene["mobile_safe_guides"] = "Stored on CAM_*_MOBILE custom properties from production sampleCamera()"
     scene["editable_source_delivery"] = "SHA-bound GitHub Actions artifact because Git LFS is unavailable"
+    scene["terrain_curve_divisor"] = curvature_divisor
     report = {
         "schema": 1,
         "cameraRecords": len(contract["cameras"]),

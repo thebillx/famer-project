@@ -32,7 +32,14 @@ def build_surfaces(output):
     soil=(.54+broad*.34+soil_passes+fine_soil+grain*.042-cracks*.036)
     row_phase=x*18+y*1.25+.055*np.sin(2*np.pi*(y*2.2-x*.65))
     blades=np.maximum(0,np.sin(2*np.pi*row_phase)-.87)
-    crop=.50+broad*.075+grain*.028+blades*.095
+    # Broad canopy density, fine plant grain and restrained row relief keep
+    # green parcels from reading as flat color cards.  Geometry still carries
+    # the visible near-field planting passes and their direction changes.
+    # Integer frequency pairs keep the authored map exactly tileable; using
+    # fractional modes exposed square texture seams across the large parcels.
+    canopy=(.045*np.sin(2*np.pi*(x+y)+.8)
+            +.030*np.sin(2*np.pi*(2*x-y)+1.7))
+    crop=.50+broad*.105+canopy+grain*.035+blades*.105
     # A deterministic directional spectrum gives the water a coherent surface
     # without one dominant crest spacing. Integer modes keep the map tileable;
     # low periodic warping prevents the composite highlight from becoming a row
@@ -64,7 +71,7 @@ def build_surfaces(output):
         normal=np.stack((-dx*12,-dy*12,np.ones_like(dx)),axis=-1)
         normal/=np.linalg.norm(normal,axis=-1,keepdims=True)
         normal=normal*.5+.5
-        if role=='crop': color=np.stack((.84+blades*.035,.90+blades*.04,.77+blades*.025),axis=-1)*(.93+grain[...,None]*.020+broad[...,None]*.045)
+        if role=='crop': color=np.stack((.83+blades*.045,.90+blades*.050,.75+blades*.030),axis=-1)*(.925+grain[...,None]*.028+broad[...,None]*.070+canopy[...,None]*.34)
         elif role=='soil': color=np.stack((soil*.24+.73,soil*.22+.69,soil*.18+.63),axis=-1)
         elif role=='leaf': color=np.stack((leaf*.29+.63,leaf*.28+.73,leaf*.22+.50),axis=-1)
         elif role=='solar': color=np.stack((.54+solar*.10,.68+solar*.16,.88+solar*.10),axis=-1)

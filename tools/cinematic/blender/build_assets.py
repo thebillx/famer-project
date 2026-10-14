@@ -46,10 +46,12 @@ def material(name, color, metal=0, rough=.7, coat=0):
 
 
 gold = material("MLI · champagne gold", (.50, .305, .082), .84, .34)
+gold_dull = material("MLI · shaded fold panels", (.31, .175, .045), .78, .48)
 silver = material("Anodized aluminium", (.42, .49, .52), .9, .27)
 white = material("Thermal radiator", (.62, .67, .65), .13, .67)
 dark = material("Instrument carbon", (.014, .021, .027), .5, .34)
 cells = material("Photovoltaic cells", (.026, .082, .205), .48, .19, .72)
+cells_oblique = material("Photovoltaic cells · oblique response", (.020, .052, .132), .42, .29, .52)
 glass = material("Recessed optical glass", (.005, .025, .029), .26, .14, .9)
 copper = material("Harness copper", (.24, .10, .035), .75, .37)
 soil = material("Dry earth", (.18, .118, .067), 0, .96)
@@ -66,8 +68,10 @@ for input_name, value in (("IOR", 1.333), ("Transmission Weight", .18),
 foliage = material("Tree foliage", (.125, .255, .064), 0, .82, .025)
 foliage_light = material("Tree foliage · sunlit leaves", (.285, .420, .126), 0, .69, .045)
 bark = material("Tree bark", (.17, .11, .062), 0, .96)
-greens = [material(f"Rice field {i}", c, 0, .92) for i, c in enumerate([
-    (.074, .132, .048), (.139, .187, .073),
+greens = [material(f"Rice field {i}", c, 0, rough) for i, (c, rough) in enumerate([
+    ((.070, .128, .045), .94),
+    ((.118, .174, .060), .92),
+    ((.151, .198, .072), .90),
 ])]
 crop_rows = material("Rice rows", (.122, .184, .068), 0, .89)
 crop_bsdf = crop_rows.node_tree.nodes.get("Principled BSDF")
@@ -75,7 +79,7 @@ crop_bsdf.inputs["Emission Color"].default_value = (.018, .035, .010, 1)
 crop_bsdf.inputs["Emission Strength"].default_value = .035
 fallow = material("Rice field · fallow earth", (.205, .145, .084), 0, .95)
 low_growth = material("Rice field · low growth", (.100, .135, .052), 0, .94)
-wet_paddy = material("Rice field · shallow wet", (.050, .100, .091), 0, .34, .18)
+wet_paddy = material("Rice field · shallow wet", (.072, .108, .072), 0, .58, .12)
 
 
 def collection(name):
@@ -95,7 +99,7 @@ lighting_root = collection("07_LIGHTING")
 land = collection("08_EXPORT")
 reference_root = collection("09_REFERENCE")
 tree_variants = []
-for name in ("Round canopy", "Tall canopy", "Open crown"):
+for name in ("Round canopy", "Tall canopy", "Open crown", "Palmyra palm"):
     variant = bpy.data.collections.new(f"Tree · {name}")
     tree_root.children.link(variant)
     tree_variants.append(variant)
@@ -237,14 +241,30 @@ for x in [-.68, .68]:
 for j in range(5):
     tube("Harness bundle", (-.78 + j * .035, -.90, .79), (-.78 + j * .035, .95, .79), .009, copper, sides=8)
 
-# A deep black baffle and recessed optic, not a protruding camera bulb.
-lathe("Payload outer shroud", [(.50, -.02), (.50, .15), (.46, .68), (.44, .71)], dark, (0, .18, .94))
-lathe("Payload front bezel", [(.45, .64), (.46, .66), (.46, .71), (.40, .71), (.40, .66)], silver, (0, .18, .94))
-for z in [.02, .18, .34, .52]:
-    lathe("Baffle collar", [(.495, z), (.51, z), (.51, z + .022), (.495, z + .022)], dark, (0, .18, .94))
-lathe("Internal light trap", [(.40, .70), (.37, .48), (.34, .46)], dark, (0, .18, .94))
-lathe("Optical retaining ring", [(.33, .48), (.34, .49), (.34, .505), (.305, .505), (.305, .48)], copper, (0, .18, .94))
-profile = [(i / 20 * .305, .479 + .018 * (1 - (i / 20) ** 2)) for i in range(21)]
+# Visible equipment breaks up the broad front panel without changing the bus
+# silhouette.  These parts are large enough to survive the locked shot-3 camera.
+for x, y, size in ((-.55, -.66, (.18, .22, .075)), (.55, -.57, (.16, .26, .07)),
+                   (-.58, .72, (.14, .19, .065))):
+    box("Front avionics access cover", (x, y, .812), size, gold_dull, bevel=.012)
+    for offset in (-.045, .045):
+        tube("Access-cover fastener rail", (x + offset, y - size[1] * .36, .855),
+             (x + offset, y + size[1] * .36, .855), .006, silver, sides=8)
+for x in (-.49, .49):
+    tube("Payload mounting strut", (x, -.28, .80), (x * .74, .12, 1.02), .021, silver, sides=10)
+    tube("Payload mounting strut", (x, .66, .80), (x * .74, .35, 1.02), .021, silver, sides=10)
+box("Star tracker housing", (-.58, .48, .86), (.17, .20, .18), dark, bevel=.018)
+lathe("Star tracker optic", [(.055, .00), (.055, .045), (.044, .055)], glass,
+      (-.58, .48, .96), segments=24)
+
+# A deep black baffle and recessed optic, proportioned to reveal the bus and
+# its mounting hardware in the locked hero camera rather than flattening it.
+lathe("Payload outer shroud", [(.44, -.02), (.44, .14), (.415, .58), (.40, .62)], dark, (0, .18, .94))
+lathe("Payload front bezel", [(.405, .55), (.415, .57), (.415, .62), (.355, .62), (.355, .57)], silver, (0, .18, .94))
+for z in [.02, .16, .30, .44]:
+    lathe("Baffle collar", [(.435, z), (.45, z), (.45, z + .020), (.435, z + .020)], dark, (0, .18, .94))
+lathe("Internal light trap", [(.355, .61), (.325, .42), (.295, .40)], dark, (0, .18, .94))
+lathe("Optical retaining ring", [(.285, .42), (.295, .43), (.295, .445), (.265, .445), (.265, .42)], copper, (0, .18, .94))
+profile = [(i / 20 * .265, .419 + .016 * (1 - (i / 20) ** 2)) for i in range(21)]
 lathe("Optical element", profile[::-1], glass, (0, .18, .94))
 for x in [-.63, .63]:
     for y in [-.71, -.25, .27, .79]:
@@ -270,7 +290,7 @@ for j in range(ny):
     for i in range(nx):
         x = -.74 + (i + .5) / nx * 1.48
         y = -.96 + (j + .5) / ny * 1.94
-        if math.hypot(x, y - .18) < .57:
+        if math.hypot(x, y - .18) < .50:
             continue
         k = j * (nx + 1) + i
         f.append((k, k + 1, k + nx + 2, k + nx + 1))
@@ -287,7 +307,8 @@ for sign in [-1, 1]:
         for row in range(10):
             for col in range(5):
                 xx, yy = x - .515 + col * .258, -1.00 + row * .222
-                box("Solar cell", (xx, yy, .033), (.242, .204, .008), cells, bevel=.003)
+                cell_material = cells if (row + col + j) % 3 else cells_oblique
+                box("Solar cell", (xx, yy, .033), (.242, .204, .008), cell_material, bevel=.003)
                 box("Cell busbar", (xx, yy, .039), (.227, .0024, .002), silver)
         for y in [-.89, .89]:
             tube("Panel hinge", (x + sign * .66, y, -.014), (x + sign * .71, y, -.014), .035, silver)
@@ -306,8 +327,21 @@ for x in [-.54, .54]:
         tube("Attitude thruster", (x, -1.10, z), (x, -1.25, z), .068, dark)
 
 
+LANDSCAPE_EXTENT = 32.0
+TERRAIN_CURVE_DIVISOR = 1800.0
+# Material-batched runtime positions span the complete 64-unit landscape and
+# are encoded as signed 16-bit values.  Keep clipped contour slivers wider than
+# one reconstruction step so quantization cannot collapse a visible triangle
+# onto a line after Blender has triangulated it.
+LANDSCAPE_POSITION_STEP = 2 * LANDSCAPE_EXTENT / 65534
+
+
 def height(x, z):
-    return -(x * x + z * z) / 80 + .05 + math.sin(x * .52) * math.sin(z * .43) * .035
+    """A broad descent landscape with gentle relief instead of a terrain cap."""
+    macro = (.034 * math.sin(x * .115 + .4)
+             + .027 * math.cos(z * .097 - .8)
+             + .016 * math.sin((x + z) * .205))
+    return -(x * x + z * z) / TERRAIN_CURVE_DIVISOR + .07 + macro
 
 
 def patch(name, x0, x1, z0, z1, mat, parent=land, segments=4, lift=0):
@@ -334,10 +368,14 @@ SAMPLE_BOUNDS = (-2.50, 2.45, -2.30, 2.27)
 # The channel continues beyond the authored 36-unit landscape so neither bank
 # terminates as a pair of raised rails inside the shot-6 camera frustum.
 CHANNEL_CENTERLINE = [
-    (-18.65, 3.02), (-14.0, 3.02), (-9.4, 3.02), (-5.2, 3.02), (-3.0, 3.02), (-.8, 3.02),
+    (-32.65, 3.02), (-24.0, 3.02), (-18.65, 3.02), (-14.0, 3.02), (-9.4, 3.02), (-5.2, 3.02), (-3.0, 3.02), (-.8, 3.02),
     (1.2, 3.02), (3.18, 3.02), (3.18, 1.1), (3.18, -1.0),
     (3.18, -3.2), (3.18, -5.5), (3.18, -8.0), (3.18, -12.0),
-    (3.18, -16.0), (3.18, -18.65),
+    (3.18, -16.0), (3.18, -24.0), (3.18, -32.65),
+]
+SECONDARY_CHANNELS = [
+    [(-18.65, 3.02), (-18.9, 6.8), (-19.7, 10.8), (-20.8, 16.4)],
+    [(3.18, -12.0), (7.4, -12.6), (12.1, -13.5), (18.2, -15.1)],
 ]
 CHANNEL_WATER_HALF_WIDTH = .15
 CHANNEL_SLOPE_OUTER = .23
@@ -345,7 +383,7 @@ CHANNEL_BANK_CREST = .30
 CHANNEL_OUTER = .38
 CHANNEL_PARCEL_CLEARANCE = .565
 CHANNEL_LONGITUDINAL_STEP = .28
-CROP_LONGITUDINAL_STEP = .82
+CROP_LONGITUDINAL_STEP = 1.28
 
 
 def overlaps_sample(cx, cz, half_x, half_z, angle, clearance=.32):
@@ -379,12 +417,23 @@ def channel_distance(x, z):
                for a, b in zip(CHANNEL_CENTERLINE, CHANNEL_CENTERLINE[1:]))
 
 
+def secondary_channel_distance(x, z):
+    return min(point_segment_distance(x, z, a, b)
+               for path in SECONDARY_CHANNELS for a, b in zip(path, path[1:]))
+
+
+def parcel_channel_clearance(x, z):
+    """Signed clearance from the primary route and two shallow branches."""
+    return min(channel_distance(x, z)-CHANNEL_PARCEL_CLEARANCE,
+               secondary_channel_distance(x, z)-.255)
+
+
 def channel_depth(x, z):
     # A shallow subsoil cut supports the water and wet slopes. The compact
     # cross-section keeps the channel below grade without producing a raised
     # retaining-wall silhouette around the sample plot.
     distance = channel_distance(x, z)
-    return .020 * max(0, min(1, (CHANNEL_OUTER-distance)/.28))
+    return .026 * max(0, min(1, (CHANNEL_OUTER-distance)/.28))
 
 
 def ground_mesh():
@@ -393,15 +442,19 @@ def ground_mesh():
     offsets=(-CHANNEL_OUTER,-CHANNEL_BANK_CREST,-CHANNEL_SLOPE_OUTER,
              -CHANNEL_WATER_HALF_WIDTH,0,CHANNEL_WATER_HALF_WIDTH,
              CHANNEL_SLOPE_OUTER,CHANNEL_BANK_CREST,CHANNEL_OUTER)
-    xs=sorted(set([i*.5 for i in range(-36,37)]+[3.18+v for v in offsets]+[-18,3.18]))
-    zs=sorted(set([i*.5 for i in range(-36,37)]+[3.02+v for v in offsets]+[-18,3.02]))
-    # Keep the continuous subsoil clearly below cultivated parcel surfaces.
-    # A sub-centimetre visual offset caused depth interference from the high
-    # descent camera even though the meshes never intersected.
-    v=[(x,height(x,z)-.018-channel_depth(x,z),z) for z in zs for x in xs];f=[]
+    core=[i*.5 for i in range(-36,37)]
+    outer=[float(i) for i in range(-32,33) if abs(i)>18]
+    xs=sorted(set(core+outer+[3.18+v for v in offsets]+[-LANDSCAPE_EXTENT,3.18,LANDSCAPE_EXTENT]))
+    zs=sorted(set(core+outer+[3.02+v for v in offsets]+[-LANDSCAPE_EXTENT,3.02,LANDSCAPE_EXTENT]))
+    # Keep the continuous subsoil below every authored surface, but close
+    # enough to the parcel datum that a field join reads as soil rather than a
+    # deep black slot from the high descent camera.  The channel depression
+    # still provides the required triangle-interior water clearance.
+    v=[(x,height(x,z)-.012-channel_depth(x,z),z) for z in zs for x in xs];f=[]
     for j in range(len(zs)-1):
         for i in range(len(xs)-1):
-            a=j*len(xs)+i;f.append((a,a+len(xs),a+len(xs)+1,a+1))
+            a=j*len(xs)+i
+            f.extend(upward_triangles(v,(a,a+len(xs),a+len(xs)+1,a+1)))
     mesh_obj('Continuous earth with recessed channels',v,f,soil,land,True)
 
 
@@ -452,7 +505,7 @@ def path_crosses_channel(points,clearance=.50):
         steps=max(1,math.ceil(math.dist(a,b)/.24))
         for step in range(steps+1):
             t=step/steps;x=a[0]+(b[0]-a[0])*t;z=a[1]+(b[1]-a[1])*t
-            if channel_distance(x,z)<clearance:
+            if channel_distance(x,z)<clearance or secondary_channel_distance(x,z)<.25:
                 return True
     return False
 
@@ -467,27 +520,34 @@ def parcel_relief(index,u,v,sample=False):
     # A paddy is nearly level at this scale. Keep only broad drainage fall and
     # shallow cultivation relief so neighboring parcels do not read as thick
     # floating plates in the locked field cameras.
-    amplitude=.010 if sample else .016
+    amplitude=.0045 if sample else .006
     phase=index*.71
     wave=(.72*math.sin(u*math.tau*1.15+phase)*math.sin(v*math.pi*.82+phase*.37)
           +.28*math.sin((u*.55+v)*math.tau*1.7-phase*.41))
-    return amplitude*(.58+.42*wave)
+    edge_distance=max(0,min(u,1-u,v,1-v))
+    edge_blend=min(1,edge_distance/.16)
+    edge_blend=edge_blend*edge_blend*(3-2*edge_blend)
+    # Adjacent parcels share one height along their join. Broad cultivation
+    # relief develops only inside the field, avoiding vertical black seams.
+    return (.0065 if sample else .004)+amplitude*edge_blend*wave
 
 
 def planted_parcel(corners,mat,index,sample=False):
-    v=[];f=[];vertex_cache={};steps=12 if sample else 8
+    # The high-altitude fields need coherent silhouettes, not uniform interior
+    # subdivision.  Boundary cells still recurse locally around irrigation.
+    v=[];f=[];vertex_cache={};steps=12 if sample else 4
 
     def parcel_vertex(u,vv):
         key=(round(u,8),round(vv,8))
         if key not in vertex_cache:
             x,z=parcel_point(corners,u,vv)
             vertex_cache[key]=len(v)
-            v.append((x,height(x,z)+.004+parcel_relief(index,u,vv,sample),z))
+            v.append((x,height(x,z)+.002+parcel_relief(index,u,vv,sample),z))
         return vertex_cache[key]
 
     def channel_clearance(parameter):
         x,z=parcel_point(corners,*parameter)
-        return channel_distance(x,z)-CHANNEL_PARCEL_CLEARANCE
+        return parcel_channel_clearance(x,z)
 
     def channel_boundary_point(start,end,start_clearance,end_clearance):
         # Both adjacent triangles solve the same shared edge, so the clipped
@@ -526,17 +586,27 @@ def planted_parcel(corners,mat,index,sample=False):
         cleaned=[]
         for parameter in clipped:
             point=parcel_point(corners,*parameter)
-            # The runtime container quantizes positions to roughly 0.0006
-            # scene units. Collapse contour intersections closer than that so
-            # export cannot turn a microscopic sliver into a vertical face.
-            if not cleaned or math.dist(point,parcel_point(corners,*cleaned[-1]))>7e-4:
+            # Collapse contour intersections within one reconstructed runtime
+            # position step.  The previous fixed threshold predated the wider
+            # descent landscape and allowed an almost-closed polygon to become
+            # a zero-area triangle after signed-16-bit quantization.
+            if not cleaned or math.dist(point,parcel_point(corners,*cleaned[-1]))>LANDSCAPE_POSITION_STEP*1.25:
                 cleaned.append(parameter)
-        if len(cleaned)>1 and math.dist(parcel_point(corners,*cleaned[0]),parcel_point(corners,*cleaned[-1]))<=7e-4:
+        if len(cleaned)>1 and math.dist(parcel_point(corners,*cleaned[0]),parcel_point(corners,*cleaned[-1]))<=LANDSCAPE_POSITION_STEP*1.25:
             cleaned.pop()
         world=[parcel_point(corners,*parameter) for parameter in cleaned]
         signed_area=sum(a[0]*b[1]-b[0]*a[1] for a,b in zip(world,world[1:]+world[:1]))
         if len(cleaned)>=3 and abs(signed_area)>1e-6:
-            f.append(tuple(parcel_vertex(u,vv) for u,vv in cleaned))
+            face=tuple(parcel_vertex(u,vv) for u,vv in cleaned)
+            for triangle in upward_triangles(v,face):
+                points=[v[index] for index in triangle]
+                edges=[math.hypot(a[0]-b[0],a[2]-b[2])
+                       for a,b in zip(points,points[1:]+points[:1])]
+                area_twice=abs((points[1][0]-points[0][0])*(points[2][2]-points[0][2])
+                               -(points[1][2]-points[0][2])*(points[2][0]-points[0][0]))
+                projected_altitude=area_twice/max(edges)
+                if projected_altitude>LANDSCAPE_POSITION_STEP*1.25:
+                    f.append(triangle)
 
     def add_surface_cell(u0,u1,v0,v1,depth=0):
         # Keep the runtime winding upward after Blender's axis conversion.
@@ -549,10 +619,10 @@ def planted_parcel(corners,mat,index,sample=False):
         uc,vc=(u0+u1)/2,(v0+v1)/2
         center=parcel_point(corners,uc,vc)
         radius=max(math.dist(center,point) for point in points)
-        distance=channel_distance(*center)
-        if distance-radius>=CHANNEL_PARCEL_CLEARANCE:
+        signed_clearance=parcel_channel_clearance(*center)
+        if signed_clearance-radius>=0:
             f.append(tuple(parcel_vertex(u,vv) for u,vv in params));return
-        if distance+radius<=CHANNEL_PARCEL_CLEARANCE:return
+        if signed_clearance+radius<=0:return
         if depth<3:
             for bounds in ((u0,uc,v0,vc),(uc,u1,v0,vc),(uc,u1,vc,v1),(u0,uc,vc,v1)):
                 add_surface_cell(*bounds,depth+1)
@@ -591,46 +661,60 @@ def planted_parcel(corners,mat,index,sample=False):
     mesh_obj('Sample field' if sample else 'Adjoining cultivated parcel',v,f,mat,land,True)
     # Crops follow each parcel's planting axis. Distant rows remain low ribbons;
     # low uneven ridges retain depth without subpixel plant triangles.
-    if (index%7==0 or mat in (fallow,wet_paddy)) and not sample:return
+    # Alternate distant parcels rely on the authored crop material maps.  Real
+    # raised beds remain on the other plots to carry direction changes without
+    # paying near-field geometry cost across the entire descent landscape.
+    if (index%2==0 or mat in (fallow,wet_paddy)) and not sample:return
     if sample:
-        # The locked shot-6 camera resolves individual planting clumps across
-        # the demonstration plot. Three crossed triangular blades per clump
-        # create real edge depth at a lower cost than continuous raised strips.
-        vertices=[];faces=[]
-        row_count,column_count=25,18
+        # Shared vertices keep each planting pass visually continuous.  Two
+        # broad, row-grouped misses read as uneven establishment; the previous
+        # per-segment mesh produced a regular chain of dark points and dashes.
+        vertices=[];faces=[];row_count=19;longitudinal=28
         for row in range(row_count):
-            vv=.045+(row+.5)/row_count*.91
-            for column in range(column_count):
-                u=.055+(column+.5)/column_count*.89
-                u+=.009*math.sin(row*.81+column*.37)
-                x,z=parcel_point(corners,u,vv)
-                base=height(x,z)+.004+parcel_relief(index,u,vv,True)+.004
-                plant_height=.029+.014*(.5+.5*math.sin(row*.73+column*1.17))
-                spread=.008+.003*(.5+.5*math.sin(row*1.11-column*.49))
-                for blade in range(3):
-                    angle=blade*math.pi/3+.23*math.sin(row*.37+column*.61+blade)
-                    dx,dz=math.cos(angle),math.sin(angle)
-                    sideways=(-dz*spread,dx*spread)
-                    lean=.010*(.35+.65*math.sin(row*.47+column*.83+blade*1.3)**2)
-                    start=len(vertices)
-                    vertices.extend(((x+sideways[0],base,z+sideways[1]),
-                                     (x+dx*lean,base+plant_height,z+dz*lean),
-                                     (x-sideways[0],base,z-sideways[1])))
-                    faces.append((start,start+1,start+2))
-        mesh_obj('Batched rice planting clumps',vertices,faces,crop_rows,land,False)
+            vv=.060+(row+.5)/row_count*.88+.0045*math.sin(row*.77)
+            half_width=.0075+.0018*math.sin(row*.51)**2
+            start=len(vertices)
+            gap=None
+            if 4<=row<=7:gap=(.20,.36)
+            elif 12<=row<=15:gap=(.62,.79)
+            elif row in (1,17):gap=(.44,.50)
+            for segment in range(longitudinal+1):
+                u=.045+.91*segment/longitudinal
+                bend=.0048*math.sin(segment*.31+row*.53)+(.006*(u-.5) if row>13 else 0)
+                growth=1.0
+                if gap:
+                    if gap[0]<=u<=gap[1]:growth=.10
+                    else:
+                        distance=min(abs(u-gap[0]),abs(u-gap[1]))
+                        if distance<.055:
+                            blend=distance/.055
+                            growth=.10+.90*blend*blend*(3-2*blend)
+                for lateral,lift in ((-half_width,.002),(0,.009),(half_width,.002)):
+                    adjusted_v=vv+bend+lateral
+                    x,z=parcel_point(corners,u,adjusted_v)
+                    base=height(x,z)+.002+parcel_relief(index,u,adjusted_v,True)
+                    vertices.append((x,base+lift*growth,z))
+            for segment in range(longitudinal):
+                segment_u=.045+.91*(segment+.5)/longitudinal
+                if gap and gap[0]<=segment_u<=gap[1]:
+                    continue
+                for lateral in range(2):
+                    a=start+segment*3+lateral
+                    faces.extend(upward_triangles(vertices,(a,a+3,a+4,a+1)))
+        mesh_obj('Batched coherent rice rows',vertices,faces,crop_rows,land,False)
         return
     if index%3==1 and not sample:corners=[corners[1],corners[2],corners[3],corners[0]]
     width=math.dist(corners[0],corners[3])
     # The demonstration parcel keeps enough rows to read as cultivated land.
     # Neighbouring parcels use wider, varied spacing so the aerial view does
     # not collapse into an implausibly uniform pinstripe grid.
-    spacing=.15 if sample else (.34,.43,.54)[index%3]
+    spacing=.15 if sample else (.26,.34,.42)[index%3]
     rows=max(6,round(width/spacing))
     center=parcel_point(corners,.5,.5)
     distance=math.hypot(center[0],center[1])
     # Static distance-based simplification drops subpixel ridges on far parcels;
     # it is authored geometry rather than a dynamic runtime LOD system.
-    row_step=3 if not sample and distance>12 else 2 if not sample and distance>7.5 else 1
+    row_step=4 if not sample and distance>14 else 3 if not sample and distance>9 else 2 if not sample and distance>5.5 else 1
     vertices=[];faces=[]
     row_material = crop_rows
     for row in range(1,rows,row_step):
@@ -640,12 +724,12 @@ def planted_parcel(corners,mat,index,sample=False):
         vv=(row+.105*math.sin(row*.73+index*.43)+.035*math.sin(row*2.11-index*.29))/rows
         start=len(vertices)
         row_scale=.82+.18*math.sin(row*.61+index*.83)**2
-        ridge_half=min(spacing*.14,.025 if sample else .048)*row_scale
-        crown_height=(.0105 if sample else .015 if distance<7.5 else .007 if distance<12 else .0045)*row_scale
+        ridge_half=min(spacing*.12,.025 if sample else .032)*row_scale
+        crown_height=(.0105 if sample else .012 if distance<7.5 else .006 if distance<12 else .0035)*row_scale
         cross=((-ridge_half,.003),(-ridge_half*.52,crown_height*.48),(0,crown_height),
                (ridge_half*.52,crown_height*.48),(ridge_half,.003))
         row_near_channel=not sample and any(
-            channel_distance(*parcel_point(corners,step/24,vv))<CHANNEL_PARCEL_CLEARANCE+.20
+            parcel_channel_clearance(*parcel_point(corners,step/24,vv))<.20
             for step in range(25)
         )
         authored_longitudinal=10 if sample else (20 if row_near_channel else (5 if distance<9 else 3))
@@ -680,7 +764,7 @@ def planted_parcel(corners,mat,index,sample=False):
             for k in range(len(cross)-1):
                 a=start+j*len(cross)+k
                 face=(a,a+len(cross),a+len(cross)+1,a+1)
-                if sample or all(channel_distance(vertices[n][0],vertices[n][2])>=CHANNEL_PARCEL_CLEARANCE for n in face):
+                if sample or all(parcel_channel_clearance(vertices[n][0],vertices[n][2])>=0 for n in face):
                     faces.extend(upward_triangles(vertices,face))
     # One shared row material preserves batching; the parcel colors beneath and
     # the varied authored spacing carry the coherent plot-to-plot variation.
@@ -696,19 +780,52 @@ ground_mesh()
 parcel_index=0
 
 
-def parcel_material(index):
+def parcel_material(index, corners):
     """Deterministic land-cover states for the descent composition.
 
     Materials change in coherent whole parcels.  This avoids the previous
     wall-to-wall green plates while retaining one authored agricultural fabric.
     """
-    if index in (4, 17, 24):
+    cx=sum(point[0] for point in corners)/len(corners)
+    cz=sum(point[1] for point in corners)/len(corners)
+    zone=math.sin(cx*.115+cz*.061)+.55*math.sin(cx*.037-cz*.143)
+    if index % 23 in (5, 17):
         return fallow
-    if index in (8, 21):
+    if index % 29 in (9, 21):
         return wet_paddy
-    if index in (12, 28):
+    if index % 17 in (4, 12):
         return low_growth
-    return greens[(index * 3 + index // 4) % len(greens)]
+    return greens[0 if zone<-.38 else 2 if zone>.52 else 1]
+
+
+def parcel_edge(points, index, *, cross_band=False):
+    """Author field-scale separators without surrounding every plot by a wall.
+
+    Most joins are low vegetated seams.  Sparse, wider earth tracks establish
+    access hierarchy, while the accepted recessed L-channel remains the only
+    strongly legible irrigation route near the sample field.
+    """
+    if path_crosses_channel(points):
+        # Continue the field join up to the accepted channel clearance as a
+        # flush soil seam.  Skipping the entire join exposed the lowered
+        # subsoil as a black slot; the previous raised clipped ribbons read as
+        # paired rails.  The existing ribbon clip and taper retain water and
+        # bank clearance without either artifact.
+        ribbon('Flush earth join at irrigation',points,.034,.001,damp_bank)
+        return
+    # Only the access hierarchy and selected vegetated seams receive authored
+    # geometry.  Drawing every shared boundary as a ribbon recreated the model
+    # board grid even after the parcels themselves became smaller.
+    if cross_band and index%3:
+        return
+    if not cross_band and index%4:
+        return
+    if index % 7 == 0:
+        ribbon('Shared flat access track',points,.115 if cross_band else .095,.009,track)
+    elif index % 3 == 0:
+        ribbon('Low grassy parcel edge',points,.052,.006,green_verge)
+    else:
+        ribbon('Low earth parcel edge',points,.042,.004,damp_bank)
 
 
 def parcel_band(z0,z1,bottom,top):
@@ -716,8 +833,8 @@ def parcel_band(z0,z1,bottom,top):
     assert len(bottom)==len(top)
     for i in range(len(bottom)-1):
         corners=[(bottom[i],z0),(bottom[i+1],z0),(top[i+1],z1),(top[i],z1)]
-        inset=[parcel_point(corners,u,v) for u,v in ((.018,.018),(.982,.018),(.982,.982),(.018,.982))]
-        planted_parcel(inset,parcel_material(parcel_index),parcel_index)
+        inset=corners
+        planted_parcel(inset,parcel_material(parcel_index, inset),parcel_index)
         parcel_index+=1
     # Dividers terminate at shared band edges instead of continuing as a
     # rectangular grid across the entire landscape.
@@ -726,34 +843,54 @@ def parcel_band(z0,z1,bottom,top):
         points=[(bottom[i],z0),mid,(top[i],z1)]
         # The channel already separates these parcels. Keeping clipped halves
         # of a crossing divider creates paired rails at the bank junction.
-        if not path_crosses_channel(points):ribbon('Shared parcel bank',points,.085,.062)
+        parcel_edge(points, parcel_index+i)
 
 
-top_bands=[
-    (3.52,8.25,[-18,-10.8,-4.4,3.45,10.7,18],[-18,-12.2,-5.1,2.85,9.15,18]),
-    (8.25,13.15,[-18,-12.2,-5.1,2.85,9.15,18],[-18,-9.7,-2.25,6.25,12.9,18]),
-    (13.15,18,[-18,-9.7,-2.25,6.25,12.9,18],[-18,-11.6,-4.6,4.7,11.1,18]),
-]
-bottom_bands=[
-    (-18,-12.7,[-18,-11.8,-4.2,4.5,11.4,18],[-18,-9.8,-2.7,5.8,12.7,18]),
-    (-12.7,-7.35,[-18,-9.8,-2.7,5.8,12.7,18],[-18,-12.8,-6.1,2.4,9.8,18]),
-    (-7.35,-2.65,[-18,-12.8,-6.1,2.4,9.8,18],[-18,-10.5,-2.82,3.76,11.4,18]),
-]
+def band_boundaries(levels, phase):
+    """Shared, irregular field divisions derived from Thai aerial scale cues.
+
+    The fixed outer anchors and low-frequency drift create elongated plots at
+    several scales while adjacent bands retain exactly shared boundaries.
+    """
+    anchors=[-32,-27.4,-22.7,-18.2,-14.0,-10.1,-6.5,-3.0,.55,4.35,8.65,13.5,19.0,25.1,32]
+    result=[]
+    for level,z in enumerate(levels):
+        boundary=[anchors[0]]
+        for column,x in enumerate(anchors[1:-1],1):
+            drift=(.48*math.sin(level*.83+column*1.37+phase)
+                   +.20*math.sin(level*1.91-column*.57+phase*.4))
+            boundary.append(x+drift)
+        boundary.append(anchors[-1]);result.append(boundary)
+    return result
+
+
+top_levels=[3.52,5.85,8.45,11.35,14.65,18.45,22.75,27.35,32.0]
+bottom_levels=[-32.0,-27.10,-22.65,-18.55,-14.90,-11.55,-8.45,-5.55,-2.65]
+top_boundaries=band_boundaries(top_levels,.37)
+bottom_boundaries=band_boundaries(bottom_levels,1.71)
+top_bands=[(a,b,top_boundaries[index],top_boundaries[index+1])
+           for index,(a,b) in enumerate(zip(top_levels,top_levels[1:]))]
+bottom_bands=[(a,b,bottom_boundaries[index],bottom_boundaries[index+1])
+              for index,(a,b) in enumerate(zip(bottom_levels,bottom_levels[1:]))]
 for band in bottom_bands+top_bands:parcel_band(*band)
-for _,z,_,edge in bottom_bands[:-1]+top_bands[:-1]:
-    ribbon('Shared parcel bank',[(x,z) for x in edge],.09,.064)
+for edge_index,(_,z,_,edge) in enumerate(bottom_bands[:-1]+top_bands[:-1]):
+    parcel_edge([(x,z) for x in edge], edge_index, cross_band=True)
 
 # Side parcels close the agricultural fabric around the unchanged field and
 # its irrigation loop. Their single shared cross-bank connects to the outer
 # band network without creating another repeated row.
-for x0,x1,central_top in [(-18,-2.82,2.58),(3.64,18,3.52)]:
-    split=-.2 if x0<0 else .35
-    for z0,z1 in [(-2.65,split),(split,central_top)]:
-        corners=[(x0,z0),(x1,z0),(x1,z1),(x0,z1)]
-        inset=[parcel_point(corners,u,v) for u,v in ((.018,.018),(.982,.018),(.982,.982),(.018,.982))]
-        planted_parcel(inset,parcel_material(parcel_index),parcel_index)
-        parcel_index+=1
-    ribbon('Shared parcel bank',[(x0,split),(x1,split)],.09,.064)
+for x_edges, central_top, splits in [([-32,-18.5,-10.4,-2.82],2.58,[-2.65,-.72,.84,2.58]),
+                                     ([3.64,10.8,19.2,32],3.52,[-2.65,-.38,1.25,3.52])]:
+    for zi,(z0,z1) in enumerate(zip(splits,splits[1:])):
+        drift=.20*math.sin(zi*.9)
+        for xi,(x0,x1) in enumerate(zip(x_edges,x_edges[1:])):
+            corners=[(x0,z0),(x1,z0),(x1+drift*(xi%2-.5),z1),(x0+drift*((xi+1)%2-.5),z1)]
+            inset=corners
+            planted_parcel(inset,parcel_material(parcel_index, inset),parcel_index)
+            parcel_index+=1
+        parcel_edge([(x_edges[0],z1),(x_edges[-1],z1)], parcel_index+zi, cross_band=True)
+    for x in x_edges[1:-1]:
+        parcel_edge([(x,splits[0]),(x+terrain_random.uniform(-.18,.18),splits[-1])], parcel_index+round(x*3))
 
 def channel_offset_points(points,offset):
     result=[]
@@ -816,6 +953,15 @@ channel_strip('Raised irrigation bank shoulders',-CHANNEL_OUTER,-CHANNEL_BANK_CR
 channel_strip('Damp irrigation bank transition',-CHANNEL_BANK_CREST,-CHANNEL_SLOPE_OUTER,.004,-.008,damp_bank)
 channel_strip('Damp irrigation bank transition',CHANNEL_SLOPE_OUTER,CHANNEL_BANK_CREST,-.008,.004,damp_bank)
 channel_strip('Raised irrigation bank shoulders',CHANNEL_BANK_CREST,CHANNEL_OUTER,.004,0,track)
+# Two shallow branches connect to the primary route outside the hero field.
+# Their compact cross-section supplies irrigation hierarchy in shot 5 while
+# the accepted L-channel footprint and sample clearance remain unchanged.
+for secondary in SECONDARY_CHANNELS:
+    channel_strip('Secondary irrigation water',-.070,.070,.002,.002,water,secondary)
+    channel_strip('Secondary wet ditch edge',-.125,-.070,.005,.002,wet_bank,secondary)
+    channel_strip('Secondary wet ditch edge',.070,.125,.002,.005,wet_bank,secondary)
+    channel_strip('Secondary grassy shoulder',-.235,-.125,.004,.005,green_verge,secondary)
+    channel_strip('Secondary grassy shoulder',.125,.235,.005,.004,green_verge,secondary)
 # The negative side of this short L is the sample-facing side of both arms.
 # It fills only the authored margin between the low soil shoulder and the
 # unchanged sample footprint; adjoining cultivated parcels keep their original
@@ -923,6 +1069,110 @@ for variant_index,(trunk_height,spread,crown_height) in enumerate(tree_specs):
     for leaf_batch in leaf_batches.values():
         mesh_obj('Small folded leaves in branching crown',leaf_batch['vertices'],leaf_batch['faces'],leaf_batch['material'],parent,True)
 
+# A restrained field-edge palm supplies a regional scale cue without turning
+# every crown into the same broadleaf mass.  Each frond has an authored petiole
+# and a compact fan at its end; the earlier full-length radial blades formed a
+# bright star from the shot-6 camera instead of a believable palm crown.
+palm_parent=tree_variants[3];palm_batches={};palm_rng=random.Random(761)
+palm_segments=[((0,0,0),(.018,.66,.014),.048,.036),
+               ((.018,.66,.014),(.042,1.22,.004),.036,.025),
+               ((.042,1.22,.004),(.012,1.76,-.016),.025,.014)]
+for start,end,base_radius,tip_radius in palm_segments:
+    tapered_branch(palm_parent,'Palmyra segmented trunk',start,end,base_radius,tip_radius,sides=10)
+crown=(.012,1.76,-.016)
+for frond in range(11):
+    angle=frond*math.tau/11+palm_rng.uniform(-.12,.12)
+    elevation=palm_rng.uniform(-.20,.30)
+    petiole_length=palm_rng.uniform(.20,.31)
+    direction=Vector((math.cos(angle),elevation,math.sin(angle))).normalized()
+    fan_hub=tuple(Vector(crown)+direction*petiole_length)
+    tapered_branch(palm_parent,'Palmyra leaf petiole',crown,fan_hub,.010,.003,
+                   mat=foliage,sides=5)
+    fan_count=5+(frond%3==0)
+    for blade in range(fan_count):
+        spread=(blade-(fan_count-1)/2)*.17
+        blade_angle=angle+spread
+        blade_direction=(math.cos(blade_angle),
+                         elevation+palm_rng.uniform(.05,.28)-abs(spread)*.08,
+                         math.sin(blade_angle))
+        blade_length=palm_rng.uniform(.16,.27)*(1-.12*abs(spread))
+        shade=foliage_light if blade>=fan_count//2 and frond%3 else foliage
+        add_leaf(fan_hub,blade_direction,blade_length,blade_length*.18,shade,
+                 palm_batches,spread*.9+palm_rng.uniform(-.18,.18))
+# A few restrained drooping fans break the crown's upper ring while retaining
+# visible air between the main frond groups.
+for frond in range(3):
+    angle=.7+frond*2.15
+    hub=tuple(Vector(crown)+Vector((math.cos(angle),-.18,math.sin(angle))).normalized()*.21)
+    tapered_branch(palm_parent,'Palmyra drooping petiole',crown,hub,.009,.0025,
+                   mat=foliage,sides=5)
+    for blade in range(4):
+        blade_angle=angle+(blade-1.5)*.16
+        add_leaf(hub,(math.cos(blade_angle),-.34+blade*.055,math.sin(blade_angle)),
+                 .15+blade*.018,.027,foliage,palm_batches,(blade-1.5)*.2)
+for leaf_batch in palm_batches.values():
+    mesh_obj('Palmyra attached fan leaves',leaf_batch['vertices'],leaf_batch['faces'],leaf_batch['material'],palm_parent,True)
+
+# Low, batched hedgerows remain visible in the locked descent shot before the
+# hero tree instances appear.  Their grouped spacing gives the broad landscape
+# a scale cue without cloning the near-camera crowns or adding new materials.
+distant_rng=random.Random(992);distant_batches={}
+distant_anchors=[(-15.5,9.4),(-10.2,14.1),(-3.8,16.3),(4.8,15.4),(11.8,12.2),(16.0,7.5),
+                 (-15.0,-10.8),(-8.4,-15.0),(9.8,-15.2),(15.2,-10.4),
+                 (-7.2,5.9),(7.9,6.3),(-8.8,-6.5),(9.4,-5.8)]
+for cluster,(anchor_x,anchor_z) in enumerate(distant_anchors):
+    count=2+(cluster%3==0)
+    for member in range(count):
+        x=anchor_x+(member-(count-1)/2)*distant_rng.uniform(.30,.52)
+        z=anchor_z+distant_rng.uniform(-.24,.24)
+        ground=height(x,z);near_scale=.15 if cluster>=10 else 0
+        trunk_height=distant_rng.uniform(.42+near_scale,.68+near_scale)
+        tapered_branch(land,'Distant field-edge trunk',(x,ground,z),
+                       (x+distant_rng.uniform(-.025,.025),ground+trunk_height,z+distant_rng.uniform(-.025,.025)),
+                       .025,.007,mat=soil,sides=6)
+        crown=(x,ground+trunk_height,z)
+        leaf_count=7+(member+cluster)%4
+        for leaf in range(leaf_count):
+            angle=math.tau*leaf/leaf_count+distant_rng.uniform(-.22,.22)
+            direction=(math.cos(angle),distant_rng.uniform(.12,.78),math.sin(angle))
+            length=distant_rng.uniform(.16+near_scale*.25,.29+near_scale*.35)
+            shade=low_growth if (leaf+member)%3 else green_verge
+            add_leaf(crown,direction,length,length*distant_rng.uniform(.20,.30),shade,
+                     distant_batches,distant_rng.uniform(-.8,.8))
+for leaf_batch in distant_batches.values():
+    mesh_obj('Batched distant field-edge foliage',leaf_batch['vertices'],leaf_batch['faces'],
+             leaf_batch['material'],land,True)
+
+# Low field-edge hedgerows establish a readable vegetation hierarchy in shot 5
+# before the reusable hero trees enter.  They follow selected parcel joins,
+# keep genuine gaps between groups, and reuse existing land materials so the
+# scale cue does not add runtime draw calls.
+hedge_rng=random.Random(1441);hedge_batches={}
+hedgerow_lines=[
+    [(-15.2,6.0),(-13.8,6.2),(-12.1,6.1),(-10.5,6.35)],
+    [(7.4,6.5),(8.8,6.45),(10.3,6.7),(12.0,6.6)],
+    [(-13.8,-9.2),(-12.2,-9.05),(-10.7,-9.25)],
+    [(8.0,-6.15),(9.5,-6.0),(11.2,-6.3),(12.7,-6.15)],
+]
+for line_index,line in enumerate(hedgerow_lines):
+    for member,(x,z) in enumerate(line):
+        x+=hedge_rng.uniform(-.12,.12);z+=hedge_rng.uniform(-.10,.10)
+        ground=height(x,z);height_scale=hedge_rng.uniform(.34,.54)
+        top=(x+hedge_rng.uniform(-.035,.035),ground+height_scale,z+hedge_rng.uniform(-.035,.035))
+        tapered_branch(land,'Field-edge shrub stem',(x,ground,z),top,.020,.004,
+                       mat=soil,sides=5)
+        spray_count=9+(line_index+member)%4
+        for spray in range(spray_count):
+            angle=math.tau*spray/spray_count+hedge_rng.uniform(-.20,.20)
+            direction=(math.cos(angle),hedge_rng.uniform(.08,.70),math.sin(angle))
+            length=hedge_rng.uniform(.12,.22)
+            shade=green_verge if (spray+member)%3 else low_growth
+            add_leaf(top,direction,length,length*hedge_rng.uniform(.23,.32),shade,
+                     hedge_batches,hedge_rng.uniform(-.75,.75))
+for leaf_batch in hedge_batches.values():
+    mesh_obj('Batched open field-edge hedgerow',leaf_batch['vertices'],leaf_batch['faces'],
+             leaf_batch['material'],land,True)
+
 
 # Shared original texture inputs and UV projection are saved into the .blend.
 import sys
@@ -931,9 +1181,9 @@ from surface_maps import build_surfaces, apply_surface
 surface_output=OUT.parent/'textures'/'surfaces'
 surface_images=build_surfaces(surface_output)
 for mat in bpy.data.materials:
-    role=('foil' if mat==gold else 'solar' if mat==cells else 'metal' if mat==silver else 'water' if mat in (water,wet_paddy) else 'leaf' if mat in (foliage,foliage_light) else 'crop' if mat in greens or mat in (crop_rows,green_verge,low_growth) else 'soil' if mat in (soil,track,damp_bank,wet_bank,bark,fallow) else None)
+    role=('foil' if mat in (gold,gold_dull) else 'solar' if mat in (cells,cells_oblique) else 'metal' if mat==silver else 'water' if mat in (water,wet_paddy) else 'leaf' if mat in (foliage,foliage_light) else 'crop' if mat in greens or mat in (crop_rows,green_verge,low_growth) else 'soil' if mat in (soil,track,damp_bank,wet_bank,bark,fallow) else None)
     if role:apply_surface(mat,role,surface_images,.38 if role=='foil' else .16 if role=='solar' else .82 if role=='water' else .20 if mat==crop_rows else .16 if mat in (track,damp_bank,green_verge) else .4)
-    if mat in (foliage,foliage_light,crop_rows):mat['doubleSided']=True
+    if mat in (foliage,foliage_light,crop_rows,green_verge,low_growth):mat['doubleSided']=True
 for obj in bpy.data.objects:
     if obj.type!='MESH':continue
     uv=obj.data.uv_layers.active or obj.data.uv_layers.new(name='Authored surface UV')
@@ -973,6 +1223,7 @@ master_report = author_master_scene(
     tree_variants=tree_variants,
     sample_bounds=SAMPLE_BOUNDS,
     height_fn=height,
+    curvature_divisor=TERRAIN_CURVE_DIVISOR,
 )
 
 
