@@ -8,11 +8,11 @@ import bpy
 
 
 def author_survey_craft(material, box, tube, lathe, mesh_obj, ship):
-    ceramic = material('Survey / ceramic armour', (.060, .079, .097), .62, .27, .22)
-    ceramic_side = material('Survey / satin ceramic', (.080, .096, .112), .48, .38)
-    titanium = material('Survey / brushed titanium', (.38, .43, .47), .88, .26)
-    edge = material('Survey / machined edges', (.62, .68, .70), .94, .19)
-    solar = material('Survey / blue-black energy cells', (.055, .105, .185), .62, .24, .55)
+    ceramic = material('Survey / ceramic armour', (.105, .130, .155), .28, .32, .12)
+    ceramic_side = material('Survey / satin ceramic', (.115, .135, .150), .20, .43)
+    titanium = material('Survey / brushed titanium', (.38, .43, .47), .88, .30)
+    edge = material('Survey / machined edges', (.62, .68, .70), .94, .24)
+    solar = material('Survey / blue-black energy cells', (.055, .105, .185), .35, .34, .20)
     optic = material('Survey / multispectral glass', (.007, .045, .072), .46, .13, .82)
     gold = material('Survey / status gold', (.55, .29, .07), .75, .26)
     cool = material('Survey / optical activation', (.20, .58, .75), .35, .25)
@@ -21,7 +21,7 @@ def author_survey_craft(material, box, tube, lathe, mesh_obj, ship):
         bsdf.inputs['Emission Color'].default_value=(*color,1)
         bsdf.inputs['Emission Strength'].default_value=strength
         mat['emissive']=color;mat['emissiveStrength']=strength
-    titanium['surface']='metal';edge['surface']='metal';solar['surface']='solar'
+    ceramic['surface']='metal';ceramic_side['surface']='metal';titanium['surface']='metal';edge['surface']='metal';solar['surface']='solar'
 
     def part(obj, name, pivot):
         obj['mechanism']=name;obj['pivot']=pivot

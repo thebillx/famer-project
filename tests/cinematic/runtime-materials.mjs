@@ -94,7 +94,7 @@ assert.equal(solar?.map,maps.solar.map,'Solar cells receive their authored color
 assert.equal(solar?.normalMap,maps.solar.normalMap,'Solar cells receive restrained micro-surface normals');
 assert.equal(solar?.roughnessMap,maps.solar.roughnessMap,'Solar cells receive authored reflection roughness');
 assert.equal(solar?.iridescence,.16,'Solar cells retain a restrained angle-dependent physical response');
-assert.equal(solar?.envMapIntensity,2.05,'Solar cells retain a readable orbital reflection');
+assert.equal(solar?.envMapIntensity,.35,'Solar cells retain a readable orbital reflection');
 assert.ok(spacecraft.getObjectByName('Survey / status gold').material.emissiveIntensity>0,'Gold status bars retain authored emission');
 const terrain=buildTerrain({farmland,tree},{day:{},rotation:undefined,surfaceMaps:maps});
 const water=terrain.children.find(mesh=>mesh.name==='Irrigation water');
@@ -165,3 +165,33 @@ const open=corridorState(.39);corridorState(.95);assert.deepEqual(corridorState(
 assert.equal(corridor.userData.beam.material.uniforms.spectral.value>0,true,'Spectral passage exists only during the authored corridor beat');
 corridorState(.56);assert.equal(corridor.userData.beam.visible,false,'Data volume ends before product assessment');
 console.log('PASS articulated pivots, reverse deployment, authored emission, finite survey footprint and spectral passage');
+
+// The corrective visual contract: no enclosing cone or screen-sized plane,
+// exact reverse state for the dynamic geometry as well as object matrices.
+const corridorGeometryState=p=>{
+ corridorState(p);
+ const state=[];corridor.traverse(object=>{
+  if(object.geometry){assert.notEqual(object.geometry.type,'CylinderGeometry');assert.notEqual(object.geometry.type,'PlaneGeometry');state.push([object.name,...object.geometry.attributes.position.array]);}
+ });return state;
+};
+for(const p of [.30,.36,.39,.42,.46]){
+ const before=corridorGeometryState(p);corridorGeometryState(.95);
+ assert.deepEqual(corridorGeometryState(p),before,`All packet and overlay coordinates reverse exactly at ${p}`);
+}
+const {fieldHeight,TERRAIN_CURVE_DIVISOR}=await import('../../apps/web/public/cinematic/terrain.js');
+for(const flatten of [0,.4,.92]){
+ corridor.userData.apply(.42,new THREE.Vector3(2,13,-1),flatten);
+ const positions=corridor.userData.tiles.geometry.attributes.position;
+ for(let i=0;i<positions.count;i++){
+  const x=positions.getX(i),z=positions.getZ(i);
+  assert.ok(Math.abs(positions.getY(i)-fieldHeight(x,z)-(x*x+z*z)/TERRAIN_CURVE_DIVISOR*flatten-.025)<1e-6,'Regional scan vertices follow the same deformed ground relationship');
+ }
+}
+assert.equal(corridor.userData.clouds.children.length,7,'Separated cloud volumes retain controlled negative space');
+const {buildEarth}=await import('../../apps/web/public/cinematic/earth.js');
+const earthMaps={day:new THREE.Texture(),clouds:new THREE.Texture(),night:new THREE.Texture()},earth=buildEarth(earthMaps);
+assert.notEqual(earth.userData.clouds.geometry.parameters.radius,earth.userData.highClouds.geometry.parameters.radius,'Cloud strata occupy different physical depths');
+assert.equal(earth.userData.highClouds.material.bumpMap,earthMaps.clouds);
+assert.equal(earth.userData.cloudShadow.material.alphaMap,earthMaps.clouds);
+assert.ok(earth.userData.atmosphere.geometry.parameters.radius>earth.userData.highClouds.geometry.parameters.radius);
+console.log('PASS deterministic data trace/packets, no cone/planes, terrain-conforming tiles and distinct Earth cloud strata');

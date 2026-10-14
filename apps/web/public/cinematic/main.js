@@ -16,7 +16,7 @@ export function mountJourney(root){
  const media=matchMedia('(prefers-reduced-motion: reduce)'),diagnostic=params.has('qa');
  const resources=[];
  let disposed=false,initializing=false,probeStarted=false,reduced=media.matches||params.get('motion')==='reduce';
- let renderer,composer,scene,camera,spacecraft,earth,terrain,stars,beam,corridor,evidence,sun,fill,hemisphere;
+ let renderer,composer,scene,camera,spacecraft,earth,terrain,stars,beam,corridor,evidence,sun,fill,hemisphere,craftFill;
  let progress=0,target=0,active=false,raf=0,last=0,frames=0,shotIndex=-1,mobileLayout=null,narrativeInsufficient=null,corridorCopy=null,focusField=false,insufficient=false,state={};
  const mobileChapters=[
   ['มองเห็นความเปลี่ยนแปลง','จากวงโคจรถึงแปลงจริง'],
@@ -66,7 +66,7 @@ export function mountJourney(root){
    camera=new THREE.PerspectiveCamera(46,innerWidth/innerHeight,.08,450);
    let loaded=0;const complete=()=>{$('loading-progress').style.width=`${++loaded/6*100}%`;};
    const loader=new THREE.TextureLoader();
-   const textures=await Promise.all(['earth-day.jpg','earth-clouds.png','earth-night.png'].map(async file=>{
+   const textures=await Promise.all(['earth-day.jpg','earth-clouds.jpg','earth-night.png'].map(async file=>{
     const texture=await loader.loadAsync(`/cinematic/textures/${file}`);
     if(disposed)texture.dispose();else resources.push(texture);
     complete();return texture;
@@ -79,13 +79,14 @@ export function mountJourney(root){
    for(const set of Object.values(surfaceMaps))for(const texture of Object.values(set)){if(disposed)texture.dispose();else resources.push(texture);}
    if(disposed)return;
    const [day,clouds,night]=textures;
-   textures.forEach(t=>{t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());});
+   textures.forEach(t=>{t.colorSpace=t===clouds?THREE.NoColorSpace:THREE.SRGBColorSpace;t.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());});
    const environment=spaceEnvironment(renderer);scene.environment=environment.texture;resources.push(environment);scene.environmentIntensity=.68;
    hemisphere=new THREE.HemisphereLight(0xb3d8ee,0x1b2618,.68);scene.add(hemisphere);
    sun=new THREE.DirectionalLight(0xffead4,2.35);sun.position.set(-30,30,18);sun.castShadow=true;
    sun.shadow.mapSize.set(innerWidth<760?1024:2048,innerWidth<760?1024:2048);
    Object.assign(sun.shadow.camera,{near:1,far:120,left:-19,right:19,top:25,bottom:-19});sun.shadow.bias=-.00012;sun.shadow.normalBias=.003;sun.shadow.radius=5;scene.add(sun);
    fill=new THREE.DirectionalLight(0x7faed2,.76);fill.position.set(20,18,-15);scene.add(fill);
+   craftFill=new THREE.PointLight(0xc4dded,90,22,2);scene.add(craftFill);
    earth=buildEarth({day,clouds,night});scene.add(earth);stars=buildStarfield();scene.add(stars);
    spacecraft=buildSpacecraft(ship,surfaceMaps);scene.add(spacecraft);
    const rotation=new THREE.Matrix3().setFromMatrix4(new THREE.Matrix4().makeRotationFromQuaternion(earth.quaternion.clone().invert()));
@@ -138,10 +139,13 @@ export function mountJourney(root){
   spacecraft.position.copy(craft.position);spacecraft.quaternion.copy(craft.quaternion);
   spacecraft.visible=p<.50;spacecraft.userData.apply?.(craft);
   const descent=smooth(.41,.56,p),detail=smooth(.385,.455,p);
+  const cameraSide=key.position.clone().sub(craft.position).normalize();
+  craftFill.position.copy(craft.position).addScaledVector(cameraSide,5.5).add(new THREE.Vector3(-2,2,0));
+  craftFill.intensity=(90-55*smooth(.15,.18,p)*(1-smooth(.185,.22,p)))*(1-smooth(.40,.49,p));
   const agriculturalLight=smooth(.43,.57,p);
   // During descent, preserve the warm key while restoring cool sky fill and
   // environment response so crop ridges, bank slopes, and water retain depth.
-  sun.intensity=2.4-.12*agriculturalLight;fill.intensity=.66+.12*agriculturalLight;hemisphere.intensity=.56+.12*agriculturalLight;scene.environmentIntensity=.70+.08*agriculturalLight;
+  sun.intensity=1.85+.43*agriculturalLight;fill.intensity=1.05-.27*agriculturalLight;hemisphere.intensity=.56+.12*agriculturalLight;scene.environmentIntensity=.70+.08*agriculturalLight;
   // Keep the far edge atmospheric, but let the nearby parcels retain warm soil
   // and crop contrast instead of disappearing into a grey fog wash.
   scene.fog.density=.00055+descent*.0073;scene.fog.color.set(0x101c29).lerp(new THREE.Color(0x354b50),descent);
@@ -155,9 +159,11 @@ export function mountJourney(root){
   // islands through gaps between synthetic plots in shots 5–6.
   earth.userData.surface.visible=p<.455;
   earth.userData.atmosphere.material.uniforms.opacity.value=1-smooth(.41,.53,p);
-  earth.userData.clouds.visible=p<.49;earth.userData.clouds.material.opacity=.38*(1-smooth(.35,.49,p));
+  earth.userData.clouds.visible=p<.49;earth.userData.clouds.material.opacity=.68*(1-smooth(.365,.435,p));
   earth.userData.clouds.rotation.y=.008*smooth(.20,.49,p);
-  earth.userData.cloudShadow.visible=p<.49;earth.userData.cloudShadow.material.opacity=.16*(1-smooth(.35,.49,p));
+  earth.userData.highClouds.visible=p<.49;earth.userData.highClouds.material.opacity=.36*(1-smooth(.365,.435,p));
+  earth.userData.highClouds.rotation.y=.006+.012*smooth(.20,.49,p);
+  earth.userData.cloudShadow.visible=p<.49;earth.userData.cloudShadow.material.opacity=.26*(1-smooth(.365,.435,p));
   earth.userData.cloudShadow.rotation.y=earth.userData.clouds.rotation.y-.0018;
   earth.userData.thailandFocus.visible=p<.455;
   earth.userData.thailandFocus.material.opacity=.72*smooth(.31,.355,p)*(1-smooth(.425,.455,p));

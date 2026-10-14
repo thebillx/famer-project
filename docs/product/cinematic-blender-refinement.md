@@ -1,5 +1,27 @@
 # Cinematic storyboard and Blender refinement
 
+## Active orbital rendering correction — 14 October 2026
+
+Baseline: `474190f560639eb9f587b427eb81c56f3d4e1f6c`. Keep Draft PR #19;
+no merge/deployment. The independent review locks all 19 beats, C1 cameras,
+craft silhouette/articulation, Thai narrative, CTA, quality states, and accepted
+farmland geometry. This scope supersedes the earlier permission to redesign
+choreography and the earlier exclusion of Earth textures.
+
+Correct the illustrative corridor, cloud depth, Earth detail and craft material/
+lighting response. Use a narrow curved data trace and absolute-progress packets,
+separated world-space cloud volumes, terrain-conforming scan lines, layered
+Earth clouds and credited higher-resolution maps. Preserve the agricultural
+lighting end state. No new dependencies, public APIs or private data.
+
+Static desktop/mobile hero inspection precedes full evidence. Additional Blender
+review cameras sample the existing flyby/corridor transforms; they add no beats.
+Keep functional, geometry, artistic and evidence status separate: closed geometry
+findings stay closed; implementation self-check and Ponytail code approval are
+not independent artistic approval. Final delivery requires matched 474190f views,
+actual reference captures, Blender/browser parity, original-speed motion, raw
+recorded/unrecorded probes, and final-byte review/source mapping.
+
 ## Active owner direction — 14 October 2026
 
 Baseline: `441107574430adc6ec59ceaaa8ec524d5ec29c30`. Draft PR #19.

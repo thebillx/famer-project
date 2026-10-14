@@ -69,7 +69,7 @@ def image_node_material(name, image_path, *, roughness=0.8, emission_path=None,
         opacity.name = "GLOBAL_OPACITY"
         opacity.operation = "MULTIPLY"
         opacity.inputs[1].default_value = alpha
-        links.new(alpha_texture.outputs["Alpha"], opacity.inputs[0])
+        links.new(alpha_texture.outputs["Color"], opacity.inputs[0])
         links.new(opacity.outputs[0], bsdf.inputs["Alpha"])
         try:
             material.surface_render_method = "DITHERED"
@@ -88,11 +88,11 @@ def atmosphere_material():
     transparent = nodes.new("ShaderNodeBsdfTransparent")
     emission = nodes.new("ShaderNodeEmission")
     emission.inputs["Color"].default_value = (0.10, 0.34, 0.66, 1)
-    emission.inputs["Strength"].default_value = 0.27
+    emission.inputs["Strength"].default_value = 0.42
     layer = nodes.new("ShaderNodeLayerWeight")
     layer.inputs["Blend"].default_value = 0.18
     ramp = nodes.new("ShaderNodeValToRGB")
-    ramp.color_ramp.elements[0].position = 0.56
+    ramp.color_ramp.elements[0].position = 0.42
     ramp.color_ramp.elements[1].position = 0.94
     ramp.color_ramp.elements[0].color = (0, 0, 0, 1)
     ramp.color_ramp.elements[1].color = (0.25, 0.56, 1.0, 1)
@@ -121,11 +121,41 @@ def earth_system(root, collection, thailand_collection, repo_root):
 
     texture_root = repo_root / "apps/web/public/cinematic/textures"
     surface_material = image_node_material(
-        "MAT_EARTH_SURFACE", texture_root / "earth-day.jpg", roughness=.91,
-        emission_path=texture_root / "earth-night.png", emission_strength=.055)
+        "MAT_EARTH_SURFACE", texture_root / "earth-day.jpg", roughness=.82,
+        emission_path=texture_root / "earth-night.png", emission_strength=.10)
     cloud_material = image_node_material(
-        "MAT_EARTH_CLOUDS", texture_root / "earth-clouds.png", roughness=1,
-        alpha_path=texture_root / "earth-clouds.png", alpha=.36)
+        "MAT_EARTH_CLOUDS", texture_root / "earth-clouds.jpg", roughness=1,
+        alpha_path=texture_root / "earth-clouds.jpg", alpha=.68)
+    high_cloud_material = image_node_material(
+        "MAT_EARTH_HIGH_CLOUDS", texture_root / "earth-clouds.jpg", roughness=1,
+        alpha_path=texture_root / "earth-clouds.jpg", alpha=.36)
+    for mat, strength in ((cloud_material, .065), (high_cloud_material, .10)):
+        nodes, links = mat.node_tree.nodes, mat.node_tree.links
+        bsdf = nodes.get("Principled BSDF")
+        color_image = next(node for node in nodes if node.type == "TEX_IMAGE")
+        # Cloud color remains neutral; the linear density map controls opacity
+        # and small height response, just as in the browser cloud layers.
+        links.remove(bsdf.inputs["Base Color"].links[0])
+        bsdf.inputs["Base Color"].default_value = (.79, .86, .90, 1)
+        for node in nodes:
+            if node.type == "TEX_IMAGE": node.image.colorspace_settings.name = "Non-Color"
+        bump = nodes.new("ShaderNodeBump")
+        bump.inputs["Distance"].default_value = strength
+        links.new(color_image.outputs["Color"], bump.inputs["Height"])
+        links.new(bump.outputs["Normal"], bsdf.inputs["Normal"])
+    # Upper cloud deck retains only dense cores; lower wisps remain separate.
+    nodes, links = high_cloud_material.node_tree.nodes, high_cloud_material.node_tree.links
+    density = next(node for node in nodes if node.type == "TEX_IMAGE")
+    threshold = nodes.new("ShaderNodeMapRange")
+    threshold.interpolation_type = "SMOOTHSTEP"
+    threshold.inputs["From Min"].default_value = .32
+    threshold.inputs["From Max"].default_value = .75
+    links.new(density.outputs["Color"], threshold.inputs["Value"])
+    opacity_node = nodes["GLOBAL_OPACITY"]
+    product = nodes.new("ShaderNodeMath"); product.operation = "MULTIPLY"
+    links.new(density.outputs["Color"], product.inputs[0])
+    links.new(threshold.outputs["Result"], product.inputs[1])
+    links.new(product.outputs[0], opacity_node.inputs[0])
     shadow_material = bpy.data.materials.new("MAT_EARTH_CLOUD_SHADOW")
     shadow_material.use_nodes = True
     shadow_nodes, shadow_links = shadow_material.node_tree.nodes, shadow_material.node_tree.links
@@ -134,13 +164,13 @@ def earth_system(root, collection, thailand_collection, repo_root):
     shadow_bsdf.inputs["Roughness"].default_value = 1
     shadow_bsdf.inputs["Alpha"].default_value = .16
     shadow_alpha = shadow_nodes.new("ShaderNodeTexImage")
-    shadow_alpha.image = bpy.data.images.load(str(texture_root / "earth-clouds.png"), check_existing=True)
+    shadow_alpha.image = bpy.data.images.load(str(texture_root / "earth-clouds.jpg"), check_existing=True)
     shadow_alpha.image.pack()
     shadow_opacity = shadow_nodes.new("ShaderNodeMath")
     shadow_opacity.name = "GLOBAL_OPACITY"
     shadow_opacity.operation = "MULTIPLY"
     shadow_opacity.inputs[1].default_value = .16
-    shadow_links.new(shadow_alpha.outputs["Alpha"], shadow_opacity.inputs[0])
+    shadow_links.new(shadow_alpha.outputs["Color"], shadow_opacity.inputs[0])
     shadow_links.new(shadow_opacity.outputs[0], shadow_bsdf.inputs["Alpha"])
     try:
         shadow_material.surface_render_method = "DITHERED"
@@ -150,8 +180,9 @@ def earth_system(root, collection, thailand_collection, repo_root):
     for name, radius, segments, rings, material in (
         ("EARTH_SURFACE", 40, 128, 80, surface_material),
         ("EARTH_CLOUD_SHADOW", 40.045, 96, 64, shadow_material),
-        ("EARTH_CLOUD_LAYER", 40.18, 112, 72, cloud_material),
-        ("EARTH_ATMOSPHERE_SHELL", 40.34, 112, 72, atmo_material),
+        ("EARTH_CLOUD_LAYER", 40.16, 112, 72, cloud_material),
+        ("EARTH_HIGH_CLOUD_LAYER", 40.36, 112, 72, high_cloud_material),
+        ("EARTH_ATMOSPHERE_SHELL", 40.70, 112, 72, atmo_material),
     ):
         bpy.ops.mesh.primitive_uv_sphere_add(segments=segments, ring_count=rings, radius=radius)
         obj = bpy.context.object
@@ -256,6 +287,7 @@ def author_lighting(collection):
     light("LIGHT_SOLAR_KEY", "SUN", (-30, 30, 18), 4.2, (1.0, .86, .72), angle=.08)
     light("LIGHT_SKY_FILL", "AREA", (20, 18, -15), 1150, (.34, .58, .82), size=16)
     light("LIGHT_FIELD_BOUNCE", "AREA", (-8, 5, 10), 700, (.52, .64, .35), size=14)
+    light("LIGHT_CRAFT_FILL", "AREA", (-2, 15, 5.5), 450, (.55, .72, .85), size=3)
     light("LIGHT_SKY_REFLECTION", "AREA", (-4, 24, 18), 560, (.48, .66, .78),
           size=24, diffuse_factor=.10, specular_factor=1.0)
 
@@ -389,6 +421,33 @@ def author_master_scene(*, repo_root, evidence_root, collections, tree_variants,
     contract, cameras = author_cameras(collections["cameras"], contract_path)
     earth = earth_system(None, collections["earth"], collections["thailand"], repo_root)
     author_lighting(collections["lighting"])
+    trace_material = bpy.data.materials.new("MAT_ILLUSTRATIVE_DATA_TRACE")
+    trace_material.use_nodes = True
+    trace_bsdf = trace_material.node_tree.nodes.get("Principled BSDF")
+    trace_bsdf.inputs["Base Color"].default_value = (.18, .46, .65, 1)
+    trace_bsdf.inputs["Emission Color"].default_value = (.18, .46, .65, 1)
+    trace_bsdf.inputs["Emission Strength"].default_value = .6
+    for record in contract["cameras"]:
+        if record["viewport"] != "desktop": continue
+        corridor = record["scene"].get("corridor", {})
+        for index, line in enumerate(corridor.get("lines", [])):
+            curve = bpy.data.curves.new(f"DATA_TRACE_{record['shot']}_{index}", "CURVE")
+            curve.dimensions = "3D"
+            curve.bevel_depth = .007
+            curve.bevel_resolution = 1
+            positions = line["positions"]
+            points = [positions[i:i+3] for i in range(0, len(positions), 3)]
+            groups = [points[i:i+2] for i in range(0, len(points), 2)] if line["segments"] else [points]
+            for sequence in groups:
+                spline = curve.splines.new("POLY"); spline.points.add(len(sequence)-1)
+                for vertex, runtime in zip(spline.points, sequence): vertex.co = (*to_blender(runtime), 1)
+            obj = bpy.data.objects.new(f"CORRIDOR_REVIEW_SHOT_{record['shot']:02d}_{index}", curve)
+            collections["lighting"].objects.link(obj)
+            obj.data.materials.append(trace_material)
+            obj.hide_render = True
+            obj["review_shot"] = record["shot"]
+            obj["parity_note"] = "Exact runtime trace coordinates; Blender emission curves approximate additive one-pixel browser lines."
+
 
     spacecraft_stage = bpy.data.objects.new("SPACECRAFT_STAGE_ROOT", None)
     collections["spacecraft"].objects.link(spacecraft_stage)
@@ -432,7 +491,7 @@ def author_master_scene(*, repo_root, evidence_root, collections, tree_variants,
         "desktopTreeInstanceObjects": len(instances),
         "spacecraftStageRoot": spacecraft_stage.name,
         "collections": sorted(collections),
-        "earthTexturesPacked": ["earth-day.jpg", "earth-clouds.png", "earth-night.png"],
+        "earthTexturesPacked": ["earth-day.jpg", "earth-clouds.jpg", "earth-night.png"],
         "thailandReference": "natural-earth-thailand.geojson",
         "motionPolishExcluded": True,
     }

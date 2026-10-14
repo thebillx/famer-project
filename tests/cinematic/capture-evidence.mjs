@@ -297,7 +297,7 @@ try{
         captures.push({beat:beat.id,viewport:viewport.name,progress:snapshot.p,renderer:{gpu:snapshot.gpu,drawCalls:snapshot.drawCalls,triangles:snapshot.triangles,softwareWebGL}});
       }
     }
-    if(!viewport.mobile)for(const index of [2,5])await measureFrames(page,points[index],false);
+    if(!viewport.mobile)for(const progress of [.095,.18,.30,.42,.56])await measureFrames(page,progress,false);
     if(!viewport.mobile&&!checkpointsOnly){
       await seek(page,.86);
       await page.locator('#inspect-field').click();
@@ -367,7 +367,7 @@ try{
   report.rendererSamples=captures;report.interactions={mobile:mobileInteractionReport,fallbacks:fallbackChecks};
   await mkdir(rawVideoDir,{recursive:true});
   const probeContext=await browser.newContext({viewport:{width:1440,height:900},deviceScaleFactor:1,recordVideo:{dir:join(rawVideoDir,'timing-probe'),size:{width:1440,height:900}}});
-  try{const probePage=await probeContext.newPage();await ready(probePage);const points=await probePage.evaluate(()=>window.__agriscope.SHOTS.map(shot=>shot.p));for(const index of [2,5])await measureFrames(probePage,points[index],true);}finally{await probeContext.close();}
+  try{const probePage=await probeContext.newPage();await ready(probePage);const points=await probePage.evaluate(()=>window.__agriscope.SHOTS.map(shot=>shot.p));for(const progress of [.095,.18,.30,.42,.56])await measureFrames(probePage,progress,true);}finally{await probeContext.close();}
   motionContext=await browser.newContext({viewport:{width:1440,height:900},deviceScaleFactor:1,recordVideo:{dir:rawVideoDir,size:{width:1440,height:900}}});
   const motionPage=await motionContext.newPage();monitor(motionPage);await ready(motionPage);
   await motionPage.evaluate(()=>window.scrollTo({top:0,behavior:'instant'}));

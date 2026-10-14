@@ -44,8 +44,10 @@ silhouettes while real gaps remain between crown masses. Distant crop rows use
 low ridges rather than individual plants. All geometry uses fixed seeds.
 
 `camera-contract.json` is generated from the production `sampleCamera()`
-transforms. It locks desktop and mobile-safe review cameras for shots 1, 3, 4,
-5, 6 and 10. The editable source is organized into the numbered collections
+transforms. It locks eight desktop and eight mobile-safe review cameras: the
+original shots 1, 3, 4, 5, 6 and 10 plus flyby (shot 2, progress .095) and
+corridor (shot 11, progress .30). These are review samples of the existing
+19-beat path, not new timeline beats. The editable source is organized into the numbered collections
 `00_CAMERAS` through `09_REFERENCE`; `static_scene.py` adds the Earth texture
 layers, geographic Thailand outline, lighting, review instances and field
 boundary without changing the compact runtime export collections or scroll
@@ -64,12 +66,15 @@ environment; the runtime does not paint periodic fragment-stage bands. No
 additional Three.js runtime is introduced.
 
 Surface artwork and modeled geometry are original AgriScope project assets,
-licensed under the same terms as this repository. The Thailand locator is the
-documented exception: its boundary derives from Natural Earth 1:10m Admin 0
-Countries v5.1.2, which Natural Earth dedicates to the public domain. No external
-texture pixels, purchased assets, or reference screenshots are incorporated into
-the runtime. Edolus review
-screenshots under `tools/cinematic/references/` retain third-party ownership and
+licensed under the same terms as this repository. External runtime assets are
+documented separately: the Thailand locator derives from public-domain Natural
+Earth 1:10m Admin 0 Countries v5.1.2; the Earth day texture is NASA Blue Marble
+Next Generation (October 2004); the cloud density texture is Solar System Scope
+(CC BY 4.0); and the retained night map comes from the Three.js examples.
+`apps/web/public/cinematic/CREDITS.md` and
+`tools/cinematic/references/static-asset-board.json` record sources, usage terms,
+processing and runtime hashes. No purchased assets or reference screenshots are
+incorporated into runtime textures. Edolus review screenshots under `tools/cinematic/references/` retain third-party ownership and
 are evidence only, with provenance and file hashes in their manifest.
 
 The mesh budget is 6 MiB before HTTP compression, including UVs, with a separate
@@ -98,8 +103,11 @@ the runtime models directory while inspecting a build. Copy only validated asset
 into the runtime directory after checking their metadata and focused tests.
 
 Outputs: editable `AgriScope-Cinematic-Assets.blend`, standard `spacecraft.glb`
-and `farmland.glb` interchange prototypes, six locked-camera beauty renders,
-six clay renders, material-ID frames, focused wireframes and build metadata.
+and `farmland.glb` interchange prototypes, eight desktop locked-camera beauty
+renders, eight clay renders, material-ID frames, focused wireframes and build
+metadata. Mobile-safe cameras are stored in the source as well. Render filters
+may select a smaller review subset; this orbital pass renders Earth, flyby,
+payload and corridor for Blender/browser comparison.
 `export_standard.py` repeat-exports each GLB, imports it into an empty Blender
 scene and exports it again. The check fails on changed active scene roots, node
 hierarchy or transforms, material bindings or PBR values, bound texture payloads,

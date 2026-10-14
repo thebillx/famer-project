@@ -1,9 +1,31 @@
 # Asset sources and permissions
 
-- **Spacecraft:** original conceptual Earth-observation spacecraft authored in Blender 4.5.3 LTS, with editable source and reproducible scripts in `tools/cinematic/blender/`. Seven material batches contain real geometry for folded thermal blankets, solar cells/hinges, structural bus, recessed instrument, radiator fins, harnesses, telemetry reflector and thrusters. This is not a certified Sentinel-2 engineering replica. No image cutout or AI-generated spacecraft is used.
+- **Spacecraft:** original AgriScope sci-fi orbital survey craft authored in Blender 4.5.3 LTS. Ceramic armour, titanium hardware, segmented energy wings and an articulated iris share stable material/pivot batches. No downloaded spacecraft geometry or AI-generated artwork. It is not a Sentinel replica or an AgriScope-owned satellite.
 - **Terrain:** original Blender-authored synthetic landscape with a continuous sample plot, raised planting rows, tracks, irrigation canal/banks and a true-geometry instanced tree prototype. This is an illustration, not surveyed land. Runtime dates, values and quality masks reuse the project's existing offline demonstration fixtures; they are not satellite observations or area measurements.
-- **Earth texture files:** downloaded from the official Three.js example texture collection on 9 October 2026: `https://threejs.org/examples/textures/planets/earth_atmos_2048.jpg`, `earth_clouds_1024.png`, and `earth_lights_2048.png`. Redistribution accompanies the Three.js MIT license in `THREE-LICENSE.txt`. These are visual globe surfaces, not live Sentinel-2 products.
-- **NASA context and credit:** NASA Goddard Space Flight Center Blue Marble imagery; Reto Stöckli and Robert Simmon. See https://science.nasa.gov/earth/earth-observatory/the-blue-marble-true-color-global-imagery-at-1km-resolution/ and https://www.nasa.gov/nasa-brand-center/images-and-media/. NASA is not affiliated with or endorsing this prototype.
+- **Earth day map:** NASA Earth Observatory, Blue Marble Next Generation (October 2004). Historical visual composite, not current imagery or Sentinel data. NASA does not endorse AgriScope. Catalog: https://science.nasa.gov/earth/earth-observatory/blue-marble-next-generation/base-map/.
+- **Earth clouds:** Solar System Scope, https://www.solarsystemscope.com/textures/, licensed CC BY 4.0. Attribution and modification details below.
+- **Earth night:** retained Three.js example `https://threejs.org/examples/textures/planets/earth_lights_2048.png`, downloaded 9 October 2026; NASA Blue Marble credit (Reto Stöckli and Robert Simmon); Three.js distribution MIT.
+
+### earth-day.jpg provenance
+
+- Source: https://assets.science.nasa.gov/content/dam/science/esd/eo/images/bmng/bmng-base/october/world.200410.3x5400x2700.jpg
+- Content: NASA Earth Observatory Blue Marble Next Generation, October 2004, 5400×2700
+- Retrieved: 2026-10-14T11:18:29.939273+00:00
+- Usage: NASA media-use guidelines: https://www.nasa.gov/nasa-brand-center/images-and-media/
+- Processing: Original JPEG bytes; no geographic alteration
+- Source SHA-256: `ccfd9b7a5e5ee601e1466556716bba50ea418f3a8e068ab0194ae0425815b1b0`
+- Runtime SHA-256: `ccfd9b7a5e5ee601e1466556716bba50ea418f3a8e068ab0194ae0425815b1b0`
+
+### earth-clouds.jpg provenance
+
+- Source: https://www.solarsystemscope.com/textures/download/8k_earth_clouds.jpg
+- Content: Solar System Scope global cloud density texture, source 8192×4096
+- Retrieved: 2026-10-14T11:22:26.056102+00:00
+- Usage: CC BY 4.0: https://creativecommons.org/licenses/by/4.0/
+- Processing: Resized from 8192×4096 to 4096×2048; green density channel encoded JPEG quality 93, 4:4:4, no geographic relocation. Linear cloud density/bump data.
+- Source SHA-256: `c792eca228989d36ebb45d3ea6ff1198be5e21a25d70d2fbcb2124ffd14ba7f5`
+- Runtime SHA-256: `c15373b492a66f057e4fb1427c60d4cd42d34491b5154a6bab686ab0ad646a2b`
+
 - **Thai font:** Noto Sans Thai, Google Fonts; SIL Open Font License 1.1 is bundled in `fonts/OFL.txt`. Hosted locally so rendering does not depend on Google Fonts at runtime.
 - **Three.js:** MIT; pinned 0.170.0 to preserve the supplied project dependency. Vite retains the supplied major version.
 - **Edolus:** visual/cinematography reference only. No code, logo, model, audio or texture from Edolus was copied. A local Chrome inspection on 11 October 2026 verified orbital satellite/Earth-limb, pale atmospheric satellite, cloud-layered urban terrain, and dark compute-core scenes. These scenes inform composition, light and material response; no equivalence claim is made.

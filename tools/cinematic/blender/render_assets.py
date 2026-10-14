@@ -1,4 +1,4 @@
-"""Render the six locked static acceptance cameras from the master .blend."""
+"""Render the selected locked desktop review cameras from the master .blend."""
 from __future__ import annotations
 
 import hashlib
@@ -82,11 +82,23 @@ def configure(record):
     if activation_mat:
         activation_mat.node_tree.nodes.get("Principled BSDF").inputs["Emission Strength"].default_value = .2 + state["spacecraft"].get("activation", 0) * 2.2
 
+    for obj in bpy.data.collections["07_LIGHTING"].objects:
+        if obj.name.startswith("CORRIDOR_REVIEW_SHOT_"): obj.hide_render = obj["review_shot"] != record["shot"]
+    craft_fill = bpy.data.objects["LIGHT_CRAFT_FILL"]
+    craft_fill.location = to_blender(state["lighting"]["craftFillPosition"])
+    craft_fill.rotation_euler = (spacecraft.location-craft_fill.location).to_track_quat("-Z", "Y").to_euler()
+    craft_fill.data.energy = state["lighting"]["craftFillIntensity"] * 5
     earth_visible = state["earth"]["surfaceVisible"]
     bpy.data.objects["EARTH_SURFACE"].hide_render = not earth_visible
     bpy.data.objects["EARTH_CLOUD_SHADOW"].hide_render = not state["earth"]["cloudVisible"] or state["earth"]["cloudShadowOpacity"] < .025
     bpy.data.objects["EARTH_CLOUD_LAYER"].hide_render = not state["earth"]["cloudVisible"] or state["earth"]["cloudOpacity"] < .025
     bpy.data.objects["EARTH_ATMOSPHERE_SHELL"].hide_render = state["earth"]["atmosphereOpacity"] < .025
+    bpy.data.objects["EARTH_HIGH_CLOUD_LAYER"].hide_render = not state["earth"]["cloudVisible"] or state["earth"]["highCloudOpacity"] < .025
+    # Local runtime Y rotations become Blender Z rotations after axis conversion.
+    bpy.data.objects["EARTH_CLOUD_LAYER"].rotation_euler.z = state["earth"]["cloudRotation"]
+    bpy.data.objects["EARTH_HIGH_CLOUD_LAYER"].rotation_euler.z = state["earth"]["highCloudRotation"]
+    bpy.data.objects["EARTH_CLOUD_SHADOW"].rotation_euler.z = state["earth"]["cloudRotation"] - .0018
+    set_material_opacity("MAT_EARTH_HIGH_CLOUDS", state["earth"]["highCloudOpacity"])
     # The outline is a geographic locator on the Earth surface.  Once the Earth
     # clears during descent it must not remain as an unsupported floating mark.
     bpy.data.objects["THAILAND_RELIEF_OUTLINE"].hide_render = not earth_visible or record["shot"] != 4

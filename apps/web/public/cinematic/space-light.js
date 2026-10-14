@@ -12,7 +12,7 @@ export function spaceEnvironment(renderer){
    float glint=pow(max(0.,dot(d,sun)),85.);
    float rim=pow(max(0.,dot(d,normalize(vec3(1.,.25,-.7)))),28.);
    float strip=exp(-pow((d.x+.48)*9.,2.))*smoothstep(.08,.35,d.y);
-   vec3 color=vec3(.024,.032,.046)+earth*vec3(.36,.46,.60)+glint*vec3(9.,8.5,7.5)+rim*vec3(1.4,2.0,2.7)+strip*vec3(1.6,1.5,1.3);
+   vec3 color=vec3(.024,.032,.046)+earth*vec3(.48,.59,.72)+glint*vec3(3.2,3.0,2.8)+rim*vec3(.8,1.1,1.4)+strip*vec3(.9,.85,.75);
    gl_FragColor=vec4(color,1.);
   }`});
  const geometry=new THREE.SphereGeometry(10,24,16);scene.add(new THREE.Mesh(geometry,material));
