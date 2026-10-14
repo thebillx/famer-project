@@ -71,10 +71,11 @@ async function compareMotionFrame(page,referencePath,encodedPath,atEnd){
 function matchReferencePts(rawVideoPath,referencePath,{last=false}={}){
   // Playwright's WebM clock is independent from Date.now(). Locate the actual
   // browser endpoint on the recorded presentation timeline before trimming.
-  // Compare the unobstructed Earth surface, not chapter copy or the center of
-  // the artwork: the loading title can overlap both of those dark regions.
-  const width=270,height=88,bytesPerFrame=width*height*3;
-  const artworkFilter=`crop=1080:350:350:530,scale=${width}:${height}:flags=area,format=rgb24`;
+  // Match the complete composition using the same error limits as the final
+  // encoded-frame check. A fixed Earth crop is not invariant under camera
+  // redesign and magnifies local screenshot/video colour-response differences.
+  const width=360,height=225,bytesPerFrame=width*height*3;
+  const artworkFilter=`scale=${width}:${height}:flags=area,format=rgb24`;
   const reference=execFileSync('ffmpeg',['-hide_banner','-loglevel','error','-i',referencePath,'-vf',artworkFilter,'-frames:v','1','-f','rawvideo','pipe:1'],{maxBuffer:bytesPerFrame*2});
   const format=probeVideo(rawVideoPath);
   const sampleBufferBytes=Math.ceil((Number(format.duration)+2)*4)*bytesPerFrame;
@@ -85,23 +86,26 @@ function matchReferencePts(rawVideoPath,referencePath,{last=false}={}){
   const referenceMean=reference.reduce((sum,value)=>sum+value,0)/reference.length;
   for(let index=0;index<frameCount;index++){
     const offset=index*bytesPerFrame;
-    let error=0,channels=0,sampleMean=0;
+    let error=0,channels=0,sampleMean=0,pixelsOver36=0;
     // Include the moving artwork so the loading view cannot match just because
     // both it and the orbit chapter have a mostly-black background.
     for(let y=0;y<height;y++)for(let x=0;x<width;x++){
       const referenceIndex=(y*width+x)*3,sampleIndex=offset+referenceIndex;
-      for(let c=0;c<3;c++){const sample=samples[sampleIndex+c];error+=Math.abs(sample-reference[referenceIndex+c]);sampleMean+=sample;channels++;}
+      let maxDifference=0;
+      for(let c=0;c<3;c++){const sample=samples[sampleIndex+c],difference=Math.abs(sample-reference[referenceIndex+c]);error+=difference;maxDifference=Math.max(maxDifference,difference);sampleMean+=sample;channels++;}
+      if(maxDifference>36)pixelsOver36++;
     }
     const mean=error/channels;
     sampleMean/=channels;
-    if(mean<12&&sampleMean>=Math.max(referenceMean*.5,8))matches.push({index,pts:streamStart+index/4,artworkRegionMeanAbsoluteChannelDifference:mean,artworkRegionMeanChannelValue:sampleMean,sampleFps:4});
+    const changedPixelFraction=pixelsOver36/(width*height);
+    if(mean<10&&changedPixelFraction<.12&&sampleMean>=Math.max(referenceMean*.5,8))matches.push({index,pts:streamStart+index/4,artworkRegionMeanAbsoluteChannelDifference:mean,artworkRegionMeanChannelValue:sampleMean,pixelsOver36:changedPixelFraction,sampleFps:4});
   }
   const match=last?matches.at(-1):matches[0];
   assert.ok(match,`Could not locate the ${last?'final':'initial'} browser endpoint in the raw WebM presentation timeline.`);
   let runStart=match.index,runEnd=match.index;
   while(matches.some(candidate=>candidate.index===runStart-1))runStart--;
   while(matches.some(candidate=>candidate.index===runEnd+1))runEnd++;
-  return {...match,heldSeconds:(runEnd-runStart)/4,matchStartPts:streamStart+runStart/4,matchEndPts:streamStart+runEnd/4,threshold:12,minimumMeanChannelValue:Math.max(referenceMean*.5,8),matchedRegion:'unobstructed Earth surface'};
+  return {...match,heldSeconds:(runEnd-runStart)/4,matchStartPts:streamStart+runStart/4,matchEndPts:streamStart+runEnd/4,threshold:10,maximumChangedPixelFraction:.12,minimumMeanChannelValue:Math.max(referenceMean*.5,8),matchedRegion:'complete viewport'};
 }
 
 function gitPaths(){
@@ -476,7 +480,7 @@ try{
     sourceAndAssetHashes:hashes,
     viewportSizes:viewports.map(({name,width,height,mobile})=>({name,width,height,mobileEmulation:mobile})),
     motionDurationSeconds:actualMotionDurationSeconds,
-    captureMethod:{screenshots:'Playwright Chromium screenshots at the ten existing seekCheckpoint shot positions; contact sheets composed from those PNGs in Chromium.',motion:`${motionDescription} Raw WebM trim boundaries are found by matching the unobstructed Earth surface in the browser orbit frame against decoded raw-stream frames sampled at 4 fps on the presentation-time clock; wall-clock offsets are not used. The final encoded frame is compared across the full viewport with a browser capture after a 4-second orbit hold.`,baselineOnly:checkpointsOnly},
+    captureMethod:{screenshots:'Playwright Chromium screenshots at the ten existing seekCheckpoint shot positions; contact sheets composed from those PNGs in Chromium.',motion:`${motionDescription} Raw WebM trim boundaries are found by matching the complete browser orbit frame against decoded raw-stream frames sampled at 4 fps on the presentation-time clock; wall-clock offsets are not used. The final encoded frame is compared across the full viewport with a browser capture after a 4-second orbit hold.`,baselineOnly:checkpointsOnly},
     playbackSpeedMultiplier:report.motion?.playbackSpeedMultiplier??null,
     rawMotionPtsWindow,
     timingDiagnostics:'timing-diagnostics.json',
