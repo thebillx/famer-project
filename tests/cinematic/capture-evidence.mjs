@@ -46,8 +46,9 @@ function probeVideo(path){
 
 async function compareMotionFrame(page,referencePath,encodedPath,atEnd){
   const args=atEnd?['-sseof','-0.08','-i',videoPath]:['-i',videoPath];
-  const frame=execFileSync('ffmpeg',['-hide_banner','-loglevel','error',...args,'-frames:v','1','-f','image2pipe','-vcodec','png','pipe:1']);
-  await writeFile(encodedPath,frame);
+  // Write full-resolution PNGs directly: detailed Earth frames can exceed
+  // execFileSync's stdout buffer without indicating an encoding failure.
+  execFileSync('ffmpeg',['-hide_banner','-loglevel','error','-y',...args,'-frames:v','1','-update','1',encodedPath]);
   const [reference,encoded]=await Promise.all([readFile(referencePath),readFile(encodedPath)]);
   await page.setContent(`<img id="reference" src="data:image/png;base64,${reference.toString('base64')}"><img id="encoded" src="data:image/png;base64,${encoded.toString('base64')}">`);
   const comparison=await page.evaluate(async()=>{
