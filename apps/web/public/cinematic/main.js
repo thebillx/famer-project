@@ -1,5 +1,6 @@
 import * as THREE from './vendor.js';
 import {buildSpacecraft} from './spacecraft.js';
+import {descentSurface} from './descent-surface.js';
 import {buildSurveyCorridor} from './survey-corridor.js';
 import {buildEarth,buildStarfield} from './earth.js';
 import {bindTerrainEnvironment,buildTerrain} from './terrain.js';
@@ -138,7 +139,7 @@ export function mountJourney(root){
   const craft=sampleSpacecraft(p);
   spacecraft.position.copy(craft.position);spacecraft.quaternion.copy(craft.quaternion);
   spacecraft.visible=p<.50;spacecraft.userData.apply?.(craft);
-  const descent=smooth(.41,.56,p),detail=smooth(.385,.455,p);
+  const surface=descentSurface(p),descent=smooth(.41,.56,p),detail=surface.detail;
   const cameraSide=key.position.clone().sub(craft.position).normalize();
   craftFill.position.copy(craft.position).addScaledVector(cameraSide,5.5).add(new THREE.Vector3(-2,2,0));
   craftFill.intensity=(90-55*smooth(.15,.18,p)*(1-smooth(.185,.22,p)))*(1-smooth(.40,.49,p));
@@ -151,22 +152,24 @@ export function mountJourney(root){
   scene.fog.density=.00055+descent*.0073;scene.fog.color.set(0x101c29).lerp(new THREE.Color(0x354b50),descent);
   scene.background.set(0x060d15).lerp(new THREE.Color(0x13282f),descent);
   stars.material.opacity=.78*(1-smooth(.36,.49,p));stars.visible=p<.51;
-  terrain.visible=p>=.405;terrain.userData.localDetail.value=detail;
+  terrain.visible=surface.reveal>0;
+  earth.scale.setScalar(surface.radius/40);earth.position.y=-surface.radius;
+  terrain.userData.localDetail.value=detail;
   const flatten=terrain.userData.update(p);
   terrain.userData.boundary.material.transparent=true;terrain.userData.boundary.material.opacity=smooth(.50,.56,p);
   // Let the spherical basemap leave as the camera commits to the local terrain.
   // Keeping it underneath the flattening mesh produces stray geographic green
   // islands through gaps between synthetic plots in shots 5–6.
-  earth.userData.surface.visible=p<.455;
-  earth.userData.atmosphere.material.uniforms.opacity.value=1-smooth(.41,.53,p);
-  earth.userData.clouds.visible=p<.49;earth.userData.clouds.material.opacity=.68*(1-smooth(.365,.435,p));
+  earth.userData.surface.visible=p<.475;
+  earth.userData.atmosphere.material.uniforms.opacity.value=1-smooth(.42,.49,p);
+  earth.userData.clouds.visible=p<.49;earth.userData.clouds.material.opacity=.68*(1-smooth(.41,.465,p));
   earth.userData.clouds.rotation.y=.008*smooth(.20,.49,p);
-  earth.userData.highClouds.visible=p<.49;earth.userData.highClouds.material.opacity=.36*(1-smooth(.365,.435,p));
+  earth.userData.highClouds.visible=p<.49;earth.userData.highClouds.material.opacity=.36*(1-smooth(.41,.465,p));
   earth.userData.highClouds.rotation.y=.006+.012*smooth(.20,.49,p);
-  earth.userData.cloudShadow.visible=p<.49;earth.userData.cloudShadow.material.opacity=.26*(1-smooth(.365,.435,p));
+  earth.userData.cloudShadow.visible=p<.49;earth.userData.cloudShadow.material.opacity=.26*(1-smooth(.41,.465,p));
   earth.userData.cloudShadow.rotation.y=earth.userData.clouds.rotation.y-.0018;
-  earth.userData.thailandFocus.visible=p<.455;
-  earth.userData.thailandFocus.material.opacity=.72*smooth(.31,.355,p)*(1-smooth(.425,.455,p));
+  earth.userData.thailandFocus.visible=p<.445;
+  earth.userData.thailandFocus.material.opacity=.72*smooth(.31,.355,p)*(1-smooth(.385,.415,p));
   const payload=spacecraft.localToWorld(spacecraft.userData.payloadPosition.clone()),ground=new THREE.Vector3(0,.12,0);
   corridor.userData.apply(p,payload,flatten);
   const sample=evidence.apply(p,insufficient,flatten);
@@ -205,7 +208,7 @@ export function mountJourney(root){
   const phase=[0,1,3,6,9].reduce((a,i)=>i<=shot?i:a,0);
   [...$('rail').children].forEach((b,i)=>b.setAttribute('aria-current',String(i===(mobile?phase:shot))));
   $('bottom-left').firstChild.textContent=p<.08?'SCROLL TO EXPLORE ':p>.93?'YOUR AGRISCOPE WORKSPACE ':'EARTH OBSERVATION / THAILAND ';
-  writeDiagnostics({p:+p.toFixed(6),shot:shot+1,beat:BEATS.filter(beat=>p>=beat.p).at(-1)?.id,roll:key.roll,camera:camera.position.toArray(),look:key.target.toArray(),fov:camera.fov,terrain:terrain.visible,localDetail:detail,flatten,cloudOpacity:earth.userData.clouds.material.opacity,cloudRotation:earth.userData.clouds.rotation.y,cloudShadowOpacity:earth.userData.cloudShadow.material.opacity,thailandFocusOpacity:earth.userData.thailandFocus.material.opacity,atmosphere:earth.userData.atmosphere.material.uniforms.opacity.value,beamOpacity:beam.material.uniforms.opacity.value,beamPosition:beam.position.toArray(),beamAttitude:beam.quaternion.toArray(),fog:scene.fog.density,fieldOpacity,evidenceOpacity,attitude:spacecraft.quaternion.toArray(),spacecraftPosition:spacecraft.position.toArray(),beam:beam.visible,evidence:sample,viewport:[innerWidth,innerHeight]});
+  writeDiagnostics({p:+p.toFixed(6),shot:shot+1,beat:BEATS.filter(beat=>p>=beat.p).at(-1)?.id,roll:key.roll,camera:camera.position.toArray(),look:key.target.toArray(),fov:camera.fov,terrain:terrain.visible,descentSurface:surface,surfaceTransforms:{earthScale:earth.scale.toArray(),earthPosition:earth.position.toArray(),terrainScale:terrain.scale.toArray()},localDetail:detail,flatten,cloudOpacity:earth.userData.clouds.material.opacity,cloudRotation:earth.userData.clouds.rotation.y,cloudShadowOpacity:earth.userData.cloudShadow.material.opacity,thailandFocusOpacity:earth.userData.thailandFocus.material.opacity,atmosphere:earth.userData.atmosphere.material.uniforms.opacity.value,beamOpacity:beam.material.uniforms.opacity.value,beamPosition:beam.position.toArray(),beamAttitude:beam.quaternion.toArray(),fog:scene.fog.density,fieldOpacity,evidenceOpacity,attitude:spacecraft.quaternion.toArray(),spacecraftPosition:spacecraft.position.toArray(),beam:beam.visible,evidence:sample,viewport:[innerWidth,innerHeight]});
  }
  function animate(time){
   if(!active)return;raf=requestAnimationFrame(animate);if(document.hidden)return;

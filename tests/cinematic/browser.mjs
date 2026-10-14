@@ -71,6 +71,37 @@ try{
    for(const key of ['localDetail','flatten','cloudOpacity','cloudRotation','atmosphere','beamOpacity','fog','fieldOpacity','evidenceOpacity'])assert.ok(Math.abs(s[key]-a[key])<.00001,`Reverse ${key}`);
    assert.deepEqual(s.evidence,a.evidence);
   }
+  const transitionPoints=[.385,.397,.4049,.4051,.415,.425,.433,.445,.4549,.4551,.465,.475,.48];
+  const assertSurfaceTransforms=(s,progress)=>{
+   // Use the evaluated progress weights: document scroll is rounded to pixels.
+   const expected=s.descentSurface;
+   assert.deepEqual(s.surfaceTransforms.earthScale,Array(3).fill(expected.radius/40),`Production Earth scale at ${progress}`);
+   assert.deepEqual(s.surfaceTransforms.earthPosition,[0,-expected.radius,0],`Production Earth tangent at ${progress}`);
+   assert.deepEqual(s.surfaceTransforms.terrainScale,Array(3).fill(expected.scale),`Production terrain scale at ${progress}`);
+  };
+  const transitionStates=[];
+  for(const progress of transitionPoints){
+   const s=await checkpoint(p,progress);assertSurfaceTransforms(s,progress);transitionStates.push(s);
+  }
+  for(let i=transitionPoints.length-1;i>=0;i--){
+   const s=await checkpoint(p,transitionPoints[i]),forward=transitionStates[i];
+   assertSurfaceTransforms(s,transitionPoints[i]);
+   assert.deepEqual(s.surfaceTransforms,forward.surfaceTransforms,'Actual transforms reverse exactly');
+   assert.deepEqual(s.descentSurface,forward.descentSurface,'Forward/reverse use identical world scale and surface weights');
+   assert.deepEqual(s.camera,forward.camera,'Transition camera is direction independent');
+   assert.equal(s.drawCalls,forward.drawCalls,'Reverse restores transparent/opaque material state');
+   assert.equal(s.triangles,forward.triangles,'Reverse restores geometry visibility');
+  }
+  // Real eased input, pause, and a direction reversal inside the former pop.
+  for(const progress of [.405,.435,.415]){
+   await p.evaluate(progress=>{const root=document.querySelector('.cinematic'),journey=document.querySelector('#journey');window.scrollTo({top:root.offsetTop+progress*(journey.offsetHeight-innerHeight),behavior:'instant'});},progress);
+   await settled(p,progress);
+   await p.waitForFunction(()=>{const root=document.querySelector('.cinematic'),journey=document.querySelector('#journey');const actual=(scrollY-root.offsetTop)/(journey.offsetHeight-innerHeight);return Math.abs(window.__agriscope.snapshot().p-actual)<.000001;});
+   const paused=await state(p);await p.waitForTimeout(200);const still=await state(p);
+   assert.equal(still.p,paused.p,'Paused descent settles without time drift');
+   assert.ok(await p.locator('#title').isVisible(),'Thai narrative stays visible through descent');
+  }
+  report.checks.push(`${viewport.width}: dense transition reverse state, eased input, pauses and direction change`);
   assert.equal(await p.locator('#rail button:visible').count(),mobile?5:10);
   // Exercise ordinary animated scrolling independently of exact checkpoint capture.
   await checkpoint(p,0);await p.locator('#begin').click();await settled(p,.86);

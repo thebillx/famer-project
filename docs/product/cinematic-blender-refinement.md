@@ -1,5 +1,49 @@
 # Cinematic storyboard and Blender refinement
 
+## Active descent continuity correction — 15 October 2026
+
+Baseline: `83d0ada5ea6583b3e95cd543c878d0ddd8a2dddb`. Draft PR #19;
+no merge/deployment. Ownership: `main.js`, `terrain.js`, `survey-corridor.js`,
+new internal `descent-surface.js`, affected cinematic tests, this contract and
+existing evidence workflow baseline. No asset bytes, camera keys, product copy,
+GLB validator/tolerance, dependencies, application routes or production checkout.
+Only synthetic public scene data is involved. Stop for repository Human Gates.
+
+Controlled production-browser layer isolation established that the `.405`
+visibility switch exposed a nearly tangent 64-unit landscape over a radius-40
+Earth while local materials were already partially active. At local x=20,z=0,
+the radius-40 sphere is about -5.36 units below the tangent, whereas the accepted
+field is near -0.1: a material fade alone cannot reconcile these surfaces.
+The former fixed-height local cloud ellipsoids were also visible beyond the globe
+before the descent; the one-pixel information line lost contrast against clouds.
+
+Use one smooth magnification about the Thailand tangent: Earth radius 40 → 900
+and landscape scale radius/900 between .375 and .465. The 900 radius follows the
+accepted field's 1800 curvature divisor. All terrain layers use one affine
+transform, so triangle interiors, canal clearances and alignment are preserved;
+original coordinates and scale return exactly before the sample boundary appears.
+Keep the 19 beats and camera position/target/FOV/roll curves unchanged. This is an
+illustrative multi-scale journey, not a metric geographic flight or a claim that
+the synthetic sample is observed at that real Thailand coordinate.
+
+The geographical texture mapping uses the same tangent and angular footprint on
+both surfaces. A bounded incoming material transition precedes local detail;
+transparent terrain composes before the higher cloud strata. Cloud banks are
+positioned above the shared surface and join the existing spherical cloud layers
+after the world has expanded. A finite curved corridor cross-section with soft
+angular response remains visible in portrait framing. No enclosing cone, opaque
+screen fog, camera seek during motion, playback retiming or new texture noise.
+
+Validation includes the existing triangle-interior/parcel-edge regressions,
+affine-interpolation and C1 scale checks, dense forward/reverse browser states,
+paused/changed-direction scroll, Thai/CTA/NOT_ASSESSABLE and failure/lifecycle
+checks. Evidence includes baseline/current isolation, diagnostic colors, dense
+frames, equal-speed normal/slow transition recordings and full raw motion.
+Functional, geometry and evidence status are separate from artistic acceptance:
+self-inspection and Ponytail code approval do not constitute independent visual
+acceptance. Remaining terrain/foliage/material artistry is outside this slice.
+
+
 ## Active orbital rendering correction — 14 October 2026
 
 Baseline: `474190f560639eb9f587b427eb81c56f3d4e1f6c`. Keep Draft PR #19;

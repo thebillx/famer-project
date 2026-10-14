@@ -3,6 +3,7 @@ import {readFile} from 'node:fs/promises';
 import * as THREE from '../../apps/web/public/cinematic/vendor.js';
 import {buildSpacecraft} from '../../apps/web/public/cinematic/spacecraft.js';
 import {sampleSpacecraft} from '../../apps/web/public/cinematic/timeline.js';
+import {descentSurface,projectDescentSurface,descentCloudHeight} from '../../apps/web/public/cinematic/descent-surface.js';
 import {buildSurveyCorridor} from '../../apps/web/public/cinematic/survey-corridor.js';
 import {decodeMeshAsset,loadSurfaceMaps} from '../../apps/web/public/cinematic/mesh-assets.js';
 import {bindTerrainEnvironment,buildTerrain} from '../../apps/web/public/cinematic/terrain.js';
@@ -178,13 +179,25 @@ for(const p of [.30,.36,.39,.42,.46]){
  const before=corridorGeometryState(p);corridorGeometryState(.95);
  assert.deepEqual(corridorGeometryState(p),before,`All packet and overlay coordinates reverse exactly at ${p}`);
 }
+// A fixed curve must retain its tube normals when only packet/ring phase changes.
+const fixedPayload=new THREE.Vector3(2,13,-1);
+const routeNormals=p=>{
+ corridor.userData.apply(p,fixedPayload,0);
+ const result=[];corridor.traverse(object=>{
+  if(object.geometry?.attributes.routeNormal)result.push([object.name,...object.geometry.attributes.routeNormal.array]);
+ });return result;
+};
+const fixedNormals=routeNormals(.39);
+assert.equal(fixedNormals.length,2,'Both core and sleeve normals are checked');
+assert.deepEqual(routeNormals(.40),fixedNormals,'Ring phase cannot overwrite tube normals');
+assert.deepEqual(routeNormals(.39),fixedNormals,'Reverse ring phase retains tube normals');
 const {fieldHeight,TERRAIN_CURVE_DIVISOR}=await import('../../apps/web/public/cinematic/terrain.js');
 for(const flatten of [0,.4,.92]){
  corridor.userData.apply(.42,new THREE.Vector3(2,13,-1),flatten);
  const positions=corridor.userData.tiles.geometry.attributes.position;
  for(let i=0;i<positions.count;i++){
-  const x=positions.getX(i),z=positions.getZ(i);
-  assert.ok(Math.abs(positions.getY(i)-fieldHeight(x,z)-(x*x+z*z)/TERRAIN_CURVE_DIVISOR*flatten-.025)<1e-6,'Regional scan vertices follow the same deformed ground relationship');
+  const scale=descentSurface(.42).scale,x=positions.getX(i)/scale,z=positions.getZ(i)/scale;
+  assert.ok(Math.abs(positions.getY(i)-(fieldHeight(x,z)+(x*x+z*z)/TERRAIN_CURVE_DIVISOR*flatten)*scale-.025)<1e-6,'Regional scan vertices follow the same scaled and deformed ground relationship');
  }
 }
 assert.equal(corridor.userData.clouds.children.length,7,'Separated cloud volumes retain controlled negative space');
@@ -195,3 +208,46 @@ assert.equal(earth.userData.highClouds.material.bumpMap,earthMaps.clouds);
 assert.equal(earth.userData.cloudShadow.material.alphaMap,earthMaps.clouds);
 assert.ok(earth.userData.atmosphere.geometry.parameters.radius>earth.userData.highClouds.geometry.parameters.radius);
 console.log('PASS deterministic data trace/packets, no cone/planes, terrain-conforming tiles and distinct Earth cloud strata');
+
+// The transition preserves the accepted triangle interiors by using a common
+// affine transform, rather than independently warping sparsely sampled surfaces.
+const scaleCheckpoints=[.375,.397,.405,.415,.433,.455,.465,.475];
+for(const p of [...scaleCheckpoints,...scaleCheckpoints.toReversed()]){
+ terrain.userData.update(p);
+ assert.deepEqual(terrain.scale.toArray(),Array(3).fill(descentSurface(p).scale),`Production terrain transform at ${p}`);
+}
+terrain.userData.update(.465);
+assert.deepEqual(terrain.scale.toArray(),[1,1,1],'Production terrain restores authored scale exactly');
+const assetGeometry=decodeMeshAsset(farmland);
+let interiorSamples=0;
+for(const p of [.375,.397,.405,.415,.433,.455,.465,.475]){
+ const a=descentSurface(p),b=descentSurface(p);assert.deepEqual(a,b);
+ assert.equal(a.radius/a.scale,900,'Earth and field magnify about the same tangent point');
+ for(const mesh of assetGeometry.children){
+  const {position}=mesh.geometry.attributes,index=mesh.geometry.index.array;
+  for(let i=0;i<index.length;i+=3){
+   const triangle=[0,1,2].map(j=>new THREE.Vector3().fromBufferAttribute(position,index[i+j]));
+   const weights=[.23,.31,.46],center=new THREE.Vector3(),scaledCenter=new THREE.Vector3();
+   triangle.forEach((point,j)=>{
+    center.addScaledVector(point,weights[j]);
+    scaledCenter.addScaledVector(new THREE.Vector3(...projectDescentSurface(...point.toArray(),p)),weights[j]);
+   });
+   const direct=new THREE.Vector3(...projectDescentSurface(...center.toArray(),p));
+   assert.ok(direct.distanceTo(scaledCenter)<1e-12,'Projection commutes with triangle-interior interpolation');interiorSamples++;
+  }
+ }
+ assert.ok(Number.isFinite(descentCloudHeight(12,-12,p)));
+}
+assert.deepEqual(projectDescentSurface(17,.14,-11,.475),[17,.14,-11],'Authored field coordinates restored exactly');
+for(const p of [.375,.397,.405,.415,.433,.455,.465,.475]){
+ const e=1e-7,l=descentSurface(p-e),c=descentSurface(p),r=descentSurface(p+e);
+ for(const key of ['radius','scale','detail','reveal']){
+  assert.ok(Math.abs(l[key]-r[key])<.02,`${key} has no transition step at ${p}`);
+  assert.ok(Math.abs((c[key]-l[key])/e-(r[key]-c[key])/e)<1,`${key} keeps a continuous first derivative at ${p}`);
+ }
+}
+const envelope=corridor.getObjectByName('Survey route envelope');
+assert.ok(envelope.isMesh&&envelope.geometry.index.count>0,'Corridor uses a finite physical cross-section for portrait readability');
+corridor.userData.apply(.39,new THREE.Vector3(2,13,-1),0);
+assert.equal(corridor.userData.clouds.visible,false,'Local cloud banks do not float outside the globe before descent');
+console.log(`PASS shared tangent magnification: ${interiorSamples} authored triangle interiors, continuous scale/material weights, stable cloud placement and portrait corridor geometry`);
