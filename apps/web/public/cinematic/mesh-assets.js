@@ -37,6 +37,7 @@ export function decodeMeshAsset(data,variantIndex=0,surfaceMaps={}) {
  const variant=Array.isArray(data.variants)?data.variants[variantIndex]:data;
  if(data.schema!==1||!variant||!Array.isArray(variant.meshes))throw new Error('Unsupported Blender mesh asset');
  const group=new THREE.Group();group.name=data.generator;
+ const parts=new Map();
  for(const m of variant.meshes){
   const packed=new Int16Array(bytes(m.position).buffer),position=new Float32Array(packed.length);
   for(let i=0;i<packed.length;i++)position[i]=m.offset[i%3]+packed[i]/32767*m.scale[i%3];
@@ -50,11 +51,19 @@ export function decodeMeshAsset(data,variantIndex=0,surfaceMaps={}) {
   if(surface&&!SURFACES.has(surface))throw new Error('Unsupported authored surface');
   const response=surface==='solar'?2.05:surface==='foil'?1.44:surface==='metal'?1.2:surface==='water'?1.7:surface==='leaf' ? .7 : 1.0;
   const optical=surface==='solar'?{iridescence:.16,iridescenceIOR:1.42,iridescenceThicknessRange:[105,235],specularIntensity:1.14}:surface==='water'?{ior:1.333,transparent:true,opacity:.94,depthWrite:true}:{};
-  const material=new THREE.MeshPhysicalMaterial({color:new THREE.Color().setRGB(...m.material.color),metalness:m.material.metalness,roughness:m.material.roughness,clearcoat:m.material.clearcoat,clearcoatRoughness:surface==='water'?.08:.24,envMapIntensity:response,side:m.material.doubleSided?THREE.DoubleSide:THREE.FrontSide,...optical,...(surfaceMaps[surface]||{})});
+  const material=new THREE.MeshPhysicalMaterial({emissive:new THREE.Color().setRGB(...(m.material.emissive||[0,0,0])),emissiveIntensity:m.material.emissiveStrength||0,color:new THREE.Color().setRGB(...m.material.color),metalness:m.material.metalness,roughness:m.material.roughness,clearcoat:m.material.clearcoat,clearcoatRoughness:surface==='water'?.08:.24,envMapIntensity:response,side:m.material.doubleSided?THREE.DoubleSide:THREE.FrontSide,...optical,...(surfaceMaps[surface]||{})});
   material.userData.surface=surface||null;
   if(surface)material.normalScale.setScalar(m.material.normalStrength??.5);
-  const mesh=new THREE.Mesh(geometry,material);mesh.name=m.name;mesh.castShadow=mesh.receiveShadow=true;group.add(mesh);
+  const mesh=new THREE.Mesh(geometry,material);mesh.name=m.name;mesh.castShadow=mesh.receiveShadow=true;
+  if(m.part){
+   if(!Array.isArray(m.pivot)||m.pivot.length!==3||!m.pivot.every(Number.isFinite))throw new Error('Invalid mechanism pivot');
+   let part=parts.get(m.part);
+   if(!part){part=new THREE.Group();part.name=m.part;part.position.fromArray(m.pivot);parts.set(m.part,part);group.add(part);}
+   else if(!part.position.equals(new THREE.Vector3(...m.pivot)))throw new Error('Inconsistent mechanism pivot');
+   mesh.position.fromArray(m.pivot).negate();part.add(mesh);
+  }else group.add(mesh);
  }
+ group.userData.parts=parts;
  group.userData.asset={generator:data.generator,triangles:variant.triangles,batches:variant.meshes.length,variant:variantIndex};
  return group;
 }

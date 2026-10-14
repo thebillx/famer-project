@@ -207,124 +207,12 @@ def lathe(name, profile, mat, center=(0, 0, 0), parent=ship, segments=64):
     return mesh_obj(name, v, f, mat, parent, True)
 
 
-# Structural bus, separate folded blankets, radiator fins and harness routing.
-box("Load-bearing bus", (0, 0, 0), (1.64, 2.05, 1.46), dark, bevel=.075)
-box("Upper equipment deck", (0, 1.055, 0), (1.78, .13, 1.59), silver, bevel=.022)
-box("Lower launch adapter", (0, -1.09, 0), (1.62, .12, 1.5), silver, bevel=.018)
-for x in [-.79, .79]:
-    for z in [-.70, .70]:
-        box("Corner rail", (x, 0, z), (.067, 2.06, .067), silver, bevel=.009)
-for side in [-1, 1]:
-    nx, ny = 12, 20
-    v, f = [], []
-    for j in range(ny + 1):
-        y = -.94 + j / ny * 1.91
-        for i in range(nx + 1):
-            z = -.68 + i / nx * 1.36
-            folds = .018 * math.sin(i * .95 + j * .31) + .009 * math.cos(i * .4 - j * 1.34)
-            folds *= math.sin(math.pi * i / nx) * math.sin(math.pi * j / ny)
-            v.append((side * (.832 + folds), y, z))
-    for j in range(ny):
-        for i in range(nx):
-            a = j * (nx + 1) + i
-            f.append((a + nx + 1, a + nx + 2, a + 1, a) if side > 0 else (a, a + 1, a + nx + 2, a + nx + 1))
-    mesh_obj("Wrinkled MLI side blanket", v, f, gold, ship, True)
-    box("Radiator plate", (side * .861, .34, -.13), (.035, .95, .86), white, bevel=.012)
-    for j in range(9):
-        box("Radiator fin", (side * .884, -.075 + j * .101, -.13), (.022, .016, .86), silver)
-    for y in [-.93, .97]:
-        tube("MLI seam", (side * .856, y, -.68), (side * .856, y, .68), .014, copper)
-for y in [-.69, .81]:
-    box("Instrument blanket", (0, y, .765), (1.43, .31, .054), gold, bevel=.025)
-for x in [-.68, .68]:
-    box("Instrument blanket side", (x, .05, .765), (.20, 1.21, .054), gold, bevel=.02)
-for j in range(5):
-    tube("Harness bundle", (-.78 + j * .035, -.90, .79), (-.78 + j * .035, .95, .79), .009, copper, sides=8)
-
-# Visible equipment breaks up the broad front panel without changing the bus
-# silhouette.  These parts are large enough to survive the locked shot-3 camera.
-for x, y, size in ((-.55, -.66, (.18, .22, .075)), (.55, -.57, (.16, .26, .07)),
-                   (-.58, .72, (.14, .19, .065))):
-    box("Front avionics access cover", (x, y, .812), size, gold_dull, bevel=.012)
-    for offset in (-.045, .045):
-        tube("Access-cover fastener rail", (x + offset, y - size[1] * .36, .855),
-             (x + offset, y + size[1] * .36, .855), .006, silver, sides=8)
-for x in (-.49, .49):
-    tube("Payload mounting strut", (x, -.28, .80), (x * .74, .12, 1.02), .021, silver, sides=10)
-    tube("Payload mounting strut", (x, .66, .80), (x * .74, .35, 1.02), .021, silver, sides=10)
-box("Star tracker housing", (-.58, .48, .86), (.17, .20, .18), dark, bevel=.018)
-lathe("Star tracker optic", [(.055, .00), (.055, .045), (.044, .055)], glass,
-      (-.58, .48, .96), segments=24)
-
-# A deep black baffle and recessed optic, proportioned to reveal the bus and
-# its mounting hardware in the locked hero camera rather than flattening it.
-lathe("Payload outer shroud", [(.44, -.02), (.44, .14), (.415, .58), (.40, .62)], dark, (0, .18, .94))
-lathe("Payload front bezel", [(.405, .55), (.415, .57), (.415, .62), (.355, .62), (.355, .57)], silver, (0, .18, .94))
-for z in [.02, .16, .30, .44]:
-    lathe("Baffle collar", [(.435, z), (.45, z), (.45, z + .020), (.435, z + .020)], dark, (0, .18, .94))
-lathe("Internal light trap", [(.355, .61), (.325, .42), (.295, .40)], dark, (0, .18, .94))
-lathe("Optical retaining ring", [(.285, .42), (.295, .43), (.295, .445), (.265, .445), (.265, .42)], copper, (0, .18, .94))
-profile = [(i / 20 * .265, .419 + .016 * (1 - (i / 20) ** 2)) for i in range(21)]
-lathe("Optical element", profile[::-1], glass, (0, .18, .94))
-for x in [-.63, .63]:
-    for y in [-.71, -.25, .27, .79]:
-        tube("Fastener", (x, y, .78), (x, y, .797), .018, silver, sides=12)
-
-# Actual folded front thermal blanket, with an opening for the recessed optic.
-# Broad slack folds carry the silhouette, secondary buckling changes their
-# direction, and a restrained fine wrinkle keeps highlights from reading as
-# one triangulated quilt. The surface normal map adds smaller creases later.
-v, f = [], []
-nx, ny = 28, 32
-for j in range(ny + 1):
-    y = -.96 + j / ny * 1.94
-    for i in range(nx + 1):
-        x = -.74 + i / nx * 1.48
-        primary = .018 * math.sin(x * 4.2 + y * 2.1 + .55 * math.sin(y * 3.0))
-        buckle = .008 * math.sin(y * 8.6 - x * 5.1 + .35 * math.sin(x * 4.4))
-        wrinkle = .0028 * math.sin(x * 21.0 + y * 15.5)
-        gather = .004 * math.sin(math.atan2(y - .18, x) * 7.0) * max(0, 1 - math.hypot(x, y - .18) / .86)
-        fold = primary + buckle + wrinkle + gather
-        v.append((x, y, .773 + fold))
-for j in range(ny):
-    for i in range(nx):
-        x = -.74 + (i + .5) / nx * 1.48
-        y = -.96 + (j + .5) / ny * 1.94
-        if math.hypot(x, y - .18) < .50:
-            continue
-        k = j * (nx + 1) + i
-        f.append((k, k + 1, k + nx + 2, k + nx + 1))
-mesh_obj("Folded front MLI blanket", v, f, gold, ship, True)
-
-# Six solar leaves: separate cells, busbars, backsheets and deployment hinges.
-for sign in [-1, 1]:
-    tube("Solar deployment boom", (sign * .79, 0, 0), (sign * 2.03, 0, 0), .056, silver)
-    tube("Boom brace", (sign * .78, -.47, -.30), (sign * 1.92, 0, 0), .023, silver)
-    for j in range(3):
-        x = sign * (2.45 + j * 1.45)
-        box("Solar panel frame", (x, 0, -.015), (1.40, 2.36, .074), silver, bevel=.016)
-        box("Carbon backsheet", (x, 0, -.013), (1.31, 2.27, .078), dark, bevel=.008)
-        for row in range(10):
-            for col in range(5):
-                xx, yy = x - .515 + col * .258, -1.00 + row * .222
-                cell_material = cells if (row + col + j) % 3 else cells_oblique
-                box("Solar cell", (xx, yy, .033), (.242, .204, .008), cell_material, bevel=.003)
-                box("Cell busbar", (xx, yy, .039), (.227, .0024, .002), silver)
-        for y in [-.89, .89]:
-            tube("Panel hinge", (x + sign * .66, y, -.014), (x + sign * .71, y, -.014), .035, silver)
-        for y in [-.83, .83]:
-            tube("Backsheet brace", (x - .60, y, -.07), (x + .60, -y, -.07), .014, dark)
-
-# Parabolic telemetry dish and real support rods.
-dish = lathe("Telemetry reflector", [(i / 18 * .36, (i / 18 * .36) ** 2 * .8) for i in range(19)][::-1], white, (.32, 1.38, -.38), segments=48)
-tube("Dish mast", (.32, 1.03, -.38), (.32, 1.45, -.38), .035, silver)
-for a in [0, math.tau / 3, 2 * math.tau / 3]:
-    tube("Reflector feed support", (.32 + math.cos(a) * .32, 1.38 + math.sin(a) * .32, -.30), (.32, 1.38, .02), .007, silver, sides=8)
-tube("Feed", (.32, 1.38, -.02), (.32, 1.38, .07), .021, dark)
-tube("Telemetry antenna", (-.55, 1.05, -.42), (-.55, 2.05, -.42), .012, silver, sides=10)
-for x in [-.54, .54]:
-    for z in [-.47, .47]:
-        tube("Attitude thruster", (x, -1.10, z), (x, -1.25, z), .068, dark)
+# The original landscape and vegetation remain unchanged. The spacecraft is a
+# new owner-directed original survey craft; its articulated parts export together.
+import sys
+sys.path.insert(0, str(Path(__file__).parent))
+from survey_craft import author_survey_craft
+survey_materials = author_survey_craft(material, box, tube, lathe, mesh_obj, ship)
 
 
 LANDSCAPE_EXTENT = 32.0
@@ -1182,6 +1070,7 @@ surface_output=OUT.parent/'textures'/'surfaces'
 surface_images=build_surfaces(surface_output)
 for mat in bpy.data.materials:
     role=('foil' if mat in (gold,gold_dull) else 'solar' if mat in (cells,cells_oblique) else 'metal' if mat==silver else 'water' if mat in (water,wet_paddy) else 'leaf' if mat in (foliage,foliage_light) else 'crop' if mat in greens or mat in (crop_rows,green_verge,low_growth) else 'soil' if mat in (soil,track,damp_bank,wet_bank,bark,fallow) else None)
+    role = mat.get('surface', role)
     if role:apply_surface(mat,role,surface_images,.38 if role=='foil' else .16 if role=='solar' else .82 if role=='water' else .20 if mat==crop_rows else .16 if mat in (track,damp_bank,green_verge) else .4)
     if mat in (foliage,foliage_light,crop_rows,green_verge,low_growth):mat['doubleSided']=True
 for obj in bpy.data.objects:
@@ -1246,7 +1135,7 @@ def export_collection(coll, filename, include_data=False, destination=OUT):
         normal_matrix = transform.to_3x3().inverted().transposed()
         for tri in mesh.loop_triangles:
             mat = obj.data.materials[tri.material_index]
-            group = groups.setdefault(mat.name, {"material": mat, "vertices": [], "indices": [], "lookup": {}})
+            group = groups.setdefault((mat.name, obj.get("mechanism", "")), {"part": obj.get("mechanism"), "pivot": list(obj.get("pivot", (0,0,0))), "material": mat, "vertices": [], "indices": [], "lookup": {}})
             for loop in tri.loops:
                 p = transform @ mesh.vertices[mesh.loops[loop].vertex_index].co
                 n = (normal_matrix @ mesh.corner_normals[loop].vector).normalized()
@@ -1262,7 +1151,7 @@ def export_collection(coll, filename, include_data=False, destination=OUT):
         evaluated.to_mesh_clear()
     meshes = []
     total = 0
-    for name, group in groups.items():
+    for (name, _part), group in groups.items():
         points = group["vertices"]
         lower = [min(p[k] for p in points) for k in range(3)]
         upper = [max(p[k] for p in points) for k in range(3)]
@@ -1276,7 +1165,7 @@ def export_collection(coll, filename, include_data=False, destination=OUT):
         use32 = len(points) > 65535
         indices = struct.pack(f"<{len(group['indices'])}{'I' if use32 else 'H'}", *group["indices"])
         mat = group["material"]
-        meshes.append({"name": name, "material": {"color": list(mat.diffuse_color[:3]), "metalness": mat["metalness"], "roughness": mat["roughness"], "clearcoat": mat["clearcoat"], "surface": mat.get("surface"), "normalStrength": mat.get("normalStrength", .5), "doubleSided": bool(mat.get("doubleSided", False))}, "offset": offset, "scale": scale, "position": base64.b64encode(pos).decode(), "uv": base64.b64encode(uvs).decode(), "normal": base64.b64encode(norms).decode(), "index": base64.b64encode(indices).decode(), "index32": use32})
+        meshes.append({"name": name, **({"part": group["part"], "pivot": group["pivot"]} if group["part"] else {}), "material": {"color": list(mat.diffuse_color[:3]), "metalness": mat["metalness"], "roughness": mat["roughness"], "clearcoat": mat["clearcoat"], "surface": mat.get("surface"), "normalStrength": mat.get("normalStrength", .5), "doubleSided": bool(mat.get("doubleSided", False)), **({"emissive": list(mat["emissive"]), "emissiveStrength": mat["emissiveStrength"]} if "emissive" in mat else {})}, "offset": offset, "scale": scale, "position": base64.b64encode(pos).decode(), "uv": base64.b64encode(uvs).decode(), "normal": base64.b64encode(norms).decode(), "index": base64.b64encode(indices).decode(), "index32": use32})
         total += len(group["indices"]) // 3
     data = {"schema": 1, "generator": f"Blender {bpy.app.version_string}", "conceptual": True, "triangles": total, "meshes": meshes}
     destination.mkdir(parents=True, exist_ok=True)

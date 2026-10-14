@@ -1,5 +1,76 @@
 # Cinematic storyboard and Blender refinement
 
+## Active owner direction — 14 October 2026
+
+Baseline: `441107574430adc6ec59ceaaa8ec524d5ec29c30`. Draft PR #19.
+This visual-development milestone supersedes the fixed ten-camera and static-only
+restriction below. Keep the existing product chapters as readable navigation;
+visual beats may be more numerous. No merge or deployment.
+
+### Proof boundary
+
+Owned: cinematic runtime modules and spacecraft mesh; Blender generation,
+render and camera-export tools; focused cinematic tests; this existing contract,
+the Blender README and cinematic evidence workflow's baseline reference.
+No production checkout, terrain/tree mesh, Earth texture, field geometry,
+NDVI calculation, farm/auth/overview route, package dependency or API changes.
+Only public synthetic data is used. Source/evidence stays in the cinematic worktree
+and its external evidence directory. Stop for a real repository Human Gate.
+
+### Beat sheet and camera rationale
+
+| Progress | Visual beat | Camera and purpose |
+| --- | --- | --- |
+| 0 | Earth limb | Diagonal horizon, room for Thai benefit copy |
+| .045 | Approach | Original craft enters from orbital distance |
+| .095 | Flyby | Three-quarter approach with Earth below the craft |
+| .135 | Chase | Match the craft after its pass |
+| .18 | Wing traverse | Close under-wing parallax exposes segmented structure |
+| .22 | Payload | Shallow iris, titanium rings and ceramic bus |
+| .265 | Alignment/deployment | Wings align, rings turn, iris opens |
+| .30 | Survey corridor | Payload axis targets the geographic destination |
+| .33 | Leave the craft | Camera moves beside the tapered data volume |
+| .36 | Thailand | Existing geographically attached locator |
+| .39 | Atmospheric/spectral passage | Cloud depth across the scale transition |
+| .42 | Regional footprint | Geographic scan grid selects the destination |
+| .46 | Agricultural descent | Local landscape and irrigation become readable |
+| .51 | Field approach | Footprint contracts to the accepted bounds |
+| .56 | Boundary | Existing exact field overlay takes over |
+| .65 | Dates and quality | Preserve both valid and insufficient-data states |
+| .76 | Matched NDVI | Existing common-support comparison |
+| .86 | Inspection/limits | No conclusion when NOT_ASSESSABLE |
+| .95–1 | Workspace | Registration handoff remains prominent |
+
+The production path is a shared C1 Hermite position/target/FOV/roll spline.
+Craft approach, geographic aim, deployment, iris and corridor derive from absolute
+progress. No wall-clock orbital drift. Mobile uses the same path with continuous
+aspect-aware framing. Product state after the boundary is unchanged.
+
+### Asset direction and evidence
+
+Original survey-craft silhouette: low octagonal keel, ceramic armour, brushed
+and machined titanium, swept segmented wings, asymmetric radiator/tracker,
+shallow multispectral iris, alignment actuators and gold/cool status keys.
+Blender `survey_craft.py` explicitly authors these shapes; the editable source
+retains each component. Runtime batches by material and articulated part; each
+part has a shared pivot, avoiding duplicated per-component motion logic.
+The accepted land, vegetation, sample geometry and credited Earth maps are reused.
+
+Saved Edolus frames in `tools/cinematic/references/manifest.json` provide guidance
+for diagonal composition, narrow highlights and layered wings. Their pixels are
+never runtime assets. The scene depicts an illustrative data connection, not an
+AgriScope-owned satellite or a physical beam emitted by passive imagery.
+
+Inspect the rough full forward/reverse animatic before final asset treatment.
+Use local Blender/browser/mobile loops for the proof, then required exact-byte
+Ponytail review, commit/push and exact-head CI. Deliver original-speed recordings,
+raw timing, editable Blender source, provenance, material-parity comparisons and
+source hashes. Keep functional, geometry, artistic and evidence status separate.
+Artistic approval remains independent; tests and counters cannot establish it.
+
+## Historical ten-shot contract (superseded camera restriction)
+
+
 Status: CONTRACT_READY. Owner approval: 10 October 2026, after the complete
 public-to-authenticated flow review. Branch: codex/cinematic-refinement; base:
 cd8b9207ddcb8211873369c1c9705967c151f2a6.

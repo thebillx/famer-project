@@ -163,10 +163,11 @@ for(const name of ['spacecraft','farmland','tree']){
  const variants=Array.isArray(data.variants)?data.variants:[data],heights=[];
  for(let variant=0;variant<variants.length;variant++){
   const model=decodeMeshAsset(data,variant),asset=variants[variant];
-  const materialBatchBudget=name==='farmland'?13:10;
-  assert.ok(model.children.length<=materialBatchBudget,'Material batching stays within the bounded mobile draw budget');
+  const materialBatchBudget=name==='spacecraft'?29:name==='farmland'?13:10;
+  const meshes=[];model.traverse(object=>{if(object.isMesh)meshes.push(object);});
+  assert.ok(meshes.length<=materialBatchBudget,'Material batching stays within the bounded mobile draw budget');
   let triangles=0;
-  for(const mesh of model.children){
+  for(const mesh of meshes){
    const {position,normal}=mesh.geometry.attributes,index=mesh.geometry.index;
    const uv=mesh.geometry.attributes.uv;
    assert.ok(index.count%3===0);triangles+=index.count/3;
@@ -275,9 +276,9 @@ for(const name of ['spacecraft','farmland','tree']){
   assert.equal(triangles,asset.triangles);totalTriangles+=triangles;
   const bounds=new THREE.Box3().setFromObject(model),size=bounds.getSize(new THREE.Vector3());
   assert.ok(size.x>0&&size.y>0&&size.z>0,'Every asset has real volume');
-  if(name==='spacecraft')assert.ok(size.x>10&&size.x<14&&size.z>2,'Wings and recessed payload retain authored proportions');
+  if(name==='spacecraft')assert.ok(size.x>7&&size.x<10&&size.z>3,'Swept segmented wings and shallow iris retain the survey-craft proportions');
   if(name==='tree')heights.push(size.y);
-  console.log(`PASS ${name}${variants.length>1?` variant ${variant+1}`:''}: ${triangles} triangles, ${model.children.length} material batches, bounds ${size.toArray().map(v=>v.toFixed(2))}`);
+  console.log(`PASS ${name}${variants.length>1?` variant ${variant+1}`:''}: ${triangles} triangles, ${meshes.length} material batches, bounds ${size.toArray().map(v=>v.toFixed(2))}`);
  }
  if(name==='tree')assert.equal(new Set(heights.map(v=>v.toFixed(2))).size,4,'Broadleaf and palm variants preserve visibly different crown heights');
 }

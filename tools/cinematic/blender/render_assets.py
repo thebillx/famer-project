@@ -53,6 +53,9 @@ def color_mix(first, second, amount):
     return tuple(a[index] + (b[index] - a[index]) * amount for index in range(3))
 
 
+original_ship_matrices = {obj.name: obj.matrix_basis.copy() for obj in bpy.data.collections["02_SPACECRAFT"].objects}
+
+
 def configure(record):
     state = record["scene"]
     scene.camera = bpy.data.objects[f"CAM_SHOT_{record['shot']:02d}_DESKTOP_{record['slug'].upper().replace('-', '_')}"]
@@ -61,6 +64,23 @@ def configure(record):
     spacecraft.rotation_euler = runtime_rotation(state["spacecraft"]["quaternion"]).to_euler()
     for obj in bpy.data.collections["02_SPACECRAFT"].objects:
         obj.hide_render = not state["spacecraft"]["visible"]
+        part = obj.get("mechanism", "")
+        if part:
+            deployment = state["spacecraft"].get("deployment", 0)
+            angle = 0
+            axis = "Y"  # runtime Z = Blender -Y
+            if part.startswith("wing-"):
+                angle = (1 if part == "wing-left" else -1) * (.17 - .15 * deployment)
+                axis = "Z"  # runtime Y = Blender Z
+            elif part.startswith("ring-"):
+                angle = -(1 if part == "ring-0" else -1) * deployment * .65
+            elif part.startswith("iris-"):
+                angle = -deployment * .95
+            pivot = to_blender(obj["pivot"])
+            obj.matrix_basis = Matrix.Translation(pivot) @ Matrix.Rotation(angle, 4, axis) @ Matrix.Translation(-pivot) @ original_ship_matrices[obj.name]
+    activation_mat = bpy.data.materials.get("Survey / optical activation")
+    if activation_mat:
+        activation_mat.node_tree.nodes.get("Principled BSDF").inputs["Emission Strength"].default_value = .2 + state["spacecraft"].get("activation", 0) * 2.2
 
     earth_visible = state["earth"]["surfaceVisible"]
     bpy.data.objects["EARTH_SURFACE"].hide_render = not earth_visible

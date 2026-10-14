@@ -224,6 +224,7 @@ def author_cameras(collection, contract_path):
         collection.objects.link(camera)
         camera.location = to_blender(record["position"])
         point_at(camera, record["target"])
+        camera.rotation_euler.rotate_axis("Z", record.get("roll", 0))
         camera["locked_progress"] = record["progress"]
         camera["viewport"] = record["viewport"]
         camera["review_width"] = record["width"]

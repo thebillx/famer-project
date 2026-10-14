@@ -1,4 +1,26 @@
-# Original Blender assets
+# Blender cinematic source
+
+## Current orbital redesign
+
+The owner-approved proof follows 19 visual beats within the existing product
+chapters. `survey_craft.py` creates the original ceramic/titanium survey craft;
+`build_assets.py` retains the accepted land and vegetation generator unchanged.
+`timeline.js` owns camera roll, craft approach, geographic aim and deployment.
+`export_camera_contract.mjs` samples that same source for Blender, and
+`render_assets.py` applies the matching articulated-part transforms.
+
+Compact mesh schema 1 adds optional `part`/`pivot` records and authored emissive
+values. Static assets without those records decode identically. Each articulated
+part batches its shared materials. There is still one Three.js runtime and one
+production mesh loader. GLB remains the semantic-checked interchange export.
+The .blend and evidence are published as SHA-bound downloadable artifacts.
+
+The spacecraft is original conceptual artwork, not a Sentinel replica. The
+corridor is an illustrative data link. Final quality across the entire journey
+is deferred until the proof segment receives independent visual review.
+
+## Previous asset baseline and retained terrain
+
 
 The web spacecraft and agricultural landscape are evaluated meshes authored by
 Blender 4.5.3 LTS. They are original conceptual artwork, not an engineering model

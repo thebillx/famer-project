@@ -1,11 +1,12 @@
 import * as THREE from './vendor.js';
 import {buildSpacecraft} from './spacecraft.js';
+import {buildSurveyCorridor} from './survey-corridor.js';
 import {buildEarth,buildStarfield} from './earth.js';
 import {bindTerrainEnvironment,buildTerrain} from './terrain.js';
 import {buildEvidence,DEMO} from './demo-evidence.js';
 import {loadMeshData,loadSurfaceMaps} from './mesh-assets.js';
 import {spaceEnvironment,agriculturalEnvironment} from './space-light.js';
-import {SHOTS,sampleCamera,clamp,smooth} from './timeline.js';
+import {SHOTS,BEATS,sampleCamera,sampleSpacecraft,clamp,smooth} from './timeline.js';
 
 // One instance per React mount. Assets, listeners and GPU resources belong to it.
 export function mountJourney(root){
@@ -15,8 +16,8 @@ export function mountJourney(root){
  const media=matchMedia('(prefers-reduced-motion: reduce)'),diagnostic=params.has('qa');
  const resources=[];
  let disposed=false,initializing=false,probeStarted=false,reduced=media.matches||params.get('motion')==='reduce';
- let renderer,composer,scene,camera,spacecraft,earth,terrain,stars,beam,evidence,sun,fill,hemisphere;
- let progress=0,target=0,active=false,raf=0,last=0,frames=0,shotIndex=-1,mobileLayout=null,narrativeInsufficient=null,focusField=false,insufficient=false,state={};
+ let renderer,composer,scene,camera,spacecraft,earth,terrain,stars,beam,corridor,evidence,sun,fill,hemisphere;
+ let progress=0,target=0,active=false,raf=0,last=0,frames=0,shotIndex=-1,mobileLayout=null,narrativeInsufficient=null,corridorCopy=null,focusField=false,insufficient=false,state={};
  const mobileChapters=[
   ['มองเห็นความเปลี่ยนแปลง','จากวงโคจรถึงแปลงจริง'],
   ['ดูโลกในแต่ละช่วงเวลา','ภาพดาวเทียมช่วยติดตามพื้นที่เดิม'],
@@ -92,7 +93,7 @@ export function mountJourney(root){
    const fieldEnvironment=agriculturalEnvironment(renderer);resources.push(fieldEnvironment);
    bindTerrainEnvironment(terrain,fieldEnvironment.texture);
    evidence=buildEvidence();scene.add(evidence.group);
-   beam=new THREE.Mesh(new THREE.CylinderGeometry(.008,.024,1,16,1,true),new THREE.MeshBasicMaterial({color:0xe8c99a,transparent:true,opacity:0,blending:THREE.AdditiveBlending,depthWrite:false,side:THREE.DoubleSide}));scene.add(beam);
+   corridor=buildSurveyCorridor();scene.add(corridor);beam=corridor.userData.beam;
    composer=new THREE.EffectComposer(renderer);composer.addPass(new THREE.RenderPass(scene,camera));
    composer.addPass(new THREE.UnrealBloomPass(new THREE.Vector2(innerWidth/2,innerHeight/2),.10,.35,1.5));composer.addPass(new THREE.OutputPass());
    const phases=[0,1,3,6,9];
@@ -132,12 +133,10 @@ export function mountJourney(root){
  function apply(p){
   const key=sampleCamera(p,innerWidth/innerHeight),mobile=innerWidth<760;
   const shot=SHOTS.reduce((a,s,i)=>p>=s.p-.025?i:a,0);
-  camera.position.copy(key.position);camera.fov=key.fov;camera.lookAt(key.target);camera.updateProjectionMatrix();camera.updateMatrixWorld(true);
-  const orbit=.32*smooth(.235,.38,p);
-  spacecraft.position.set(53*Math.sin(orbit),53*Math.cos(orbit)-40,-4*smooth(.235,.38,p));
-  const attitude=new THREE.Quaternion().setFromEuler(new THREE.Euler(-.18,-.22,-.22));
-  const nadir=new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.PI/2,0,-.22));
-  spacecraft.quaternion.copy(attitude).slerp(nadir,smooth(.235,.38,p));spacecraft.visible=p<.50;
+  camera.position.copy(key.position);camera.fov=key.fov;camera.lookAt(key.target);camera.rotateZ(key.roll);camera.updateProjectionMatrix();camera.updateMatrixWorld(true);
+  const craft=sampleSpacecraft(p);
+  spacecraft.position.copy(craft.position);spacecraft.quaternion.copy(craft.quaternion);
+  spacecraft.visible=p<.50;spacecraft.userData.apply?.(craft);
   const descent=smooth(.41,.56,p),detail=smooth(.385,.455,p);
   const agriculturalLight=smooth(.43,.57,p);
   // During descent, preserve the warm key while restoring cool sky fill and
@@ -162,9 +161,8 @@ export function mountJourney(root){
   earth.userData.cloudShadow.rotation.y=earth.userData.clouds.rotation.y-.0018;
   earth.userData.thailandFocus.visible=p<.455;
   earth.userData.thailandFocus.material.opacity=.72*smooth(.31,.355,p)*(1-smooth(.425,.455,p));
-  const payload=spacecraft.localToWorld(spacecraft.userData.payloadPosition.clone()),ground=new THREE.Vector3(0,.12,0),direction=payload.clone().sub(ground);
-  beam.position.copy(payload).add(ground).multiplyScalar(.5);beam.scale.y=direction.length();beam.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),direction.normalize());
-  beam.visible=p>=.25&&p<=.43;beam.material.opacity=.07*smooth(.25,.30,p)*(1-smooth(.37,.43,p));
+  const payload=spacecraft.localToWorld(spacecraft.userData.payloadPosition.clone()),ground=new THREE.Vector3(0,.12,0);
+  corridor.userData.apply(p,payload,flatten);
   const sample=evidence.apply(p,insufficient,flatten);
   const fieldOpacity=smooth(.835,.86,p),evidenceOpacity=smooth(.635,.655,p)*(1-smooth(.815,.84,p));
   panel('field-panel',fieldOpacity);panel('evidence-panel',evidenceOpacity);
@@ -184,7 +182,9 @@ export function mountJourney(root){
   const optic=payload.project(camera);
   $('instrument').style.left=`${clamp((optic.x*.5+.5)*innerWidth-27,24,innerWidth-230)}px`;
   $('instrument').style.top=`${clamp((-optic.y*.5+.5)*innerHeight-27,110,innerHeight*.48)}px`;
-  if(shot!==shotIndex||mobile!==mobileLayout||insufficient!==narrativeInsufficient){
+  const illustrative=p>=.265&&p<.335;
+  if(shot!==shotIndex||mobile!==mobileLayout||insufficient!==narrativeInsufficient||illustrative!==corridorCopy){
+   corridorCopy=illustrative;
    shotIndex=shot;mobileLayout=mobile;narrativeInsufficient=insufficient;const s=SHOTS[shot],assessmentCopy=insufficient?insufficientChapters[shot]:null;$('eyebrow').textContent=`${String(shot+1).padStart(2,'0')} / 10   ${s.name}`;
    if(assessmentCopy){
     $('title').textContent=assessmentCopy[0];$('description').textContent=assessmentCopy[1];
@@ -193,12 +193,13 @@ export function mountJourney(root){
     $('description').textContent=mobile?mobileChapters[shot][1]:s.text;
     if(mobile)$('title').textContent=mobileChapters[shot][0];
    }
+   if(illustrative){$('title').textContent='เชื่อมข้อมูล สู่พื้นที่จริง';$('description').textContent='ยานและแนวแสงเป็นภาพจำลองการเชื่อมโยงข้อมูล ไม่ใช่ยานของ AgriScope หรือการยิงแสงจากดาวเทียม';}
    $('chapter').textContent=`${s.name} / ${String(shot+1).padStart(2,'0')}`;
   }
   const phase=[0,1,3,6,9].reduce((a,i)=>i<=shot?i:a,0);
   [...$('rail').children].forEach((b,i)=>b.setAttribute('aria-current',String(i===(mobile?phase:shot))));
   $('bottom-left').firstChild.textContent=p<.08?'SCROLL TO EXPLORE ':p>.93?'YOUR AGRISCOPE WORKSPACE ':'EARTH OBSERVATION / THAILAND ';
-  writeDiagnostics({p:+p.toFixed(6),shot:shot+1,camera:camera.position.toArray(),look:key.target.toArray(),fov:camera.fov,terrain:terrain.visible,localDetail:detail,flatten,cloudOpacity:earth.userData.clouds.material.opacity,cloudRotation:earth.userData.clouds.rotation.y,cloudShadowOpacity:earth.userData.cloudShadow.material.opacity,thailandFocusOpacity:earth.userData.thailandFocus.material.opacity,atmosphere:earth.userData.atmosphere.material.uniforms.opacity.value,beamOpacity:beam.material.opacity,beamPosition:beam.position.toArray(),beamAttitude:beam.quaternion.toArray(),fog:scene.fog.density,fieldOpacity,evidenceOpacity,attitude:spacecraft.quaternion.toArray(),spacecraftPosition:spacecraft.position.toArray(),beam:beam.visible,evidence:sample,viewport:[innerWidth,innerHeight]});
+  writeDiagnostics({p:+p.toFixed(6),shot:shot+1,beat:BEATS.filter(beat=>p>=beat.p).at(-1)?.id,roll:key.roll,camera:camera.position.toArray(),look:key.target.toArray(),fov:camera.fov,terrain:terrain.visible,localDetail:detail,flatten,cloudOpacity:earth.userData.clouds.material.opacity,cloudRotation:earth.userData.clouds.rotation.y,cloudShadowOpacity:earth.userData.cloudShadow.material.opacity,thailandFocusOpacity:earth.userData.thailandFocus.material.opacity,atmosphere:earth.userData.atmosphere.material.uniforms.opacity.value,beamOpacity:beam.material.uniforms.opacity.value,beamPosition:beam.position.toArray(),beamAttitude:beam.quaternion.toArray(),fog:scene.fog.density,fieldOpacity,evidenceOpacity,attitude:spacecraft.quaternion.toArray(),spacecraftPosition:spacecraft.position.toArray(),beam:beam.visible,evidence:sample,viewport:[innerWidth,innerHeight]});
  }
  function animate(time){
   if(!active)return;raf=requestAnimationFrame(animate);if(document.hidden)return;
@@ -238,7 +239,7 @@ export function mountJourney(root){
  });
  // Exact scroll checkpoints avoid timing-dependent capture in software WebGL.
  // Ordinary visits and user navigation still use the continuous scroll easing.
- const diagnostics={snapshot:()=>structuredClone(state),sampleCamera,SHOTS,setTerrainDebug:(layer='all',wireframe=false)=>{
+ const diagnostics={snapshot:()=>structuredClone(state),sampleCamera,SHOTS,BEATS,setTerrainDebug:(layer='all',wireframe=false)=>{
   if(!active)throw new Error('Journey is not active');
   const terrainDebug=terrain.userData.setDebug({layer,wireframe});
   renderScene();writeDiagnostics({terrainDebug});

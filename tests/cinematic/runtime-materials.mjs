@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import * as THREE from '../../apps/web/public/cinematic/vendor.js';
+import {buildSpacecraft} from '../../apps/web/public/cinematic/spacecraft.js';
+import {sampleSpacecraft} from '../../apps/web/public/cinematic/timeline.js';
+import {buildSurveyCorridor} from '../../apps/web/public/cinematic/survey-corridor.js';
 import {decodeMeshAsset,loadSurfaceMaps} from '../../apps/web/public/cinematic/mesh-assets.js';
 import {bindTerrainEnvironment,buildTerrain} from '../../apps/web/public/cinematic/terrain.js';
 
@@ -34,7 +37,7 @@ const mapRoles=new Set();
 for(const data of [spacecraftData,farmland,tree])for(const variant of data.variants||[data])for(const mesh of variant.meshes){
  if(mesh.material.surface)mapRoles.add(mesh.material.surface);
 }
-assert.deepEqual([...mapRoles].sort(),['crop','foil','leaf','metal','soil','solar','water'],'All exported authored surface roles are known');
+assert.deepEqual([...mapRoles].sort(),['crop','leaf','metal','soil','solar','water'],'All exported authored surface roles are known');
 
 const loadedTextures=[];
 const maps=await loadSurfaceMaps([spacecraftData,farmland,tree],{loadAsync:async url=>{
@@ -70,8 +73,8 @@ await assert.rejects(
 assert.ok(failedTextures.length>0&&failedTextures.every(texture=>texture.disposed),'Partially loaded maps are disposed after a loading failure');
 
 const spacecraft=decodeMeshAsset(spacecraftData,0,maps);
-for(const name of ['Photovoltaic cells','Recessed optical glass','MLI · champagne gold','Anodized aluminium','Thermal radiator']){
- const material=spacecraft.children.find(mesh=>mesh.name===name)?.material;
+for(const name of ['Survey / blue-black energy cells','Survey / multispectral glass','Survey / ceramic armour','Survey / brushed titanium','Survey / status gold']){
+ const material=spacecraft.getObjectByName(name)?.material;
  const exported=spacecraftData.meshes.find(mesh=>mesh.name===name)?.material;
  assert.ok(material?.isMeshPhysicalMaterial,`${name} retains Blender PBR material values`);
  assert.deepEqual([material.color.r,material.color.g,material.color.b],exported.color,`${name} retains exported base color`);
@@ -86,13 +89,13 @@ for(const name of ['Photovoltaic cells','Recessed optical glass','MLI · champag
   assert.equal(material.normalScale.x,exported.normalStrength,`${name} retains authored normal strength`);
  }
 }
-const solar=spacecraft.children.find(mesh=>mesh.name==='Photovoltaic cells')?.material;
+const solar=spacecraft.getObjectByName('Survey / blue-black energy cells')?.material;
 assert.equal(solar?.map,maps.solar.map,'Solar cells receive their authored color response');
 assert.equal(solar?.normalMap,maps.solar.normalMap,'Solar cells receive restrained micro-surface normals');
 assert.equal(solar?.roughnessMap,maps.solar.roughnessMap,'Solar cells receive authored reflection roughness');
 assert.equal(solar?.iridescence,.16,'Solar cells retain a restrained angle-dependent physical response');
 assert.equal(solar?.envMapIntensity,2.05,'Solar cells retain a readable orbital reflection');
-assert.ok(spacecraft.children.find(mesh=>mesh.name==='MLI · champagne gold')?.material.envMapIntensity>1.4,'Folded foil keeps a controlled orbital reflection');
+assert.ok(spacecraft.getObjectByName('Survey / status gold').material.emissiveIntensity>0,'Gold status bars retain authored emission');
 const terrain=buildTerrain({farmland,tree},{day:{},rotation:undefined,surfaceMaps:maps});
 const water=terrain.children.find(mesh=>mesh.name==='Irrigation water');
 const shallowWet=terrain.children.find(mesh=>mesh.name==='Rice field · shallow wet');
@@ -136,3 +139,29 @@ assert.equal(foliage?.map,maps.leaf.map,'Tree foliage receives its authored colo
 assert.equal(foliage?.normalMap,maps.leaf.normalMap,'Tree foliage receives its authored normal map');
 assert.equal(foliage?.roughnessMap,maps.leaf.roughnessMap,'Tree foliage receives its authored roughness map');
 console.log('PASS runtime material pipeline: surface role loading/disposal, spacecraft PBR response, terrain grain, canal water and Blender PBR values');
+
+const articulated=buildSpacecraft(spacecraftData,maps);
+assert.equal(articulated.userData.parts.size,12,'Two wings, two rings and eight iris blades have authored pivots');
+const mechanismState=p=>{
+ articulated.userData.apply(sampleSpacecraft(p));articulated.updateMatrixWorld(true);
+ return [...articulated.userData.parts].map(([name,part])=>[name,...part.matrix.elements]);
+};
+const closed=mechanismState(0),deployed=mechanismState(.30);
+assert.notDeepEqual(closed,deployed,'Deployment moves the authored mechanisms');
+assert.deepEqual(mechanismState(0),closed,'Reverse traversal returns every mechanism to its exact closed transform');
+assert.deepEqual(mechanismState(.30),deployed,'Revisiting deployment is deterministic');
+const partMesh=spacecraftData.meshes.find(mesh=>mesh.part);
+assert.throws(()=>decodeMeshAsset({...spacecraftData,meshes:[{...partMesh,pivot:[0,NaN,0]}]}),/Invalid mechanism pivot/);
+assert.throws(()=>decodeMeshAsset({...spacecraftData,meshes:[partMesh,{...partMesh,pivot:[999,0,0]}]}),/Inconsistent mechanism pivot/);
+const corridor=buildSurveyCorridor();
+const corridorState=p=>{
+ const craft=sampleSpacecraft(p),payload=new THREE.Vector3(0,0,1.44).applyQuaternion(craft.quaternion).add(craft.position);
+ corridor.userData.apply(p,payload,.5);corridor.updateMatrixWorld(true);
+ const state=[];corridor.traverse(object=>{state.push([object.name,object.visible,...object.matrix.elements]);
+  if(object.geometry?.attributes.position)assert.ok([...object.geometry.attributes.position.array].every(Number.isFinite));
+ });return state;
+};
+const open=corridorState(.39);corridorState(.95);assert.deepEqual(corridorState(.39),open);
+assert.equal(corridor.userData.beam.material.uniforms.spectral.value>0,true,'Spectral passage exists only during the authored corridor beat');
+corridorState(.56);assert.equal(corridor.userData.beam.visible,false,'Data volume ends before product assessment');
+console.log('PASS articulated pivots, reverse deployment, authored emission, finite survey footprint and spectral passage');

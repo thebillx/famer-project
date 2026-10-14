@@ -44,7 +44,7 @@ try{
   const points=await p.evaluate(()=>window.__agriscope.SHOTS.map(s=>s.p)),captures=[];
   for(let i=0;i<points.length;i++){
    const s=await checkpoint(p,points[i]);assert.equal(s.shot,i+1);
-   assert.ok(s.drawCalls>5&&s.drawCalls<=55,'Bounded visible draw calls');assert.ok(s.triangles>1000);assert.ok(s.camera.every(Number.isFinite));
+   assert.ok(s.drawCalls>5&&s.drawCalls<=(s.p<.5?84:58),'Bounded visible draw calls');assert.ok(s.triangles>1000);assert.ok(s.camera.every(Number.isFinite));
    assert.equal(await p.locator('#fallback').isVisible(),false);
    assert.ok(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'No horizontal overflow');
    assert.equal(await p.locator('#field-panel').isVisible(),i>=8);
@@ -52,8 +52,8 @@ try{
     const aligned=await p.evaluate(async({state,viewport,index})=>{
      const THREE=await import('/cinematic/vendor.js');
      const camera=new THREE.PerspectiveCamera(state.fov,viewport.width/viewport.height,.08,450);
-     camera.position.fromArray(state.camera);camera.lookAt(new THREE.Vector3().fromArray(state.look));camera.updateMatrixWorld(true);
-     const point=index===2?new THREE.Vector3(0,.18,1.65).applyQuaternion(new THREE.Quaternion().fromArray(state.attitude)).add(new THREE.Vector3().fromArray(state.spacecraftPosition)):new THREE.Vector3(0,.12,0);
+     camera.position.fromArray(state.camera);camera.lookAt(new THREE.Vector3().fromArray(state.look));camera.rotateZ(state.roll);camera.updateMatrixWorld(true);
+     const point=index===2?new THREE.Vector3(0,0,1.44).applyQuaternion(new THREE.Quaternion().fromArray(state.attitude)).add(new THREE.Vector3().fromArray(state.spacecraftPosition)):new THREE.Vector3(0,.12,0);
      point.project(camera);
      const clamp=(n,a,b)=>Math.min(b,Math.max(a,n)),element=document.querySelector(index===2?'#instrument':'#geo');
      const x=clamp((point.x*.5+.5)*viewport.width+(index===2?-27:18),24,viewport.width-(index===2?230:210));
@@ -112,7 +112,7 @@ try{
   const ctx=await browser.newContext({viewport:viewports[2]});contexts.push(ctx);p=await ctx.newPage();monitor(p,false);let intercepted=0;
   if(failure==='webgl')await p.addInitScript(()=>{const original=HTMLCanvasElement.prototype.getContext;window.__blockedWebgl=0;HTMLCanvasElement.prototype.getContext=function(type,...args){if(type.includes('webgl')){window.__blockedWebgl++;return null;}return original.call(this,type,...args);};});
   if(failure==='texture')await p.route('**/cinematic/textures/earth-day.jpg',r=>{intercepted++;return r.abort();});
-  if(failure==='surface-map')await p.route('**/cinematic/textures/surfaces/foil-normal.png',r=>{intercepted++;return r.fulfill({status:404,body:'Unavailable'});});
+  if(failure==='surface-map')await p.route('**/cinematic/textures/surfaces/metal-normal.png',r=>{intercepted++;return r.fulfill({status:404,body:'Unavailable'});});
   if(failure==='mesh')await p.route('**/cinematic/models/spacecraft.mesh.json',r=>{intercepted++;return r.fulfill({status:404,body:'Unavailable'});});
   if(failure==='module')await p.route('**/cinematic/main.js',r=>{intercepted++;return r.abort();});
   await p.goto(`${url}?qa=1`);

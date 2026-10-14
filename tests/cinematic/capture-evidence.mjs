@@ -252,7 +252,7 @@ try{
     const context=await browser.newContext({viewport:{width:viewport.width,height:viewport.height},deviceScaleFactor:1,isMobile:viewport.mobile,hasTouch:viewport.mobile});
     const page=await context.newPage();monitor(page);await ready(page);
     const points=await page.evaluate(()=>window.__agriscope.SHOTS.map(shot=>shot.p));
-    assert.equal(points.length,10,'The journey must expose ten shots.');
+    assert.equal(points.length,10,'The product journey retains ten navigation chapters.');
     const shots=[];
     for(let index=0;index<points.length;index++){
       const snapshot=await seek(page,points[index]);
@@ -283,6 +283,15 @@ try{
       timing.captureOperations.push({viewport:viewport.name,shot:index+1,operation:'screenshot',elapsedMs:Date.now()-screenshotStarted});
       shots.push({number:index+1,name:shotNames[index],path});
       captures.push({shot:index+1,progress:snapshot.p,renderer:{mode:snapshot.mode,gpu:snapshot.gpu||null,drawCalls:snapshot.drawCalls,triangles:snapshot.triangles,softwareWebGL},assets:{model:snapshot.model,land:snapshot.land}});
+    }
+    const beats=await page.evaluate(()=>window.__agriscope.BEATS||[]);
+    if(beats.length){
+      await mkdir(join(output,viewport.name,'beats'),{recursive:true});
+      for(const beat of beats){
+        const snapshot=await seek(page,beat.p);
+        await page.screenshot({path:join(output,viewport.name,'beats',`${beat.id}.png`),timeout:60000});
+        captures.push({beat:beat.id,viewport:viewport.name,progress:snapshot.p,renderer:{gpu:snapshot.gpu,drawCalls:snapshot.drawCalls,triangles:snapshot.triangles,softwareWebGL}});
+      }
     }
     if(!viewport.mobile)for(const index of [2,5])await measureFrames(page,points[index],false);
     if(!viewport.mobile&&!checkpointsOnly){
@@ -365,13 +374,19 @@ try{
   assert.ok(initialOrbitSnapshot.p<.0003,'Motion must begin at progress zero.');
   await motionPage.screenshot({path:startReferencePath,timeout:60000});
   const points=await motionPage.evaluate(()=>window.__agriscope.SHOTS.map(shot=>shot.p));
-  const sequence=[
-    {to:points[4],move:3000,hold:2000},
-    {to:points[5],move:1750,hold:2000},
-    {to:points[7],move:2250,hold:2000},
-    {to:points[8],move:1500,hold:1500},
-    {to:points[9],move:1900,hold:2000},
-    {to:points[5],move:3000,hold:2000},
+  const redesigned=await motionPage.evaluate(()=>Boolean(window.__agriscope.BEATS));
+  const sequence=redesigned?[
+    {to:.095,move:3500,hold:900},{to:.18,move:3000,hold:900},
+    {to:.22,move:2200,hold:1500},{to:.30,move:3500,hold:1600},
+    {to:.36,move:3000,hold:1000},{to:.46,move:3500,hold:1000},
+    {to:.56,move:3000,hold:1500},{to:.76,move:2800,hold:1200},
+    {to:.95,move:2800,hold:1500},{to:.56,move:4000,hold:900},
+    {to:.30,move:4500,hold:900},{to:.18,move:3500,hold:900},
+    {to:0,move:4500,hold:1200},
+  ]:[
+    {to:points[4],move:3000,hold:2000},{to:points[5],move:1750,hold:2000},
+    {to:points[7],move:2250,hold:2000},{to:points[8],move:1500,hold:1500},
+    {to:points[9],move:1900,hold:2000},{to:points[5],move:3000,hold:2000},
     {to:0,move:2500,hold:1000},
   ];
   const motionStartedAt=Date.now();
@@ -436,7 +451,7 @@ try{
   endpointComparison=await compareMotionFrame(endpointVerifier,endpointReferencePath,endpointEncodedFramePath,true);
   await endpointVerifier.close();
   // Retain the raw recording, including on success, for independent timestamp review.
-  report.motion={path:'motion/agriscope-forward-reverse.webm',durationSeconds:actualMotionDurationSeconds,captureWindowSeconds:requestedDurationSeconds,rawPresentationTimeWindow:rawMotionPtsWindow,playbackSpeedMultiplier,initialEndpoint:{shot:initialOrbitSnapshot.shot,progress:initialOrbitSnapshot.p,encodedFrameComparison:startComparison,encodedFramePath:'motion/orbit-start-encoded.png',browserReferencePath:'motion/orbit-start-browser.png'},finalEndpoint:{shot:finalOrbitSnapshot.shot,progress:finalOrbitSnapshot.p,requestedHoldSeconds:4,rawChapterHoldSeconds:lastEndpoint.heldSeconds,encodedChapterHoldSeconds:encodedFinalMatch.heldSeconds,encodedFrameComparison:endpointComparison,encodedFramePath:'motion/orbit-endpoint-encoded.png',browserReferencePath:'motion/orbit-endpoint-browser.png'},sequence:'Slow forward descent; pauses at descent, boundary, NDVI, summary and handoff; reverse to boundary then orbit.'};
+  report.motion={path:'motion/agriscope-forward-reverse.webm',durationSeconds:actualMotionDurationSeconds,captureWindowSeconds:requestedDurationSeconds,rawPresentationTimeWindow:rawMotionPtsWindow,playbackSpeedMultiplier,initialEndpoint:{shot:initialOrbitSnapshot.shot,progress:initialOrbitSnapshot.p,encodedFrameComparison:startComparison,encodedFramePath:'motion/orbit-start-encoded.png',browserReferencePath:'motion/orbit-start-browser.png'},finalEndpoint:{shot:finalOrbitSnapshot.shot,progress:finalOrbitSnapshot.p,requestedHoldSeconds:4,rawChapterHoldSeconds:lastEndpoint.heldSeconds,encodedChapterHoldSeconds:encodedFinalMatch.heldSeconds,encodedFrameComparison:endpointComparison,encodedFramePath:'motion/orbit-endpoint-encoded.png',browserReferencePath:'motion/orbit-endpoint-browser.png'},sequence:redesigned?'Forward flyby, wing, payload, activation/corridor, Thailand, descent and field; product chapters; full reverse with original-speed holds.':'Historical ten-chapter traversal.'};
   report.rendererSamples=captures;
   report.interactions={mobile:mobileInteractionReport,fallbacks:fallbackChecks};
   report.status=report.errors.length===0&&report.failedRequests.length===0?'PASS':'FAIL';

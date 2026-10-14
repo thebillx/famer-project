@@ -9,7 +9,7 @@ import {createHash} from 'node:crypto';
 import {readFileSync,writeFileSync} from 'node:fs';
 import {resolve} from 'node:path';
 import * as THREE from '../../../apps/web/public/cinematic/vendor.js';
-import {sampleCamera,smooth} from '../../../apps/web/public/cinematic/timeline.js';
+import {sampleCamera,sampleSpacecraft,smooth} from '../../../apps/web/public/cinematic/timeline.js';
 
 const root=resolve(import.meta.dirname,'../../..');
 const output=resolve(process.argv[2]??resolve(import.meta.dirname,'camera-contract.json'));
@@ -29,14 +29,11 @@ const viewports=[
 ];
 
 function state(progress){
-  const orbit=.32*smooth(.235,.38,progress);
-  const position=[53*Math.sin(orbit),53*Math.cos(orbit)-40,-4*smooth(.235,.38,progress)];
-  const attitude=new THREE.Quaternion().setFromEuler(new THREE.Euler(-.18,-.22,-.22));
-  const nadir=new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.PI/2,0,-.22));
-  attitude.slerp(nadir,smooth(.235,.38,progress));
+  const craft=sampleSpacecraft(progress);
+  const position=craft.position.toArray(),attitude=craft.quaternion;
   const descent=smooth(.41,.56,progress),agriculturalLight=smooth(.43,.57,progress);
   return {
-    spacecraft:{visible:progress<.50,position,quaternion:attitude.toArray()},
+    spacecraft:{visible:progress<.50,position,quaternion:attitude.toArray(),deployment:craft.deployment,activation:craft.activation},
     earth:{surfaceVisible:progress<.455,cloudVisible:progress<.49,
       cloudOpacity:.38*(1-smooth(.35,.49,progress)),cloudRotation:.008*smooth(.20,.49,progress),
       cloudShadowOpacity:.16*(1-smooth(.35,.49,progress)),
@@ -54,15 +51,15 @@ const cameras=[];
 for(const lock of locked)for(const viewport of viewports){
   const camera=sampleCamera(lock.progress,viewport.width/viewport.height);
   cameras.push({...lock,viewport:viewport.name,width:viewport.width,height:viewport.height,
-    position:camera.position.toArray(),target:camera.target.toArray(),fov:camera.fov,
+    position:camera.position.toArray(),target:camera.target.toArray(),fov:camera.fov,roll:camera.roll,
     textSafe:viewport.textSafe,scene:state(lock.progress)});
 }
 
 const contract={
   schema:1,
   coordinateSystem:'Runtime right-handed coordinates (x right, y up, z forward); Blender conversion is (x,-z,y).',
-  narrativeSequenceLocked:true,
-  motionPolishExcluded:true,
+  narrativeSequenceLocked:false,
+  motionPolishExcluded:false,
   generatedFrom:Object.fromEntries(files.map(file=>[file,sha256(file)])),
   thailandAnchor:{latitude:15.87,longitude:100.99,source:'apps/web/public/cinematic/earth.js'},
   cameras,
