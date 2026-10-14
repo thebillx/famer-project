@@ -71,7 +71,7 @@ try{
    for(const key of ['localDetail','flatten','cloudOpacity','cloudRotation','atmosphere','beamOpacity','fog','fieldOpacity','evidenceOpacity'])assert.ok(Math.abs(s[key]-a[key])<.00001,`Reverse ${key}`);
    assert.deepEqual(s.evidence,a.evidence);
   }
-  const transitionPoints=[.385,.397,.4049,.4051,.415,.425,.433,.445,.4549,.4551,.465,.475,.48];
+  const transitionPoints=[.385,.397,.4049,.4051,.415,.425,.433,.445,.449431,.451,.452550,.4549,.4551,.465,.467,.469,.475,.48,.49];
   const assertSurfaceTransforms=(s,progress)=>{
    // Use the evaluated progress weights: document scroll is rounded to pixels.
    const expected=s.descentSurface;
@@ -93,7 +93,7 @@ try{
    assert.equal(s.triangles,forward.triangles,'Reverse restores geometry visibility');
   }
   // Real eased input, pause, and a direction reversal inside the former pop.
-  for(const progress of [.405,.435,.415]){
+  for(const progress of [.405,.435,.449431,.452550,.465,.469,.449431,.415]){
    await p.evaluate(progress=>{const root=document.querySelector('.cinematic'),journey=document.querySelector('#journey');window.scrollTo({top:root.offsetTop+progress*(journey.offsetHeight-innerHeight),behavior:'instant'});},progress);
    await settled(p,progress);
    await p.waitForFunction(()=>{const root=document.querySelector('.cinematic'),journey=document.querySelector('#journey');const actual=(scrollY-root.offsetTop)/(journey.offsetHeight-innerHeight);return Math.abs(window.__agriscope.snapshot().p-actual)<.000001;});

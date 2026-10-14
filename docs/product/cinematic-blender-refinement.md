@@ -1,5 +1,37 @@
 # Cinematic storyboard and Blender refinement
 
+## Active atmosphere brightness correction — 15 October 2026
+
+Baseline `369bb2c55b72535dd815aca38d61d5f16b15e81b`. Scope: Earth atmosphere
+view-vector interpolation, focused runtime/browser regressions, this contract,
+and the existing evidence comparison baseline. Draft PR #19; no merge/deploy.
+No camera, timeline, authored asset, terrain, corridor, product or dependency
+changes. Production checkout and unrelated work remain outside ownership.
+Only synthetic public scene data is used; repository Human Gates still apply.
+
+Production layer isolation attributes the cyan wash to the additive atmosphere
+shell. Removing Earth clouds, local clouds, terrain, fog or bloom does not remove
+that component. The exterior shell crosses the desktop camera near .451 and the
+mobile camera later around .47 (triangle/near-plane crossing is viewport-dependent). Its vertex shader normalized view vectors before
+perspective interpolation. At near-shell triangle interiors, the interpolated
+unit directions deviate strongly from the actual view ray, falsely activating
+the limb term over the screen. Clipping/culling then removes that false wash.
+
+Keep the view-space vector magnitude through raster interpolation; normalize in
+the existing fragment expression. No opacity schedule, culling mode, clipping
+plane, light, fog, geometry or validation tolerance changes. The existing local
+atmospheric depth remains. Tests use actual sphere triangles and production
+cameras to demonstrate the old interpolation error and the corrected ray, plus
+dense forward/reverse and paused browser states at both crossing intervals.
+
+Inspect actual consecutive desktop/mobile frames and normal/slow traversal,
+including other aspect ratios, before final delivery. Preserve prior terrain-pop,
+corridor-readability and cloud-placement gains. Publish matched baseline/current
+pixels, original-speed motion, raw timing, encoded endpoints and exact-byte
+Ponytail coverage. Functional/geometry validation and code review do not grant
+independent visual acceptance. Basemap and regional-terrain artistry remain
+separate future work; no Edolus-equivalence claim.
+
 ## Active descent continuity correction — 15 October 2026
 
 Baseline: `83d0ada5ea6583b3e95cd543c878d0ddd8a2dddb`. Draft PR #19;

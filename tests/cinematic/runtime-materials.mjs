@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import * as THREE from '../../apps/web/public/cinematic/vendor.js';
 import {buildSpacecraft} from '../../apps/web/public/cinematic/spacecraft.js';
-import {sampleSpacecraft} from '../../apps/web/public/cinematic/timeline.js';
+import {sampleSpacecraft,sampleCamera} from '../../apps/web/public/cinematic/timeline.js';
 import {descentSurface,projectDescentSurface,descentCloudHeight} from '../../apps/web/public/cinematic/descent-surface.js';
 import {buildSurveyCorridor} from '../../apps/web/public/cinematic/survey-corridor.js';
 import {decodeMeshAsset,loadSurfaceMaps} from '../../apps/web/public/cinematic/mesh-assets.js';
@@ -208,6 +208,34 @@ assert.equal(earth.userData.highClouds.material.bumpMap,earthMaps.clouds);
 assert.equal(earth.userData.cloudShadow.material.alphaMap,earthMaps.clouds);
 assert.ok(earth.userData.atmosphere.geometry.parameters.radius>earth.userData.highClouds.geometry.parameters.radius);
 console.log('PASS deterministic data trace/packets, no cone/planes, terrain-conforming tiles and distinct Earth cloud strata');
+
+// Near-shell triangles must interpolate view-space vectors, not unit directions.
+// Exercise the real authored sphere and cameras at the independently reported wash.
+const atmosphere=earth.userData.atmosphere;
+assert.match(atmosphere.material.vertexShader,/v=-p\.xyz;/,'Preserve vector magnitude until fragment interpolation');
+assert.match(atmosphere.material.fragmentShader,/normalize\(v\)/,'Normalize the interpolated view vector per fragment');
+for(const [aspect,p] of [[1440/900,.449431],[375/667,.465]]){
+ const key=sampleCamera(p,aspect),surface=descentSurface(p);
+ const camera=new THREE.PerspectiveCamera(key.fov,aspect,.08,450);
+ camera.position.copy(key.position);camera.lookAt(key.target);camera.rotateZ(key.roll);camera.updateMatrixWorld(true);
+ earth.scale.setScalar(surface.radius/40);earth.position.y=-surface.radius;earth.updateMatrixWorld(true);
+ const ray=new THREE.Raycaster();ray.setFromCamera(new THREE.Vector2(0,0),camera);
+ const hit=ray.intersectObject(atmosphere)[0];assert.ok(hit,'Regression ray crosses the actual atmosphere mesh');
+ const position=atmosphere.geometry.attributes.position;
+ const vertices=[hit.face.a,hit.face.b,hit.face.c].map(i=>new THREE.Vector3().fromBufferAttribute(position,i));
+ const weights=new THREE.Triangle(...vertices).getBarycoord(atmosphere.worldToLocal(hit.point.clone()),new THREE.Vector3());
+ const modelView=new THREE.Matrix4().multiplyMatrices(camera.matrixWorldInverse,atmosphere.matrixWorld);
+ const interpolated=new THREE.Vector3(),oldUnitInterpolation=new THREE.Vector3();
+ vertices.forEach((vertex,i)=>{
+  const view=vertex.applyMatrix4(modelView).negate(),weight=weights.getComponent(i);
+  interpolated.addScaledVector(view,weight);oldUnitInterpolation.addScaledVector(view.clone().normalize(),weight);
+ });
+ const geometricView=hit.point.clone().applyMatrix4(camera.matrixWorldInverse).negate().normalize();
+ assert.ok(interpolated.normalize().distanceTo(geometricView)<1e-10,'Interpolated view agrees with the geometric ray inside the triangle');
+ assert.ok(oldUnitInterpolation.normalize().distanceTo(geometricView)>.1,'Fixture catches the former normalized-vertex interpolation error');
+}
+console.log('PASS atmosphere view-vector interpolation at actual desktop/mobile shell-crossing triangles');
+
 
 // The transition preserves the accepted triangle interiors by using a common
 // affine transform, rather than independently warping sparsely sampled surfaces.

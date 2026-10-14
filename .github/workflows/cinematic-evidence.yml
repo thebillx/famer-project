@@ -64,8 +64,8 @@ jobs:
         run: |
           # Preserve the owner's reviewed visual baseline across evidence-only
           # correction commits; otherwise a capture fix compares identical art.
-          baseline_sha="83d0ada5ea6583b3e95cd543c878d0ddd8a2dddb"
-          baseline_reason="reviewed orbital rendering before the bounded descent continuity correction"
+          baseline_sha="369bb2c55b72535dd815aca38d61d5f16b15e81b"
+          baseline_reason="accepted descent continuity before the bounded atmospheric brightness correction"
           echo "sha=$baseline_sha" >> "$GITHUB_OUTPUT"
           echo "reason=$baseline_reason" >> "$GITHUB_OUTPUT"
           echo "Cinematic comparison baseline: $baseline_sha ($baseline_reason)"
