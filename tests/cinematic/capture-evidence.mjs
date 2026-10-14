@@ -233,8 +233,14 @@ async function animateToProgress(page,progress,durationMs){
 
 async function sourceHashes(){
   const paths=[...new Set(gitPaths())].sort();
+  const deletedArgs=baseSha
+    ? ['diff','--name-only','--no-renames','--diff-filter=D',`${baseSha}...${headSha}`]
+    : ['ls-files','--deleted'];
+  const deleted=new Set(execFileSync('git',deletedArgs,{cwd:root,encoding:'utf8'}).trim().split('\n').filter(Boolean));
   const hashes=[];
-  for(const path of paths)hashes.push(await sha256(path));
+  for(const path of paths)hashes.push(deleted.has(path)
+    ? {path,state:'deleted',sha256:null,bytes:0}
+    : await sha256(path));
   return hashes;
 }
 
