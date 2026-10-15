@@ -25,7 +25,7 @@ function monitor(p,normal=true){
 async function ready(p){
  await p.waitForFunction(()=>window.__agriscope?.snapshot()?.ready&&window.__agriscope.snapshot().mode==='webgl',null,{timeout:60000});
  assert.equal(await p.locator('.cinematic canvas').count(),1);
- assert.equal((await state(p)).assets,6);
+ assert.equal((await state(p)).assets,7);
  assert.match((await state(p)).model.generator,/Blender 4\.5/);
 }
 async function checkpoint(p,progress){return p.evaluate(progress=>window.__agriscope.seekCheckpoint(progress),progress);}
@@ -139,10 +139,11 @@ try{
  const nojs=await browser.newContext({viewport:viewports[2],javaScriptEnabled:false});contexts.push(nojs);p=await nojs.newPage();await p.goto(url);
  assert.ok(await p.locator('#fallback').isVisible());assert.equal(await p.locator('.cinematic canvas').count(),0);assert.equal(await p.locator('#motion').isVisible(),false);
  assert.equal(await p.locator('#fallback .text-link').getAttribute('href'),'/login?mode=register');await save(p,'no-javascript');report.checks.push('No JavaScript: SSR fallback preserves field dates, values and registration CTA');await nojs.close();
- for(const failure of ['webgl','texture','surface-map','mesh','module']){
+ for(const failure of ['webgl','texture','regional-map','surface-map','mesh','module']){
   const ctx=await browser.newContext({viewport:viewports[2]});contexts.push(ctx);p=await ctx.newPage();monitor(p,false);let intercepted=0;
   if(failure==='webgl')await p.addInitScript(()=>{const original=HTMLCanvasElement.prototype.getContext;window.__blockedWebgl=0;HTMLCanvasElement.prototype.getContext=function(type,...args){if(type.includes('webgl')){window.__blockedWebgl++;return null;}return original.call(this,type,...args);};});
   if(failure==='texture')await p.route('**/cinematic/textures/earth-day.jpg',r=>{intercepted++;return r.abort();});
+  if(failure==='regional-map')await p.route('**/cinematic/textures/regional-landscape.png',r=>{intercepted++;return r.fulfill({status:404,body:'Unavailable'});});
   if(failure==='surface-map')await p.route('**/cinematic/textures/surfaces/metal-normal.png',r=>{intercepted++;return r.fulfill({status:404,body:'Unavailable'});});
   if(failure==='mesh')await p.route('**/cinematic/models/spacecraft.mesh.json',r=>{intercepted++;return r.fulfill({status:404,body:'Unavailable'});});
   if(failure==='module')await p.route('**/cinematic/main.js',r=>{intercepted++;return r.abort();});

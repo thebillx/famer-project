@@ -65,9 +65,9 @@ export function mountJourney(root){
    listen(renderer.domElement,'webglcontextlost',e=>{e.preventDefault();fallback('การแสดงผล 3D หยุดชั่วคราว กรุณาโหลดหน้าใหม่เพื่อเริ่มอีกครั้ง');});
    scene=new THREE.Scene();scene.background=new THREE.Color(0x060d15);scene.fog=new THREE.FogExp2(0x11263a,.0008);
    camera=new THREE.PerspectiveCamera(46,innerWidth/innerHeight,.08,450);
-   let loaded=0;const complete=()=>{$('loading-progress').style.width=`${++loaded/6*100}%`;};
+   let loaded=0;const complete=()=>{$('loading-progress').style.width=`${++loaded/7*100}%`;};
    const loader=new THREE.TextureLoader();
-   const textures=await Promise.all(['earth-day.jpg','earth-clouds.jpg','earth-night.png'].map(async file=>{
+   const textures=await Promise.all(['earth-day.jpg','earth-clouds.jpg','earth-night.png','regional-landscape.png'].map(async file=>{
     const texture=await loader.loadAsync(`/cinematic/textures/${file}`);
     if(disposed)texture.dispose();else resources.push(texture);
     complete();return texture;
@@ -79,7 +79,7 @@ export function mountJourney(root){
    const surfaceMaps=await loadSurfaceMaps([ship,farmland,tree],loader);
    for(const set of Object.values(surfaceMaps))for(const texture of Object.values(set)){if(disposed)texture.dispose();else resources.push(texture);}
    if(disposed)return;
-   const [day,clouds,night]=textures;
+   const [day,clouds,night,regional]=textures;
    textures.forEach(t=>{t.colorSpace=t===clouds?THREE.NoColorSpace:THREE.SRGBColorSpace;t.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());});
    const environment=spaceEnvironment(renderer);scene.environment=environment.texture;resources.push(environment);scene.environmentIntensity=.68;
    hemisphere=new THREE.HemisphereLight(0xb3d8ee,0x1b2618,.68);scene.add(hemisphere);
@@ -88,10 +88,10 @@ export function mountJourney(root){
    Object.assign(sun.shadow.camera,{near:1,far:120,left:-19,right:19,top:25,bottom:-19});sun.shadow.bias=-.00012;sun.shadow.normalBias=.003;sun.shadow.radius=5;scene.add(sun);
    fill=new THREE.DirectionalLight(0x7faed2,.76);fill.position.set(20,18,-15);scene.add(fill);
    craftFill=new THREE.PointLight(0xc4dded,90,22,2);scene.add(craftFill);
-   earth=buildEarth({day,clouds,night});scene.add(earth);stars=buildStarfield();scene.add(stars);
+   earth=buildEarth({day,clouds,night,regional});scene.add(earth);stars=buildStarfield();scene.add(stars);
    spacecraft=buildSpacecraft(ship,surfaceMaps);scene.add(spacecraft);
    const rotation=new THREE.Matrix3().setFromMatrix4(new THREE.Matrix4().makeRotationFromQuaternion(earth.quaternion.clone().invert()));
-   terrain=buildTerrain({farmland,tree},{mobile:innerWidth<760,day,rotation,surfaceMaps});scene.add(terrain);
+   terrain=buildTerrain({farmland,tree},{mobile:innerWidth<760,day,rotation,surfaceMaps,regional,regionalBlend:earth.userData.regionalBlend});scene.add(terrain);
    const fieldEnvironment=agriculturalEnvironment(renderer);resources.push(fieldEnvironment);
    bindTerrainEnvironment(terrain,fieldEnvironment.texture);
    evidence=buildEvidence();scene.add(evidence.group);
@@ -108,7 +108,7 @@ export function mountJourney(root){
    const initial=params.has('shot')?SHOTS[clamp(Math.floor(Number(params.get('shot'))||1)-1,0,9)].p:params.has('p')?clamp(Number(params.get('p'))||0):hashProgress??null;
    if(initial!==null){root.classList.remove('static-mode');moveTo(initial);progress=getProgress();}
    const gl=renderer.getContext(),debug=gl.getExtension('WEBGL_debug_renderer_info');
-   writeDiagnostics({assets:6,model:spacecraft.userData.asset,land:terrain.userData.asset,gpu:debug?gl.getParameter(debug.UNMASKED_RENDERER_WEBGL):gl.getParameter(gl.RENDERER),devicePixelRatio,renderPixelRatio:renderer.getPixelRatio(),browser:navigator.userAgent});
+   writeDiagnostics({assets:7,model:spacecraft.userData.asset,land:terrain.userData.asset,gpu:debug?gl.getParameter(debug.UNMASKED_RENDERER_WEBGL):gl.getParameter(gl.RENDERER),devicePixelRatio,renderPixelRatio:renderer.getPixelRatio(),browser:navigator.userAgent});
    if(reduced)fallback('แสดงขั้นตอนติดตามแปลงตามการตั้งค่าลดการเคลื่อนไหวของคุณ',true);else{activate();void runHardwareProbe();}
   }catch(error){
    if(!disposed){console.error('[AgriScope]',error);fallback('อุปกรณ์นี้แสดงภาพ 3D ไม่ได้ คุณยังอ่านวิธีติดตามแปลงและดูข้อมูลตัวอย่างได้');}
@@ -154,6 +154,7 @@ export function mountJourney(root){
   stars.material.opacity=.78*(1-smooth(.36,.49,p));stars.visible=p<.51;
   terrain.visible=surface.reveal>0;
   earth.scale.setScalar(surface.radius/40);earth.position.y=-surface.radius;
+  earth.userData.regionalBlend.value=smooth(.385,.423,p);
   terrain.userData.localDetail.value=detail;
   const flatten=terrain.userData.update(p);
   terrain.userData.boundary.material.transparent=true;terrain.userData.boundary.material.opacity=smooth(.50,.56,p);

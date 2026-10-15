@@ -202,7 +202,29 @@ for(const flatten of [0,.4,.92]){
 }
 assert.equal(corridor.userData.clouds.children.length,7,'Separated cloud volumes retain controlled negative space');
 const {buildEarth}=await import('../../apps/web/public/cinematic/earth.js');
-const earthMaps={day:new THREE.Texture(),clouds:new THREE.Texture(),night:new THREE.Texture()},earth=buildEarth(earthMaps);
+const earthMaps={day:new THREE.Texture(),clouds:new THREE.Texture(),night:new THREE.Texture(),regional:new THREE.Texture()},earth=buildEarth(earthMaps);
+const sharedRegion=earth.userData.regionalBlend;
+const regionalTerrain=buildTerrain({farmland,tree},{day:earthMaps.day,regional:earthMaps.regional,regionalBlend:sharedRegion});
+const shaderTemplate={vertexShader:'#include <common>\n#include <beginnormal_vertex>\n#include <begin_vertex>',fragmentShader:'#include <common>\n#include <map_fragment>\n#include <color_fragment>'};
+const earthShader={...shaderTemplate,uniforms:{}},fieldShader={...shaderTemplate,uniforms:{}};
+earth.userData.surface.material.onBeforeCompile(earthShader);
+regionalTerrain.children.find(mesh=>mesh.name==='Rice field 1').material.onBeforeCompile(fieldShader);
+for(const compiled of [earthShader,fieldShader]){
+ assert.equal(compiled.uniforms.regionalMap.value,earthMaps.regional,'Both surfaces sample the one authored regional image');
+ assert.equal(compiled.uniforms.regionalBlend,sharedRegion,'Both surfaces share the same progress-derived material blend');
+ assert.match(compiled.fragmentShader,/local\/128\.\+\.5/,'Both maps use the authored 128-unit atlas extent');
+}
+for(const p of [.385,.405,.42,.44,.46,.44,.42,.405,.385]){
+ const {scale,radius}=descentSurface(p);
+ for(const [x,z] of [[0,0],[3.18,-8],[-18.65,3.02],[20,25]]){
+  const y=Math.sqrt(900*900-x*x-z*z)-900;
+  const earthRay=new THREE.Vector3(x*scale,y*scale+radius,z*scale).normalize();
+  const terrainRay=new THREE.Vector3(x,y+900,z).normalize();
+  assert.ok(earthRay.distanceTo(terrainRay)<1e-12,'Regional coordinates agree on the shared tangent in both directions');
+ }
+}
+console.log('PASS shared regional atlas binding and tangent coordinates across forward/reverse expansion');
+
 assert.notEqual(earth.userData.clouds.geometry.parameters.radius,earth.userData.highClouds.geometry.parameters.radius,'Cloud strata occupy different physical depths');
 assert.equal(earth.userData.highClouds.material.bumpMap,earthMaps.clouds);
 assert.equal(earth.userData.cloudShadow.material.alphaMap,earthMaps.clouds);

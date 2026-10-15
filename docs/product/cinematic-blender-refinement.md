@@ -1,5 +1,58 @@
 # Cinematic storyboard and Blender refinement
 
+## Active regional landscape milestone — 15 October 2026
+
+Baseline `1310c66f893c3df9007853e393dd79b69230e0af`; clean feature worktree.
+Draft PR #19, no merge/deploy. Three repeatable review frames: regional descent
+p=.44, field approach p=.51, hero field p=.56, desktop 1440×900 and mobile
+375×667. Actual Copernicus Bangkok and Rangsit canal references inform parcel
+hierarchy, access and planting direction. Actual Edolus captures inform depth
+and lighting only; no agricultural scene is attributed to Edolus.
+
+Ownership: Blender land composition and crop-map authoring in `build_assets.py`
+and `surface_maps.py`, internal `regional_map.py` bake, generated farmland mesh/
+crop textures and regional color atlas; `earth.js`, `terrain.js`, `main.js` bind
+that shared atlas through existing texture lifecycle via internal `regional-surface.js`; focused cinematic tests, this
+contract, Blender README/runtime credits and existing CI comparison baseline. Editable source,
+reference copies, captures and reports stay in the external SHA-bound evidence
+artifact. No third-party pixels enter runtime assets or private data is used.
+
+The regional bake shares exported holding footprints and recorded tracks, then
+extends only the distant color fabric. It replaces magnified global-map color
+locally on both surfaces; it does not imply higher-resolution observed data.
+
+Preserve the existing parcel clipping/clearance code, sample footprint, irrigation
+profile, cameras, 19 beats, atmosphere correction, spacecraft, narrative and
+product behavior. Add planting hierarchy only on parcels clear of canals; the
+accepted surfaces at joins remain the datum. Reuse the same material batches
+and map loader. No dependencies, schema or public API change. Stop for applicable
+repository Human Gates; review final bytes before commit/push.
+
+Validate existing triangle-interior clearance/edge regressions, authored UV and
+map binding, deterministic rebuild, runtime/camera/quality/fallback checks,
+typecheck and production build. Inspect matched pixels and a connected normal-
+speed forward/reverse clip before packaging; code review and tests do not grant
+independent artistic acceptance. Report asset bytes, authored/rendered triangles,
+material batches and remaining artistic gaps separately from performance.
+
+Local candidate status: functional and geometry regressions pass; independent
+artistic approval remains pending. Holdings, grouped planting variation and the
+regional-to-local material relationship are more legible in inspected browser
+frames. The scene remains stylized: outer continuation is regular, distant trees
+are sparse, and cloud texture magnification remains visible before the regional
+passage. These are remaining artistic gaps, not claims of reference equivalence.
+
+The selected land export has 93,783 triangles versus 84,393 at baseline (+9,390),
+with the same 13 material batches. New distant holdings use native triangulated
+face normals because Blender's custom smooth-normal re-encoding exceeded the
+unchanged GLB round-trip tolerance on a narrow parcel. This increases packed
+vertices, not rendered triangles. The canal water, tracks, wet slopes and damp
+shoulder retain identical encoded geometry/normals; subsoil clearance still passes
+triangle-interior tests. Ground's shared batch also contains the added shrub stems.
+The 2048² regional map adds one shared sampled texture, with no added draw call;
+512² crop maps replace the former 256² set. Report measured payload and workload
+separately; counters are not FPS evidence. No threshold or validator changes.
+
 ## Active atmosphere brightness correction — 15 October 2026
 
 Baseline `369bb2c55b72535dd815aca38d61d5f16b15e81b`. Scope: Earth atmosphere

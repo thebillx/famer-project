@@ -8,6 +8,39 @@ import bpy
 import numpy as np
 
 
+def planting_surface():
+    """Bake leaf strokes along planting passes, with grouped establishment gaps.
+
+    Original artwork: no satellite or third-party image pixels. Individual
+    strokes overlap into canopy masses; mipmaps resolve those masses at altitude.
+    """
+    size=512
+    y,x=np.mgrid[0:size,0:size].astype(np.float32)/size
+    rng=np.random.default_rng(2081)
+    density=1-.42*np.exp(-((x-.29)/.18)**6-((y-.32)/.13)**4)
+    density-=.27*np.exp(-((x-.75)/.13)**4-((y-.73)/.18)**6)
+    height=np.zeros((size,size),dtype=np.float32)
+    for row in range(74):
+        for plant in range(80):
+            cx=(plant+.5+rng.uniform(-.4,.4))/80
+            cy=(row+.5+rng.uniform(-.3,.3))/74+.002*np.sin(cx*18+row*.17)
+            ix,iy=round(cx*size),round(cy*size)
+            x0,x1=max(0,ix-6),min(size,ix+7)
+            y0,y1=max(0,iy-6),min(size,iy+7)
+            if x1<=x0 or y1<=y0:continue
+            xx=x[y0:y1,x0:x1]-cx;yy=y[y0:y1,x0:x1]-cy
+            angle=rng.uniform(-.7,.7)
+            along=xx*np.cos(angle)+yy*np.sin(angle)
+            across=-xx*np.sin(angle)+yy*np.cos(angle)
+            stroke=np.exp(-(along/.009)**2-(across/.0025)**2)*rng.uniform(.65,1)
+            height[y0:y1,x0:x1]=np.maximum(height[y0:y1,x0:x1],stroke)
+    headland=np.clip(np.minimum.reduce([x,1-x,y,1-y])/.012,0,1)
+    canopy=(.58+.42*height)*density*headland
+    color=np.stack((.55+.37*canopy,.66+.32*canopy,.40+.32*canopy),axis=-1)
+    color*= (.97+.03*np.cos(y*19+x*3))[...,None]
+    return .024*height*density*headland,color
+
+
 def build_surfaces(output):
     output = Path(output)
     output.mkdir(parents=True, exist_ok=True)
@@ -30,16 +63,6 @@ def build_surfaces(output):
     # shot-6 view without turning the bank into a tiled rock wall.
     soil_passes=.035*np.sin(2*np.pi*(x*1.35+y*.18)+.22*np.sin(2*np.pi*y*2.1))
     soil=(.54+broad*.34+soil_passes+fine_soil+grain*.042-cracks*.036)
-    row_phase=x*18+y*1.25+.055*np.sin(2*np.pi*(y*2.2-x*.65))
-    blades=np.maximum(0,np.sin(2*np.pi*row_phase)-.87)
-    # Broad canopy density, fine plant grain and restrained row relief keep
-    # green parcels from reading as flat color cards.  Geometry still carries
-    # the visible near-field planting passes and their direction changes.
-    # Integer frequency pairs keep the authored map exactly tileable; using
-    # fractional modes exposed square texture seams across the large parcels.
-    canopy=(.045*np.sin(2*np.pi*(x+y)+.8)
-            +.030*np.sin(2*np.pi*(2*x-y)+1.7))
-    crop=.50+broad*.105+canopy+grain*.035+blades*.105
     # A deterministic directional spectrum gives the water a coherent surface
     # without one dominant crest spacing. Integer modes keep the map tileable;
     # low periodic warping prevents the composite highlight from becoming a row
@@ -63,15 +86,17 @@ def build_surfaces(output):
     vein=np.exp(-abs(x-.5)*180)+.45*np.exp(-abs(np.sin((y-abs(x-.5)*.7)*np.pi*12))*30)
     leaf=.55+.095*broad+.10*vein+.014*grain
     brushed=.5+.025*np.sin(y*np.pi*300)+grain*.018
-    roles={'soil':(soil,.88,1.35),'crop':(crop,.90,.58),'water':(water,.10,.78),'foil':(foil,.29,.86),'solar':(solar,.17,.24),'metal':(brushed,.28,.18),'leaf':(leaf,.84,.58)}
+    roles={'soil':(soil,.88,1.35),'crop':(None,.90,.58),'water':(water,.10,.78),'foil':(foil,.29,.86),'solar':(solar,.17,.24),'metal':(brushed,.28,.18),'leaf':(leaf,.84,.58)}
     result={}
     for role,(height,rough,strength) in roles.items():
+        if role=='crop':height,crop_color=planting_surface()
+        map_size=height.shape[0]
         dx=(np.roll(height,-1,axis=1)-np.roll(height,1,axis=1))*strength
         dy=(np.roll(height,-1,axis=0)-np.roll(height,1,axis=0))*strength
         normal=np.stack((-dx*12,-dy*12,np.ones_like(dx)),axis=-1)
         normal/=np.linalg.norm(normal,axis=-1,keepdims=True)
         normal=normal*.5+.5
-        if role=='crop': color=np.stack((.83+blades*.045,.90+blades*.050,.75+blades*.030),axis=-1)*(.925+grain[...,None]*.028+broad[...,None]*.070+canopy[...,None]*.34)
+        if role=='crop':color=crop_color
         elif role=='soil': color=np.stack((soil*.24+.73,soil*.22+.69,soil*.18+.63),axis=-1)
         elif role=='leaf': color=np.stack((leaf*.29+.63,leaf*.28+.73,leaf*.22+.50),axis=-1)
         elif role=='solar': color=np.stack((.54+solar*.10,.68+solar*.16,.88+solar*.10),axis=-1)
@@ -82,9 +107,9 @@ def build_surfaces(output):
         roughness=np.clip(roughness/rough,0,1)
         result[role]={}
         for suffix,pixels in [('color',color),('normal',normal),('roughness',roughness)]:
-            image=bpy.data.images.new(f'{role}-{suffix}',width=size,height=size,alpha=False)
+            image=bpy.data.images.new(f'{role}-{suffix}',width=map_size,height=map_size,alpha=False)
             image.colorspace_settings.name='sRGB' if suffix=='color' else 'Non-Color'
-            rgba=np.concatenate([np.clip(pixels,0,1),np.ones((size,size,1))],axis=-1).astype(np.float32)
+            rgba=np.concatenate([np.clip(pixels,0,1),np.ones((map_size,map_size,1))],axis=-1).astype(np.float32)
             image.pixels.foreach_set(rgba.ravel())
             image.filepath_raw=str(output/f'{role}-{suffix}.png');image.file_format='PNG';image.save()
             image.pack();result[role][suffix]=image

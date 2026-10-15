@@ -69,11 +69,11 @@ foliage = material("Tree foliage", (.125, .255, .064), 0, .82, .025)
 foliage_light = material("Tree foliage · sunlit leaves", (.285, .420, .126), 0, .69, .045)
 bark = material("Tree bark", (.17, .11, .062), 0, .96)
 greens = [material(f"Rice field {i}", c, 0, rough) for i, (c, rough) in enumerate([
-    ((.070, .128, .045), .94),
-    ((.118, .174, .060), .92),
-    ((.151, .198, .072), .90),
+    ((.090, .152, .056), .94),
+    ((.170, .235, .078), .92),
+    ((.235, .270, .103), .90),
 ])]
-crop_rows = material("Rice rows", (.122, .184, .068), 0, .89)
+crop_rows = material("Rice rows", (.170, .235, .078), 0, .89)
 crop_bsdf = crop_rows.node_tree.nodes.get("Principled BSDF")
 crop_bsdf.inputs["Emission Color"].default_value = (.018, .035, .010, 1)
 crop_bsdf.inputs["Emission Strength"].default_value = .035
@@ -352,7 +352,11 @@ def parcel_point(corners,u,v):
             (a[1]*(1-u)+b[1]*u)*(1-v)+(d[1]*(1-u)+c[1]*u)*v)
 
 
+ribbon_records=[]
+
+
 def ribbon_mesh(name,points,width,crest,mat=track,taper_start=False,taper_end=False):
+    ribbon_records.append((list(points),width,list(mat.diffuse_color[:3])))
     v=[];f=[]
     for i,(x,z) in enumerate(points):
         a=points[max(0,i-1)];b=points[min(len(points)-1,i+1)]
@@ -420,7 +424,10 @@ def parcel_relief(index,u,v,sample=False):
     return (.0065 if sample else .004)+amplitude*edge_blend*wave
 
 
-def planted_parcel(corners,mat,index,sample=False):
+parcel_records=[]
+
+def planted_parcel(corners,mat,index,sample=False,holding=False):
+    parcel_records.append((list(corners),list(mat.diffuse_color[:3])))
     # The high-altitude fields need coherent silhouettes, not uniform interior
     # subdivision.  Boundary cells still recurse locally around irrigation.
     v=[];f=[];vertex_cache={};steps=12 if sample else 4
@@ -546,7 +553,15 @@ def planted_parcel(corners,mat,index,sample=False):
                         if neighbor not in seen:seen.add(neighbor);pending.append(neighbor)
             if area>=.012:kept_faces.extend(f[index] for index in component)
         f[:]=kept_faces
-    mesh_obj('Sample field' if sample else 'Adjoining cultivated parcel',v,f,mat,land,True)
+    if holding:
+        # Distant child holdings are actual planar triangles with native face
+        # normals. This avoids custom smooth-normal quantization in Blender's
+        # glTF re-import, while retaining every original surface position.
+        f=[triangle for face in f for triangle in upward_triangles(v,face)]
+    parcel_object=mesh_obj('Sample field' if sample else 'Adjoining cultivated parcel',v,f,mat,land,not holding)
+    if mat in greens or mat==low_growth:
+        planting=corners if sample or index%3!=1 else [corners[1],corners[2],corners[3],corners[0]]
+        parcel_object['planting_frame']=[*planting[0],*planting[1],*planting[3]]
     # Crops follow each parcel's planting axis. Distant rows remain low ribbons;
     # low uneven ridges retain depth without subpixel plant triangles.
     # Alternate distant parcels rely on the authored crop material maps.  Real
@@ -589,8 +604,10 @@ def planted_parcel(corners,mat,index,sample=False):
                 for lateral in range(2):
                     a=start+segment*3+lateral
                     faces.extend(upward_triangles(vertices,(a,a+3,a+4,a+1)))
-        mesh_obj('Batched coherent rice rows',vertices,faces,crop_rows,land,False)
+        rows_object=mesh_obj('Batched coherent rice rows',vertices,faces,crop_rows,land,False)
+        rows_object['planting_frame']=[*corners[0],*corners[1],*corners[3]]
         return
+    if not sample and math.hypot(*parcel_point(corners,.5,.5))>8:return
     if index%3==1 and not sample:corners=[corners[1],corners[2],corners[3],corners[0]]
     width=math.dist(corners[0],corners[3])
     # The demonstration parcel keeps enough rows to read as cultivated land.
@@ -602,7 +619,7 @@ def planted_parcel(corners,mat,index,sample=False):
     distance=math.hypot(center[0],center[1])
     # Static distance-based simplification drops subpixel ridges on far parcels;
     # it is authored geometry rather than a dynamic runtime LOD system.
-    row_step=4 if not sample and distance>14 else 3 if not sample and distance>9 else 2 if not sample and distance>5.5 else 1
+    row_step=3 if not sample and distance>5.5 else 2 if not sample else 1
     vertices=[];faces=[]
     row_material = crop_rows
     for row in range(1,rows,row_step):
@@ -656,7 +673,8 @@ def planted_parcel(corners,mat,index,sample=False):
                     faces.extend(upward_triangles(vertices,face))
     # One shared row material preserves batching; the parcel colors beneath and
     # the varied authored spacing carry the coherent plot-to-plot variation.
-    mesh_obj('Batched raised planting beds',vertices,faces,row_material,land,True)
+    rows_object=mesh_obj('Batched raised planting beds',vertices,faces,row_material,land,True)
+    rows_object['planting_frame']=[*corners[0],*corners[1],*corners[3]]
 
 
 ground_mesh()
@@ -716,13 +734,42 @@ def parcel_edge(points, index, *, cross_band=False):
         ribbon('Low earth parcel edge',points,.042,.004,damp_bank)
 
 
+def cultivated_block(corners,index):
+    """Subdivide irrigation-safe blocks into long, related planting holdings.
+
+    The canal-adjacent and sample surfaces retain their accepted construction.
+    Shared child corners lie on the parent edges: no inset slots or new banks.
+    """
+    center=parcel_point(corners,.5,.5)
+    # Conservative convex-quad bounding circle keeps every new child away
+    # from the accepted channel clipping contour, including triangle interiors.
+    radius=max(math.dist(center,point) for point in corners)
+    clear=parcel_channel_clearance(*center)>radius+.15
+    if not clear or math.hypot(*center)<5.5:
+        planted_parcel(corners,parcel_material(index,corners),index)
+        return
+    width=math.dist(corners[0],corners[1])
+    divisions=1 if index%4==0 else 3 if width>5.5 else 2
+    cuts=[0]+[(i/divisions)+.055*math.sin(index*.73+i*1.9) for i in range(1,divisions)]+[1]
+    for child,(a,b) in enumerate(zip(cuts,cuts[1:])):
+        quad=[parcel_point(corners,a,0),parcel_point(corners,b,0),
+              parcel_point(corners,b,1),parcel_point(corners,a,1)]
+        planted_parcel(quad,parcel_material(index*3+child,quad),index*3+child,holding=True)
+    # Only one narrow service seam per holding, not an extruded border around
+    # each strip. Existing primary and secondary waterways stay untouched.
+    if divisions==1:return
+    a=cuts[1]
+    ribbon('Planting holding access seam',[parcel_point(corners,a,0),parcel_point(corners,a,1)],
+           .019,.002,green_verge)
+
+
 def parcel_band(z0,z1,bottom,top):
     global parcel_index
     assert len(bottom)==len(top)
     for i in range(len(bottom)-1):
         corners=[(bottom[i],z0),(bottom[i+1],z0),(top[i+1],z1),(top[i],z1)]
         inset=corners
-        planted_parcel(inset,parcel_material(parcel_index, inset),parcel_index)
+        cultivated_block(inset,parcel_index)
         parcel_index+=1
     # Dividers terminate at shared band edges instead of continuing as a
     # rectangular grid across the entire landscape.
@@ -774,7 +821,7 @@ for x_edges, central_top, splits in [([-32,-18.5,-10.4,-2.82],2.58,[-2.65,-.72,.
         for xi,(x0,x1) in enumerate(zip(x_edges,x_edges[1:])):
             corners=[(x0,z0),(x1,z0),(x1+drift*(xi%2-.5),z1),(x0+drift*((xi+1)%2-.5),z1)]
             inset=corners
-            planted_parcel(inset,parcel_material(parcel_index, inset),parcel_index)
+            cultivated_block(inset,parcel_index)
             parcel_index+=1
         parcel_edge([(x_edges[0],z1),(x_edges[-1],z1)], parcel_index+zi, cross_band=True)
     for x in x_edges[1:-1]:
@@ -1041,6 +1088,9 @@ hedgerow_lines=[
     [(7.4,6.5),(8.8,6.45),(10.3,6.7),(12.0,6.6)],
     [(-13.8,-9.2),(-12.2,-9.05),(-10.7,-9.25)],
     [(8.0,-6.15),(9.5,-6.0),(11.2,-6.3),(12.7,-6.15)],
+    [(-9.5,5.9),(-9.0,5.9),(-8.6,5.9),(-7.5,5.9),(-7.1,5.9)],
+    [(5.2,8.5),(5.6,8.5),(6.0,8.5),(7.2,8.5),(7.6,8.5)],
+    [(-8.8,-5.55),(-8.4,-5.55),(-8.0,-5.55),(-6.9,-5.55)],
 ]
 for line_index,line in enumerate(hedgerow_lines):
     for member,(x,z) in enumerate(line):
@@ -1049,11 +1099,11 @@ for line_index,line in enumerate(hedgerow_lines):
         top=(x+hedge_rng.uniform(-.035,.035),ground+height_scale,z+hedge_rng.uniform(-.035,.035))
         tapered_branch(land,'Field-edge shrub stem',(x,ground,z),top,.020,.004,
                        mat=soil,sides=5)
-        spray_count=9+(line_index+member)%4
+        spray_count=24+(line_index+member)%7
         for spray in range(spray_count):
             angle=math.tau*spray/spray_count+hedge_rng.uniform(-.20,.20)
             direction=(math.cos(angle),hedge_rng.uniform(.08,.70),math.sin(angle))
-            length=hedge_rng.uniform(.12,.22)
+            length=hedge_rng.uniform(.14,.23)
             shade=green_verge if (spray+member)%3 else low_growth
             add_leaf(top,direction,length,length*hedge_rng.uniform(.23,.32),shade,
                      hedge_batches,hedge_rng.uniform(-.75,.75))
@@ -1068,6 +1118,10 @@ sys.path.insert(0,str(Path(__file__).parent))
 from surface_maps import build_surfaces, apply_surface
 surface_output=OUT.parent/'textures'/'surfaces'
 surface_images=build_surfaces(surface_output)
+from regional_map import build_regional_map
+regional_report=build_regional_map(OUT.parent/'textures'/'regional-landscape.png',parcel_records,
+                                 [(CHANNEL_CENTERLINE,CHANNEL_WATER_HALF_WIDTH)]+
+                                 [(path,.070) for path in SECONDARY_CHANNELS],ribbon_records)
 for mat in bpy.data.materials:
     role=('foil' if mat in (gold,gold_dull) else 'solar' if mat in (cells,cells_oblique) else 'metal' if mat==silver else 'water' if mat in (water,wet_paddy) else 'leaf' if mat in (foliage,foliage_light) else 'crop' if mat in greens or mat in (crop_rows,green_verge,low_growth) else 'soil' if mat in (soil,track,damp_bank,wet_bank,bark,fallow) else None)
     role = mat.get('surface', role)
@@ -1086,7 +1140,17 @@ for obj in bpy.data.objects:
                .22 if mat==track else .27 if mat==damp_bank else .31 if mat==wet_bank else .16 if mat in (soil,fallow) else 1.0)
         for loop in polygon.loop_indices:
             point=obj.matrix_world@obj.data.vertices[obj.data.loops[loop].vertex_index].co
-            uv.data[loop].uv=(point[axes[0]]*scale,point[axes[1]]*scale)
+            frame=obj.get('planting_frame')
+            if frame:
+                # Planar field-local coordinates keep headlands and planting
+                # passes aligned with the authored holding, across both views.
+                ax,az,bx,bz,dx,dz=frame
+                ex,ez=bx-ax,bz-az;fx,fz=dx-ax,dz-az
+                px,pz=point.x-ax,-point.y-az
+                determinant=ex*fz-ez*fx
+                uv.data[loop].uv=((px*fz-pz*fx)/determinant,(ex*pz-ez*px)/determinant)
+            else:
+                uv.data[loop].uv=(point[axes[0]]*scale,point[axes[1]]*scale)
 
 
 # Add the locked-camera master scene after runtime UV authoring.  The compact
@@ -1194,5 +1258,5 @@ scene["AgriScope"] = "Original conceptual EO spacecraft and synthetic agricultur
 scene["Asset license"] = "Original project artwork; no third-party spacecraft model"
 scene["Export schema"] = "Material-batched quantized true meshes, decoded by mesh-assets.js"
 bpy.ops.wm.save_as_mainfile(filepath=str(EVIDENCE / "AgriScope-Cinematic-Assets.blend"))
-(EVIDENCE / "asset-build.json").write_text(json.dumps({"blender": bpy.app.version_string, "assets": stats, "staticScene": master_report}, indent=2))
+(EVIDENCE / "asset-build.json").write_text(json.dumps({"blender": bpy.app.version_string, "assets": stats, "staticScene": master_report,"regionalMap":regional_report}, indent=2))
 print("Saved editable Blender source", flush=True)

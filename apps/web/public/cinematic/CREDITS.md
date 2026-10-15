@@ -33,3 +33,12 @@
 - No paid AI services, generated images or subscriptions were used. The owner authorized integration into the AgriScope Next.js application on 10 October 2026.
 
 - Integration source: supplied `/Users/bill/agriscope-cinematic`, version 1.0.0; the original folder is retained unchanged apart from newly recorded evidence. The generated local vendor includes Three.js 0.170.0 and its addons.
+
+### Original regional landscape artwork
+
+`textures/regional-landscape.png` is an original deterministic color bake from
+AgriScope's authored synthetic parcel, access-track and irrigation layout.
+`textures/surfaces/crop-*.png` contains original planting-aligned blade artwork.
+No satellite/reference image pixels are included. These assets use the same
+project licence as the other original Blender artwork; Thai aerial references
+are guidance only. The regional atlas is illustrative, not observed farm data.

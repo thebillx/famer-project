@@ -1,5 +1,27 @@
 # Blender cinematic source
 
+## Regional landscape — 15 October 2026
+
+`regional_map.py` bakes original illustrative regional color from the same parcel
+records and access/irrigation paths as the compact farmland export. A 2048² map
+covers 128 scene units; the central 64-unit modeled layout is preserved and an
+outer agricultural continuation supplies the intermediate viewing scale. Earth
+and terrain sample that one map in Thailand-tangent angular coordinates before
+local materials resolve. The prior affine scale, terrain reveal, atmosphere
+shader and camera path are unchanged. This texture is not observed imagery.
+
+Only irrigation-safe neighboring blocks acquire narrower child holdings; original
+sample, canal-adjacent clipping and bank geometry remain. Planting-local UVs bind
+one authored 512² crop holding map with overlapping blade strokes, headlands and
+grouped low-establishment areas. Far rows beyond eight units use these filtered
+maps instead of redundant ridge meshes. Additional low shrubs follow existing
+field edges. This is static distance-based simplification, not dynamic LOD.
+
+The runtime still uses the existing compact mesh/material loader and shared
+surface textures. The standalone regional map uses the existing texture loading,
+error and disposal lifecycle, with a missing-map fallback regression. The edited
+source and exact asset hashes are included in the downloadable milestone evidence.
+
 ## Current orbital redesign
 
 The owner-approved proof follows 19 visual beats within the existing product

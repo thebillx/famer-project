@@ -23,6 +23,38 @@ const channelDistance=point=>Math.min(...channelCenterline.slice(0,-1).map((a,in
 const secondaryChannelDistance=point=>Math.min(...secondaryChannels.flatMap(path=>path.slice(0,-1).map((a,index)=>pointSegmentDistance(point,a,path[index+1]))));
 const groundDatum=point=>fieldHeight(point.x,point.z)-.012-.026*Math.max(0,Math.min(1,(.38-channelDistance(point))/.28));
 const deformedY=(point,flatten)=>point.y+(point.x*point.x+point.z*point.z)/TERRAIN_CURVE_DIVISOR*flatten;
+function assertPlantingCoordinates(model){
+ // The crop artwork represents one complete holding. A world-tiled UV would
+ // repeat headlands across the sample and detach crop passes from its bounds.
+ const sample=model.children.find(mesh=>mesh.name==='Rice field 1');
+ const {position,uv}=sample.geometry.attributes;
+ let sampleVertices=0;
+ for(let i=0;i<position.count;i++){
+  const x=position.getX(i),z=position.getZ(i);
+  if(x> -2.501&&x<2.451&&z> -2.301&&z<2.271){
+   assert.ok(Math.abs(uv.getX(i)-(x+2.5)/4.95)<.002,'Sample crop U spans its exact accepted boundary');
+   assert.ok(Math.abs(uv.getY(i)-(z+2.3)/4.57)<.002,'Sample crop V spans its exact accepted boundary');
+   sampleVertices++;
+  }
+ }
+ assert.ok(sampleVertices>=169,'The complete sample planting frame is tested');
+ const directions=new Set();
+ for(const mesh of model.children.filter(mesh=>/^Rice field [0-2]$/.test(mesh.name))){
+  const {position:p,uv:t}=mesh.geometry.attributes,indices=mesh.geometry.index;
+  for(let i=0;i<indices.count;i+=3){
+   const a=indices.getX(i),b=indices.getX(i+1),c=indices.getX(i+2);
+   const ux=t.getX(b)-t.getX(a),vx=t.getX(c)-t.getX(a);
+   const uy=t.getY(b)-t.getY(a),vy=t.getY(c)-t.getY(a),det=ux*vy-uy*vx;
+   if(Math.abs(det)<1e-5)continue;
+   const dx=((p.getX(b)-p.getX(a))*vy-(p.getX(c)-p.getX(a))*uy)/det;
+   const dz=((p.getZ(b)-p.getZ(a))*vy-(p.getZ(c)-p.getZ(a))*uy)/det;
+   directions.add(Math.abs(dx)>Math.abs(dz)?'east-west':'north-south');
+  }
+ }
+ assert.deepEqual([...directions].sort(),['east-west','north-south'],'Authored holdings retain both planting orientations');
+ console.log(`PASS holding-local crop UVs: ${sampleVertices} sample vertices and two planting orientations`);
+}
+
 function assertParcelChannelEdge(model){
  const parcels=model.children.filter(mesh=>mesh.name.startsWith('Rice field'));
  const ray=new THREE.Raycaster(),down=new THREE.Vector3(0,-1,0),rightCanalSamples=[];
@@ -142,6 +174,11 @@ function assertTerrainSurfaceContinuity(model){
   }
  }
 }
+const regionalBytes=readFileSync(new URL('../../apps/web/public/cinematic/textures/regional-landscape.png',import.meta.url));
+assert.deepEqual([...regionalBytes.subarray(0,8)],[137,80,78,71,13,10,26,10],'Regional layout is a PNG asset');
+assert.equal(regionalBytes.readUInt32BE(16),2048,'Regional layout has its authored width');
+assert.equal(regionalBytes.readUInt32BE(20),2048,'Regional layout has its authored height');
+assert.ok(regionalBytes.length<2*1024*1024,'Regional color atlas has a separate 2 MiB maximum transfer budget');
 const surfaceDir=new URL('../../apps/web/public/cinematic/textures/surfaces/',import.meta.url);
 const surfaceFiles=readdirSync(surfaceDir).filter(file=>file.endsWith('.png'));
 assert.deepEqual(surfaceFiles.sort(),[
@@ -270,6 +307,7 @@ for(const name of ['spacecraft','farmland','tree']){
     ray.set(new THREE.Vector3(x,5,z),down);
     assert.equal(ray.intersectObject(tracks,false).length,0,'Dry access banks must stop at the water edge');
    }
+   assertPlantingCoordinates(model);
    assertTerrainSurfaceContinuity(model);
    assertParcelChannelEdge(model);
   }
