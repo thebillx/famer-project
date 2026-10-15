@@ -1,0 +1,165 @@
+name: Cinematic review evidence
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - ".github/workflows/cinematic-evidence.yml"
+      - "apps/web/app/page.tsx"
+      - "apps/web/app/login/page.tsx"
+      - "apps/web/components/cinematic/**"
+      - "apps/web/components/landing/**"
+      - "apps/web/public/cinematic/**"
+      - "docs/product/cinematic-*"
+      - "tests/cinematic/**"
+      - "tests/e2e/cinematic-flow-002.spec.ts"
+      - "tools/cinematic/**"
+
+permissions:
+  contents: read
+
+jobs:
+  cinematic-evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out exact PR head
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "24.19.0"
+
+      - name: Verify checked-out source
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+
+      - name: Install pinned JavaScript dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Install Chromium runtime
+        run: npx playwright install --with-deps chromium
+
+      - name: Install FFmpeg for presentation-timestamp video trimming
+        run: sudo apt-get update && sudo apt-get install --no-install-recommends --yes ffmpeg
+
+      - name: Verify video trim and duration tools
+        run: command -v ffmpeg && command -v ffprobe
+
+      - name: Validate cinematic meshes, terrain and timeline
+        run: |
+          python3 tests/cinematic/crop-authoring.py
+          node tests/cinematic/runtime-materials.mjs
+          node tests/cinematic/blender-assets.mjs
+          node tests/cinematic/terrain.mjs
+          node tests/cinematic/timeline.mjs
+
+      - name: Select the comparison baseline
+        id: baseline
+        run: |
+          # Preserve the owner's reviewed visual baseline across evidence-only
+          # correction commits; otherwise a capture fix compares identical art.
+          baseline_sha="d3e21b50c3db732346d902db94ded576df834c26"
+          baseline_reason="regional landscape delivery before live Blender MCP hero crop iteration"
+          echo "sha=$baseline_sha" >> "$GITHUB_OUTPUT"
+          echo "reason=$baseline_reason" >> "$GITHUB_OUTPUT"
+          echo "Cinematic comparison baseline: $baseline_sha ($baseline_reason)"
+
+      - name: Check out comparison baseline
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ steps.baseline.outputs.sha }}
+          path: .baseline
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Build and start the selected baseline in production mode
+        env:
+          BASELINE_SHA: ${{ steps.baseline.outputs.sha }}
+        run: |
+          test "$(git -C .baseline rev-parse HEAD)" = "$BASELINE_SHA"
+          ln -s "$GITHUB_WORKSPACE/node_modules" .baseline/node_modules
+          (
+            cd .baseline
+            npm run build --workspace apps/web
+          ) > /tmp/agriscope-next-baseline-build.log 2>&1
+          (
+            cd .baseline
+            npm run start --workspace apps/web -- --hostname 127.0.0.1 --port 5185
+          ) > /tmp/agriscope-next-baseline.log 2>&1 &
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:5185/ > /dev/null; then break; fi
+            sleep 2
+          done
+          curl --fail --silent http://127.0.0.1:5185/ > /dev/null
+
+      - name: Capture the complete selected baseline with the review harness
+        env:
+          BASELINE_SHA: ${{ steps.baseline.outputs.sha }}
+          BASELINE_REASON: ${{ steps.baseline.outputs.reason }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          CINEMATIC_SOFTWARE_WEBGL: "1"
+        run: |
+          test "$(git -C .baseline rev-parse HEAD)" = "$BASELINE_SHA"
+          echo "Baseline reason: $BASELINE_REASON"
+          (
+            cd .baseline
+            CINEMATIC_EVIDENCE="$GITHUB_WORKSPACE/evidence/before" \
+            CINEMATIC_EXPECTED_HEAD="$BASELINE_SHA" \
+            CINEMATIC_BASE_SHA="$PR_BASE_SHA" \
+            CINEMATIC_URL=http://127.0.0.1:5185/ \
+            node "$GITHUB_WORKSPACE/tests/cinematic/capture-evidence.mjs"
+          )
+
+      - name: Build and start the reviewed head in production mode
+        if: always()
+        run: |
+          npm run build --workspace apps/web > /tmp/agriscope-next-build.log 2>&1
+          npm run start --workspace apps/web -- --hostname 127.0.0.1 --port 5184 > /tmp/agriscope-next.log 2>&1 &
+          echo $! > /tmp/agriscope-next.pid
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:5184/ > /dev/null; then exit 0; fi
+            sleep 2
+          done
+          cat /tmp/agriscope-next.log
+          exit 1
+
+      - name: Capture the complete reviewed head with the same review harness
+        if: always()
+        env:
+          CI: "true"
+          CINEMATIC_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          CINEMATIC_EVIDENCE: evidence
+          CINEMATIC_EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+          CINEMATIC_SOFTWARE_WEBGL: "1"
+          CINEMATIC_URL: http://127.0.0.1:5184/
+        run: node tests/cinematic/capture-evidence.mjs
+
+      - name: Compare matched frames and timing
+        if: always()
+        run: node tests/cinematic/compare-evidence.mjs evidence
+
+      - name: Package local visual references
+        if: always()
+        run: |
+          test -d tools/cinematic/references
+          mkdir -p evidence/reference
+          cp -a tools/cinematic/references/. evidence/reference/
+
+      - name: Upload review evidence, raw captures, and timing diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: agriscope-cinematic-evidence-${{ github.event.pull_request.head.sha }}
+          path: |
+            evidence/
+            evidence/**/motion/raw-capture/
+            evidence/**/timing-diagnostics.json
+          if-no-files-found: warn
+          retention-days: 30

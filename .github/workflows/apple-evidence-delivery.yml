@@ -1,0 +1,105 @@
+name: Review evidence delivery
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_asset_id:
+        description: Numeric ID of the existing private Draft release asset
+        required: true
+        type: string
+      evidence_bytes:
+        description: Expected asset size in bytes
+        required: true
+        type: string
+      evidence_file:
+        description: Safe filename used inside the Actions artifact
+        required: true
+        type: string
+      evidence_sha256:
+        description: Expected SHA-256 of the release asset
+        required: true
+        type: string
+      source_sha:
+        description: Commit SHA to which the evidence is bound
+        required: true
+        type: string
+      artifact_name:
+        description: Safe Actions artifact name
+        required: true
+        type: string
+      purpose:
+        description: Short evidence purpose recorded in delivery-info.json
+        required: true
+        type: string
+
+permissions:
+  # GitHub exposes draft-release assets only to tokens with push-level contents
+  # access. The job performs one authenticated GET and never mutates the release.
+  contents: write
+
+jobs:
+  deliver-review-evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      EVIDENCE_ASSET_ID: ${{ inputs.release_asset_id }}
+      EVIDENCE_BYTES: ${{ inputs.evidence_bytes }}
+      EVIDENCE_FILE: ${{ inputs.evidence_file }}
+      EVIDENCE_SHA256: ${{ inputs.evidence_sha256 }}
+      EVIDENCE_SOURCE_SHA: ${{ inputs.source_sha }}
+      EVIDENCE_ARTIFACT_NAME: ${{ inputs.artifact_name }}
+      EVIDENCE_PURPOSE: ${{ inputs.purpose }}
+
+    steps:
+      - name: Validate immutable evidence metadata
+        run: |
+          set -euo pipefail
+          [[ "$EVIDENCE_ASSET_ID" =~ ^[0-9]+$ ]]
+          [[ "$EVIDENCE_BYTES" =~ ^[0-9]+$ ]]
+          [[ "$EVIDENCE_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$EVIDENCE_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$EVIDENCE_FILE" =~ ^[A-Za-z0-9._-]+$ ]]
+          [[ "$EVIDENCE_ARTIFACT_NAME" =~ ^[A-Za-z0-9._-]+$ ]]
+          test -n "$EVIDENCE_PURPOSE"
+
+      - name: Download the existing evidence asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p review-evidence
+          curl \
+            --fail-with-body \
+            --location \
+            --header "Accept: application/octet-stream" \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            --output "review-evidence/$EVIDENCE_FILE" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/assets/$EVIDENCE_ASSET_ID"
+
+      - name: Verify source binding, size, and SHA-256
+        run: |
+          set -euo pipefail
+          evidence_path="review-evidence/$EVIDENCE_FILE"
+          test "$(stat --format=%s "$evidence_path")" = "$EVIDENCE_BYTES"
+          echo "$EVIDENCE_SHA256  $evidence_path" | sha256sum --check --strict
+          jq --null-input \
+            --arg artifactPurpose "$EVIDENCE_PURPOSE" \
+            --arg evidenceSourceSha "$EVIDENCE_SOURCE_SHA" \
+            --arg deliveryWorkflowSha "${{ github.sha }}" \
+            --argjson releaseAssetId "$EVIDENCE_ASSET_ID" \
+            --arg file "$EVIDENCE_FILE" \
+            --argjson bytes "$EVIDENCE_BYTES" \
+            --arg sha256 "$EVIDENCE_SHA256" \
+            --arg deliveryNote "The nested evidence file is downloaded once, verified byte-for-byte, and uploaded without rerendering or changing its contents." \
+            '{artifactPurpose:$artifactPurpose,evidenceSourceSha:$evidenceSourceSha,deliveryWorkflowSha:$deliveryWorkflowSha,releaseAssetId:$releaseAssetId,file:$file,bytes:$bytes,sha256:$sha256,deliveryNote:$deliveryNote}' \
+            > review-evidence/delivery-info.json
+
+      - name: Upload evidence for connector download
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ${{ inputs.artifact_name }}
+          path: review-evidence/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30

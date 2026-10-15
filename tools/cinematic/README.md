@@ -5,7 +5,7 @@ terrain and mount lifecycle), with markup/styles in
 `apps/web/components/cinematic/`. These are shared by Next.js and the Vite preview.
 No ZIP generation or extraction is involved.
 
-From the integration worktree:
+From the owned integration or refinement worktree:
 
 ```sh
 npm -w apps/web run dev -- --hostname 127.0.0.1 --port 5180
@@ -31,6 +31,8 @@ Focused checks (Chrome must be installed):
 
 ```sh
 node tests/cinematic/timeline.mjs
+node tests/cinematic/terrain.mjs
+node tests/cinematic/blender-assets.mjs
 CINEMATIC_EVIDENCE=/absolute/evidence/path node tests/cinematic/browser.mjs
 CINEMATIC_EVIDENCE=/absolute/evidence/path ./node_modules/.bin/playwright test --config tests/cinematic/playwright.config.ts --reporter=line
 npm -w apps/web run typecheck
@@ -42,3 +44,18 @@ The source prototype is retained at `/Users/bill/agriscope-cinematic`; new brows
 screenshots/reports and original-file backups are under its
 `evidence/integration-20261010/`. The terrain, metrics and dates are illustrative;
 only the existing authenticated app handles real farm/field data.
+
+
+The current refinement adds original Blender meshes and a shorter ten-shot
+product story. See `blender/README.md` for editable .blend generation, standard
+GLB export and renders. Runtime assets are supplied as local mesh JSON;
+Blender is needed only to author/rebuild them, not to launch the website.
+
+Login/register CTAs select the existing form with `?mode=login` or
+`?mode=register`. Home retains three concise supporting sections; `/overview`
+retains the original full landing. Public examples are explicitly synthetic.
+
+For a non-system Chromium or software-WebGL validation environment, set
+`CINEMATIC_CHROMIUM=/absolute/path/to/chromium` and, only for that environment,
+`CINEMATIC_SOFTWARE_WEBGL=1`. Reports identify software rendering and emulation;
+it is not a hardware performance measurement.

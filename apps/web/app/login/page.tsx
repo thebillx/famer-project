@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { type QueryClient, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import type { FieldError, FieldErrors, FieldValues, Resolver } from "react-hook-form";
@@ -87,6 +87,9 @@ export default function LoginPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const [mode, setMode] = useState<AuthMode>("register");
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("mode") === "login") setMode("login");
+  }, []);
   const [serverError, setServerError] = useState<string | null>(null);
   const registerForm = useForm<RegisterForm>({
     resolver: schemaResolver(registerSchema),
