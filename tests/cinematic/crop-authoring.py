@@ -43,14 +43,19 @@ class CropAuthoring(unittest.TestCase):
         for triangle in result["faces"]:
             for vertex in triangle:
                 adjacency.setdefault(vertex,set()).update(triangle)
-        remaining=set(adjacency);components=[]
+        remaining=set(adjacency)
+        components=[]
         while remaining:
-            pending=[next(iter(remaining))];seen=set()
+            pending=[next(iter(remaining))]
+            seen=set()
             while pending:
                 vertex=pending.pop()
-                if vertex in seen:continue
-                seen.add(vertex);pending.extend(adjacency[vertex]-seen)
-            remaining-=seen;components.append(len(seen))
+                if vertex in seen:
+                    continue
+                seen.add(vertex)
+                pending.extend(adjacency[vertex]-seen)
+            remaining-=seen
+            components.append(len(seen))
         self.assertEqual(len(components),36)
         self.assertEqual(set(components),{49*3})
 
@@ -62,8 +67,10 @@ class CropAuthoring(unittest.TestCase):
         for filepath,background,blocked in [('owner.blend',True,True),('',False,True),('',True,False)]:
             context={'bpy':SimpleNamespace(data=SimpleNamespace(filepath=filepath),app=SimpleNamespace(background=background))}
             if blocked:
-                with self.assertRaises(RuntimeError):exec(program,context)
-            else:exec(program,context)
+                with self.assertRaises(RuntimeError):
+                    exec(program,context)
+            else:
+                exec(program,context)
 
     def test_existing_editable_output_is_never_overwritten(self):
         guard=next(n for n in MODULE.body if isinstance(n,ast.If) and 'AgriScope-Cinematic-Assets.blend' in ast.unparse(n.test))
@@ -73,7 +80,8 @@ class CropAuthoring(unittest.TestCase):
             exec(program,{'EVIDENCE':folder})
             source=folder/'AgriScope-Cinematic-Assets.blend'
             source.write_bytes(b'owner source sentinel')
-            with self.assertRaises(FileExistsError):exec(program,{'EVIDENCE':folder})
+            with self.assertRaises(FileExistsError):
+                exec(program,{'EVIDENCE':folder})
             self.assertEqual(source.read_bytes(),b'owner source sentinel')
 
 
