@@ -48,3 +48,27 @@ for (let index = 0; index < position.count; index += 3) {
 }
 assert.equal(position.count,96,'Four sample-boundary sides retain 24 deterministic points each');
 console.log(`PASS: ${samples} information-overlay samples clear rendered field surfaces; LineLoop closes the perimeter`);
+
+// Authored canopy slopes must survive the globe-to-field displacement. Compare
+// the generated crop shader's Jacobian with a numerical deformed tangent frame.
+const shaded=buildTerrain({farmland:asset('farmland'),tree:asset('tree')},{day:new THREE.Texture()});
+const shaderFor=role=>{
+ const shader={uniforms:{},vertexShader:'#include <common>\n#include <beginnormal_vertex>\n#include <begin_vertex>',fragmentShader:'#include <common>'};
+ shaded.children.find(mesh=>mesh.name===role).material.onBeforeCompile(shader);
+ return shader.vertexShader;
+};
+const cropShader=shaderFor('Rice rows');
+assert.ok(cropShader.includes('objectNormal.xz-=2.*position.xz/1800.*fieldFlatten*objectNormal.y;'));
+assert.ok(!cropShader.includes('objectNormal.xz*=1.-fieldFlatten;'));
+assert.ok(shaderFor('Irrigation water').includes('objectNormal.xz*=1.-fieldFlatten;'),'Accepted water response stays unchanged');
+for(const flatten of [0,.3,.7,.92])for(const [x,z] of [[-2,-1],[1.7,2.1],[8,-7]]){
+ const point=new THREE.Vector3(x,.08,z),a=new THREE.Vector3(1,.8,.2),b=new THREE.Vector3(.1,-.3,1);
+ const normal=a.clone().cross(b).normalize();
+ const analytic=normal.clone();analytic.x-=2*x/1800*flatten*normal.y;analytic.z-=2*z/1800*flatten*normal.y;analytic.normalize();
+ const deform=p=>new THREE.Vector3(p.x,p.y+(p.x*p.x+p.z*p.z)/1800*flatten,p.z);
+ const epsilon=1e-5,origin=deform(point);
+ const numerical=deform(point.clone().addScaledVector(a,epsilon)).sub(origin)
+  .cross(deform(point.clone().addScaledVector(b,epsilon)).sub(origin)).normalize();
+ assert.ok(analytic.distanceTo(numerical)<1e-7,'Crop normal follows the actual deformed tangent plane');
+}
+console.log('PASS canopy normal transform: numerical tangent plane, four flatten states, water unchanged');

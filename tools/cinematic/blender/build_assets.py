@@ -20,6 +20,12 @@ from mathutils import Vector
 ROOT = Path(__file__).resolve().parents[3]
 OUT = Path(os.environ.get("AGRISCOPE_RUNTIME_OUTPUT", str(ROOT / "apps/web/public/cinematic/models")))
 EVIDENCE = Path(os.environ.get("AGRISCOPE_BLENDER_OUTPUT", str(ROOT / "tools/cinematic/blender/output")))
+# The generator replaces the complete scene. A live MCP document may contain
+# unreconciled art edits, so generation is permitted only in a fresh process.
+if bpy.data.filepath or not bpy.app.background:
+    raise RuntimeError("Build assets in a fresh background Blender process; never replace an open editable scene")
+if (EVIDENCE / "AgriScope-Cinematic-Assets.blend").exists():
+    raise FileExistsError("Choose a new AGRISCOPE_BLENDER_OUTPUT directory; an editable source already exists here")
 OUT.mkdir(parents=True, exist_ok=True)
 EVIDENCE.mkdir(parents=True, exist_ok=True)
 random.seed(41)
@@ -426,6 +432,44 @@ def parcel_relief(index,u,v,sample=False):
 
 parcel_records=[]
 
+def author_sample_crops(corners,index):
+    """Continuous rice canopy passes, with connected leaf-scale edge breakup.
+
+    Only the sample receives this near-field canopy. A shared cross section
+    avoids detached dark cards at mobile distance; two authored establishment
+    misses narrow and lower several neighboring planting passes together.
+    """
+    vertices=[];faces=[]
+    rows,columns=36,48
+    for row in range(rows):
+        v=.045+(row+.5)/rows*.91
+        start=len(vertices)
+        for column in range(columns+1):
+            u=.035+column/columns*.93
+            miss_a=math.exp(-((u-.29)/.12)**6-((v-.30)/.12)**4)
+            miss_b=math.exp(-((u-.73)/.11)**4-((v-.73)/.14)**6)
+            growth=1-.76*max(miss_a,miss_b)
+            phase=row*2.399+column*1.618
+            bend=.0034*math.sin(column*.41+row*.63)
+            half_width=.91/rows*(.43+.06*math.sin(phase))*growth
+            crest=(.024+.009*math.sin(column*.37+row*.61)**2)*growth
+            # Leaf tips merge into each cultivation pass instead of appearing
+            # as disconnected dot-like plants. Keep an open headland all around.
+            end=min(1,column/2,(columns-column)/2)
+            for lateral,lift in ((-half_width,.003),(0,crest*end+.003),(half_width,.003)):
+                vv=v+bend+lateral
+                x,z=parcel_point(corners,u,vv)
+                base=height(x,z)+.002+parcel_relief(index,u,vv,True)+.002
+                vertices.append((x,base+lift,z))
+        for column in range(columns):
+            for lateral in range(2):
+                a=start+column*3+lateral
+                faces.extend(upward_triangles(vertices,(a,a+3,a+4,a+1)))
+    obj=mesh_obj('Batched coherent rice rows',vertices,faces,crop_rows,land,True)
+    obj['planting_frame']=[*corners[0],*corners[1],*corners[3]]
+    return obj
+
+
 def planted_parcel(corners,mat,index,sample=False,holding=False):
     parcel_records.append((list(corners),list(mat.diffuse_color[:3])))
     # The high-altitude fields need coherent silhouettes, not uniform interior
@@ -569,43 +613,7 @@ def planted_parcel(corners,mat,index,sample=False,holding=False):
     # paying near-field geometry cost across the entire descent landscape.
     if (index%2==0 or mat in (fallow,wet_paddy)) and not sample:return
     if sample:
-        # Shared vertices keep each planting pass visually continuous.  Two
-        # broad, row-grouped misses read as uneven establishment; the previous
-        # per-segment mesh produced a regular chain of dark points and dashes.
-        vertices=[];faces=[];row_count=19;longitudinal=28
-        for row in range(row_count):
-            vv=.060+(row+.5)/row_count*.88+.0045*math.sin(row*.77)
-            half_width=.0075+.0018*math.sin(row*.51)**2
-            start=len(vertices)
-            gap=None
-            if 4<=row<=7:gap=(.20,.36)
-            elif 12<=row<=15:gap=(.62,.79)
-            elif row in (1,17):gap=(.44,.50)
-            for segment in range(longitudinal+1):
-                u=.045+.91*segment/longitudinal
-                bend=.0048*math.sin(segment*.31+row*.53)+(.006*(u-.5) if row>13 else 0)
-                growth=1.0
-                if gap:
-                    if gap[0]<=u<=gap[1]:growth=.10
-                    else:
-                        distance=min(abs(u-gap[0]),abs(u-gap[1]))
-                        if distance<.055:
-                            blend=distance/.055
-                            growth=.10+.90*blend*blend*(3-2*blend)
-                for lateral,lift in ((-half_width,.002),(0,.009),(half_width,.002)):
-                    adjusted_v=vv+bend+lateral
-                    x,z=parcel_point(corners,u,adjusted_v)
-                    base=height(x,z)+.002+parcel_relief(index,u,adjusted_v,True)
-                    vertices.append((x,base+lift*growth,z))
-            for segment in range(longitudinal):
-                segment_u=.045+.91*(segment+.5)/longitudinal
-                if gap and gap[0]<=segment_u<=gap[1]:
-                    continue
-                for lateral in range(2):
-                    a=start+segment*3+lateral
-                    faces.extend(upward_triangles(vertices,(a,a+3,a+4,a+1)))
-        rows_object=mesh_obj('Batched coherent rice rows',vertices,faces,crop_rows,land,False)
-        rows_object['planting_frame']=[*corners[0],*corners[1],*corners[3]]
+        author_sample_crops(corners,index)
         return
     if not sample and math.hypot(*parcel_point(corners,.5,.5))>8:return
     if index%3==1 and not sample:corners=[corners[1],corners[2],corners[3],corners[0]]

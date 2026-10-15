@@ -54,6 +54,7 @@ jobs:
 
       - name: Validate cinematic meshes, terrain and timeline
         run: |
+          python3 tests/cinematic/crop-authoring.py
           node tests/cinematic/runtime-materials.mjs
           node tests/cinematic/blender-assets.mjs
           node tests/cinematic/terrain.mjs
@@ -64,8 +65,8 @@ jobs:
         run: |
           # Preserve the owner's reviewed visual baseline across evidence-only
           # correction commits; otherwise a capture fix compares identical art.
-          baseline_sha="1310c66f893c3df9007853e393dd79b69230e0af"
-          baseline_reason="accepted cyan-pulse correction before the regional landscape visual milestone"
+          baseline_sha="d3e21b50c3db732346d902db94ded576df834c26"
+          baseline_reason="regional landscape delivery before live Blender MCP hero crop iteration"
           echo "sha=$baseline_sha" >> "$GITHUB_OUTPUT"
           echo "reason=$baseline_reason" >> "$GITHUB_OUTPUT"
           echo "Cinematic comparison baseline: $baseline_sha ($baseline_reason)"

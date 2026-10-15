@@ -1,5 +1,37 @@
 # Blender cinematic source
 
+## Live Blender MCP art loop — 15 October 2026
+
+MCP for Blender 2.1.9 (developer: ahujasid/mcp-for-blender), add-on 1.8 /
+protocol 13, is verified with Blender 4.5.3 LTS. Use its published wheel: the
+inspected upstream Git checkout omitted `blender_mcp.config`, while the release
+contains it. Local Codex starts the pinned isolated server; the Blender add-on
+listens only on 127.0.0.1:9876. Telemetry and external generators/libraries are
+disabled. Existing MCP configuration and Blender preferences were backed up;
+private configuration is not included in evidence. No runtime dependency added.
+
+The source of truth remains the existing authoring functions and exported assets.
+Use a separate `AgriScope-Hero-Art-Working.blend` for MCP edits, copied from the
+SHA-bound delivered source. Never run the destructive scene generator inside a
+live owner scene. The generator rejects a GUI/open saved scene and an existing
+editable output file before deleting or writing anything. Promote selected edits into the responsible authoring function
+before regenerating in a fresh background process and a new output directory.
+MCP executes that same function for local iteration; it is not a second exporter.
+Save the editable candidate with receipts and publish it with its SHA manifest.
+Unrecorded manual edits are experiments, not a deliverable source of truth.
+
+Start by reading file/scene/objects and capturing the viewport; successful install
+alone is not connection proof. Match the production p=.56 camera and flatten
+state, render, inspect pixels, export with the existing material-batched exporter,
+and inspect desktop/mobile browser frames. Restore all flatten shape keys to
+zero for compact export, then restore the review pose. CLI deterministic build,
+GLB semantic validation and final-byte Ponytail review remain required.
+
+This bounded art pass replaces only sample-plot rice ribbons with wider connected
+canopy passes and grouped low-establishment areas, preserving the soil surface and accepted canal/boundary geometry. Other
+holdings retain static distance-based simplification. The crop normal alone follows the deformation Jacobian to retain authored slopes;
+no camera, timeline, product state, spacecraft or water changes are included.
+
 ## Regional landscape — 15 October 2026
 
 `regional_map.py` bakes original illustrative regional color from the same parcel

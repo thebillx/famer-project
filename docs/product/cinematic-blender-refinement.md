@@ -1,5 +1,40 @@
 # Cinematic storyboard and Blender refinement
 
+## Active Blender MCP hero crop iteration — 15 October 2026
+
+Base `d3e21b50c3db732346d902db94ded576df834c26`; clean feature worktree.
+Scope: local Blender MCP installation and connection proof; sample crop authoring
+in `build_assets.py`, its farmland export, crop-normal parity in `terrain.js`, focused asset checks, this contract and
+Blender README. Existing evidence workflow may update its comparison baseline.
+Only public synthetic scene data; no private configuration in GitHub evidence.
+Keep PR #19 Draft. Production checkout and owner Untitled scene are excluded.
+
+Use the existing generator as reproducible source of truth and a separate editable
+MCP working copy. Inspect p=.56 Blender/browser desktop/mobile before promoting
+changes. Preserve all accepted terrain surfaces, NDVI, 19 beats/cameras, atmosphere,
+water, UI and fallback contracts. Validate deterministic assets, GLB round trip,
+geometry regressions, browser directions, typecheck/build; then exact-byte review.
+Stop at applicable Human Gates. Local inspection is not independent art approval.
+
+Selected candidate: connected canopy passes replace the narrow sample ribbons;
+leaf-card variants were rejected because they read as detached dark dots on
+mobile. The crop normal uses the exact displacement Jacobian, retaining authored
+slopes in the browser. Other terrain-normal paths are unchanged. Farmland grows
+from 93,783 to 98,743 triangles (+4,960), and 2,488,176 to 2,518,079 bytes
+(+29,903); 13 batches remain. At p=.56: 54 draw calls in both viewports;
+desktop rendered triangles 214,931 → 219,891, mobile 179,763 → 184,723.
+These are workload counts, not frame-rate claims. All 12 non-crop batches remain
+byte-identical, and live MCP / fresh CLI farmland exports match byte-for-byte.
+
+Artistic status remains pending independent review. The sample has more visible
+continuous canopy relief, but the overall landscape remains stylized, planting
+passes are still regular, and Blender contact shadows are stronger than the
+browser. No change to exposure, foliage, water or atmosphere conceals these gaps.
+The changed farmland rebuild is deterministic; the unchanged spacecraft generator
+produced differing serialized solar-cell batches between two rebuilds. Those regenerated
+spacecraft JSON files are not shipped. Retained runtime spacecraft bytes are
+unchanged, and both GLB asset sets pass the existing semantic round trip.
+
 ## Active regional landscape milestone — 15 October 2026
 
 Baseline `1310c66f893c3df9007853e393dd79b69230e0af`; clean feature worktree.
