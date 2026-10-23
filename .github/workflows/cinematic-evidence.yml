@@ -6,6 +6,7 @@ on:
     paths:
       - ".github/workflows/cinematic-evidence.yml"
       - "apps/web/app/page.tsx"
+      - "apps/web/app/cinematic-lab/**"
       - "apps/web/app/login/page.tsx"
       - "apps/web/components/cinematic/**"
       - "apps/web/components/landing/**"
@@ -13,6 +14,7 @@ on:
       - "docs/product/cinematic-*"
       - "tests/cinematic/**"
       - "tests/e2e/cinematic-flow-002.spec.ts"
+      - "tests/e2e/cinematic-lab-001.spec.ts"
       - "tools/cinematic/**"
 
 permissions:
@@ -138,8 +140,14 @@ jobs:
           CINEMATIC_EVIDENCE: evidence
           CINEMATIC_EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
           CINEMATIC_SOFTWARE_WEBGL: "1"
-          CINEMATIC_URL: http://127.0.0.1:5184/
+          CINEMATIC_URL: http://127.0.0.1:5184/cinematic-lab
         run: node tests/cinematic/capture-evidence.mjs
+
+      - name: Validate cinematic lab controls and fallbacks
+        if: always()
+        env:
+          CINEMATIC_URL: http://127.0.0.1:5184
+        run: npx playwright test --config tests/cinematic/playwright.config.ts tests/e2e/cinematic-lab-001.spec.ts --reporter=line
 
       - name: Compare matched frames and timing
         if: always()

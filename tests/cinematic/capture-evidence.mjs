@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 import {execFileSync} from 'node:child_process';
-import {mkdir, readFile, readdir, rm, writeFile} from 'node:fs/promises';
+import {copyFile, mkdir, readFile, readdir, rm, writeFile} from 'node:fs/promises';
 import {join, resolve} from 'node:path';
 
 const require=createRequire(import.meta.url);
@@ -14,6 +14,7 @@ const expectedHead=process.env.CINEMATIC_EXPECTED_HEAD;
 const baseSha=process.env.CINEMATIC_BASE_SHA;
 if(expectedHead)assert.equal(headSha,expectedHead,'Evidence must describe the exact PR head checkout.');
 const url=process.env.CINEMATIC_URL||'http://127.0.0.1:5184/';
+const labRoute=new URL(url).pathname.includes('/cinematic-lab');
 const softwareWebGL=process.env.CINEMATIC_SOFTWARE_WEBGL==='1';
 const checkpointsOnly=process.env.CINEMATIC_CHECKPOINTS_ONLY==='1';
 const viewports=[
@@ -39,6 +40,7 @@ let actualMotionDurationSeconds=null;
 let rawMotionPtsWindow=null;
 let endpointComparison=null;
 let startComparison=null;
+let interactionClip=null;
 
 function probeVideo(path){
   return JSON.parse(execFileSync('ffprobe',['-v','error','-show_entries','format=start_time,duration','-of','json',path],{encoding:'utf8'})).format;
@@ -232,6 +234,30 @@ async function animateToProgress(page,progress,durationMs){
   },{progress,durationMs});
 }
 
+async function captureLabInteractions(){
+  const rawDir=join(output,'motion','raw-interactions');
+  const finalPath=join(output,'motion','agriscope-lab-interactions.webm');
+  await mkdir(rawDir,{recursive:true});
+  const context=await browser.newContext({viewport:{width:1440,height:900},deviceScaleFactor:1,recordVideo:{dir:rawDir,size:{width:1440,height:900}}});
+  const page=await context.newPage();monitor(page);await ready(page);
+  const video=page.video();
+  await seek(page,.22);
+  const payload=await page.locator('#payload-control').boundingBox();
+  if(payload){await page.mouse.move(payload.x-90,payload.y+20);await page.waitForTimeout(500);await page.mouse.move(payload.x+20,payload.y+20,{steps:18});}
+  await page.locator('#payload-control').click();await page.waitForTimeout(1400);
+  await page.locator('#payload-control').click();
+  await seek(page,.56);await page.waitForTimeout(700);
+  await page.locator('[data-hotspot="boundary"]').click();await page.waitForTimeout(1400);await page.keyboard.press('Escape');
+  await seek(page,.76);await page.waitForTimeout(700);
+  const slider=page.locator('#comparison-slider');await slider.focus();await page.keyboard.press('Home');await page.waitForTimeout(900);await page.keyboard.press('End');await page.waitForTimeout(1100);
+  await seek(page,.86);await page.locator('#inspect-field').click();await page.waitForTimeout(1500);await page.locator('#inspect-field').click();await page.waitForTimeout(700);
+  await context.close();
+  const rawPath=await video.path();await copyFile(rawPath,finalPath);
+  const durationSeconds=Number(probeVideo(finalPath).duration);
+  assert.ok(Number.isFinite(durationSeconds)&&durationSeconds>=7,'The interaction recording must retain the complete unretimed demonstrations.');
+  return {path:'motion/agriscope-lab-interactions.webm',durationSeconds,playbackSpeedMultiplier:1,sequence:'Pointer parallax and payload disclosure; field hotspot; keyboard NDVI comparison; NOT_ASSESSABLE toggle.'};
+}
+
 async function sourceHashes(){
   const paths=[...new Set(gitPaths())].sort();
   const deletedArgs=baseSha
@@ -243,6 +269,19 @@ async function sourceHashes(){
     ? {path,state:'deleted',sha256:null,bytes:0}
     : await sha256(path));
   return hashes;
+}
+
+async function runtimeManifest(){
+  const rootPath='apps/web/public/cinematic',paths=[];
+  const walk=async relative=>{
+    for(const entry of await readdir(join(root,relative),{withFileTypes:true})){
+      const child=join(relative,entry.name);
+      if(entry.isDirectory())await walk(child);
+      else if(entry.isFile())paths.push(child);
+    }
+  };
+  await walk(rootPath);
+  return Promise.all(paths.sort().map(sha256));
 }
 
 try{
@@ -344,7 +383,18 @@ try{
       await page.screenshot({path:join(output,viewport.name,'insufficient-data.png'),timeout:60000});
       await page.locator('#inspect-field').click();
       assert.equal(await page.locator('#sample-status').textContent(),'ควรตรวจต่อ','The valid demonstration is restored after toggling back.');
-      await page.locator('#rail button[aria-label^="ช่วง 7:"]').click();
+      let touchComparison=null;
+      if(labRoute){
+        await seek(page,.76);
+        const comparisonControl=page.locator('#comparison-slider'),comparisonBox=await comparisonControl.boundingBox();
+        assert.ok(comparisonBox,'The mobile comparison slider remains visible to touch users.');
+        await comparisonControl.tap({position:{x:comparisonBox.width*.84,y:comparisonBox.height/2}});
+        touchComparison=(await page.evaluate(()=>window.__agriscope.snapshot())).evidence.comparison;
+        assert.ok(touchComparison>.65,'Touch input changes the dated comparison state.');
+        await page.locator('#rail button[aria-label^="ช่วง 7:"]').tap();
+      }else{
+        await page.locator('#rail button[aria-label^="ช่วง 7:"]').click();
+      }
       await page.waitForFunction(()=>Math.abs(window.__agriscope.snapshot().p-.65)<.003,null,{timeout:10000});
       assert.equal((await page.evaluate(()=>window.__agriscope.snapshot())).shot,7,'Mobile chapter navigation selects the date-quality chapter.');
       await seek(page,.95);
@@ -355,7 +405,7 @@ try{
         assert.match(page.url(),/mode=register/,'The prominent final CTA opens registration mode.');
         registrationCta={href:'/login?mode=register',navigation:'PASS'};
       }
-      mobileInteractionReport={insufficientData:{status:'NOT_ASSESSABLE',before:'—',after:'—',delta:null,validExampleRestored:true},chapterNavigation:{targetShot:7},registrationCta};
+      mobileInteractionReport={insufficientData:{status:'NOT_ASSESSABLE',before:'—',after:'—',delta:null,validExampleRestored:true},...(labRoute?{touchComparison:{comparison:touchComparison,input:'touch emulation'}}:{}),chapterNavigation:{targetShot:7,input:labRoute?'touch emulation':'click'},registrationCta};
     }
     await makeContactSheet(page,viewport.name,shots);
     report.viewports.push({name:viewport.name,width:viewport.width,height:viewport.height,mobileEmulation:viewport.mobile,shots:10});
@@ -372,6 +422,7 @@ try{
     if(report.status==='FAIL')process.exitCode=1;
   }else{
   report.rendererSamples=captures;report.interactions={mobile:mobileInteractionReport,fallbacks:fallbackChecks};
+  if(labRoute){interactionClip=await captureLabInteractions();report.interactions.labClip=interactionClip;}
   await mkdir(rawVideoDir,{recursive:true});
   const probeContext=await browser.newContext({viewport:{width:1440,height:900},deviceScaleFactor:1,recordVideo:{dir:join(rawVideoDir,'timing-probe'),size:{width:1440,height:900}}});
   try{const probePage=await probeContext.newPage();await ready(probePage);const points=await probePage.evaluate(()=>window.__agriscope.SHOTS.map(shot=>shot.p));for(const progress of [.095,.18,.30,.42,.56])await measureFrames(probePage,progress,true);}finally{await probeContext.close();}
@@ -464,7 +515,7 @@ try{
   // Retain the raw recording, including on success, for independent timestamp review.
   report.motion={path:'motion/agriscope-forward-reverse.webm',durationSeconds:actualMotionDurationSeconds,captureWindowSeconds:requestedDurationSeconds,rawPresentationTimeWindow:rawMotionPtsWindow,playbackSpeedMultiplier,initialEndpoint:{shot:initialOrbitSnapshot.shot,progress:initialOrbitSnapshot.p,encodedFrameComparison:startComparison,encodedFramePath:'motion/orbit-start-encoded.png',browserReferencePath:'motion/orbit-start-browser.png'},finalEndpoint:{shot:finalOrbitSnapshot.shot,progress:finalOrbitSnapshot.p,requestedHoldSeconds:4,rawChapterHoldSeconds:lastEndpoint.heldSeconds,encodedChapterHoldSeconds:encodedFinalMatch.heldSeconds,encodedFrameComparison:endpointComparison,encodedFramePath:'motion/orbit-endpoint-encoded.png',browserReferencePath:'motion/orbit-endpoint-browser.png'},sequence:redesigned?'Forward flyby, wing, payload, activation/corridor, Thailand, descent and field; product chapters; full reverse with original-speed holds.':'Historical ten-chapter traversal.'};
   report.rendererSamples=captures;
-  report.interactions={mobile:mobileInteractionReport,fallbacks:fallbackChecks};
+  report.interactions={mobile:mobileInteractionReport,fallbacks:fallbackChecks,...(interactionClip?{labClip:interactionClip}:{})};
   report.status=report.errors.length===0&&report.failedRequests.length===0?'PASS':'FAIL';
   if(report.status==='FAIL')process.exitCode=1;
   }
@@ -494,7 +545,22 @@ try{
     initialEncodedFrameComparison:startComparison,
     finalEncodedFrameComparison:endpointComparison,
     renderingLimitations:[`Renderer mode: ${softwareReported?'software WebGL / SwiftShader':'see renderer metadata; hardware acceleration was not benchmarked'}.`,'Small-mobile dimensions are browser viewport/touch emulation, not a physical device.','Journey values are synthetic public examples; no private data or live satellite service is used.'],
+    interactionClip,
   };
+  const runtimeAssets=await runtimeManifest();
+  const directAssets=runtimeAssets.filter(asset=>/\.(?:js|json|jpg|png|ttf)$/i.test(asset.path)&&!asset.path.endsWith('/batch.js'));
+  const shotSamples=(report.rendererSamples||[]).filter(sample=>sample.shot);
+  const ranges=values=>values.length?{minimum:Math.min(...values),maximum:Math.max(...values)}:null;
+  const costReport={
+    measuredFrom:checkedOutSha,
+    bytes:{publicCinematicFootprint:runtimeAssets.reduce((sum,asset)=>sum+asset.bytes,0),directUncompressedTransferCandidates:directAssets.reduce((sum,asset)=>sum+asset.bytes,0),note:'Static file bytes before HTTP compression. Next.js framework chunks, caches and the Blender-only masters are outside this count.'},
+    files:{publicCinematic:runtimeAssets.length,directTransferCandidates:directAssets.length,largest:directAssets.toSorted((a,b)=>b.bytes-a.bytes).slice(0,10)},
+    renderer:{gpu:[...new Set(shotSamples.map(sample=>sample.renderer?.gpu).filter(Boolean))],drawCalls:ranges(shotSamples.map(sample=>sample.renderer?.drawCalls).filter(Number.isFinite)),triangles:ranges(shotSamples.map(sample=>sample.renderer?.triangles).filter(Number.isFinite)),sampleCount:shotSamples.length,note:'Ranges are actual ten-shot desktop/mobile captures and vary with scene visibility. They are not full Blender-master costs.'},
+    masterBoundary:'Accepted editable Blender masters remain external evidence and were not imported into this runtime candidate; their browser decode and frame costs remain unmeasured.',
+  };
+  reviewInfo.runtimeAssetManifest=runtimeAssets;
+  reviewInfo.costReport='cost-report.json';
+  await writeFile(join(output,'cost-report.json'),JSON.stringify(costReport,null,2)+'\n');
   await writeFile(join(output,'browser-report.json'),JSON.stringify(report,null,2)+'\n');
   await writeFile(join(output,'review-info.json'),JSON.stringify(reviewInfo,null,2)+'\n');
 }

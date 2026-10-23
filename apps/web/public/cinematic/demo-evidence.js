@@ -31,10 +31,11 @@ export function buildEvidence(){
    #include <colorspace_fragment>
   }`});
  const group=new THREE.Group();group.add(new THREE.Mesh(geometry,material));group.name='Synthetic dated comparison · one field';
- return {group,apply(p,insufficient=false,flatten=0){
+ return {group,apply(p,insufficient=false,flatten=0,comparisonOverride=null){
   const state=sampleEvidence(p,insufficient);
   group.visible=p>=.64&&!insufficient;
-  uniforms.flatten.value=flatten;uniforms.comparison.value=state.comparison;uniforms.opacity.value=smooth(.65,.72,p)*.60;
-  return state;
+  const comparison=comparisonOverride===null?state.comparison:Math.min(1,Math.max(0,comparisonOverride));
+  uniforms.flatten.value=flatten;uniforms.comparison.value=comparison;uniforms.opacity.value=smooth(.65,.72,p)*.60;
+  return {...state,comparison};
  }};
 }

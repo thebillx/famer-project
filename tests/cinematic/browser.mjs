@@ -4,6 +4,7 @@ import {mkdir,writeFile} from 'node:fs/promises';
 import {resolve} from 'node:path';
 const require=createRequire(import.meta.url),{chromium}=require('playwright');
 const url=process.env.CINEMATIC_URL||'http://127.0.0.1:5180/';
+const labRoute=new URL(url).pathname.includes('/cinematic-lab');
 const evidence=process.env.CINEMATIC_EVIDENCE;
 if(!evidence)throw new Error('Set CINEMATIC_EVIDENCE to a directory outside the repository.');
 await mkdir(evidence,{recursive:true});
@@ -102,7 +103,7 @@ try{
    assert.ok(await p.locator('#title').isVisible(),'Thai narrative stays visible through descent');
   }
   report.checks.push(`${viewport.width}: dense transition reverse state, eased input, pauses and direction change`);
-  assert.equal(await p.locator('#rail button:visible').count(),mobile?5:10);
+  assert.equal(await p.locator('#rail button:visible').count(),labRoute?10:mobile?5:10);
   // Exercise ordinary animated scrolling independently of exact checkpoint capture.
   await checkpoint(p,0);await p.locator('#begin').click();await settled(p,.86);
   assert.ok(new URL(p.url()).hash==='#field');assert.equal(await p.locator('#inspect-field').evaluate(el=>el===document.activeElement),true);
@@ -125,8 +126,9 @@ try{
   await p.locator('#motion').click();await staticReady(p);await p.locator('#resume').click();await ready(p);assert.equal(await p.locator('#rail button').count(),10);
   await checkpoint(p,.76);await p.setViewportSize({width:viewport.height,height:viewport.width});
   assert.ok(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));assert.ok((await state(p)).camera.every(Number.isFinite));
-  await p.setViewportSize(viewport);await checkpoint(p,.76);
-  await p.locator('#how-it-works').scrollIntoViewIfNeeded();await save(p,`${viewport.width}x${viewport.height}-product-handoff`);
+  await p.setViewportSize(viewport);await checkpoint(p,labRoute?.95:.76);
+  if(!labRoute)await p.locator('#how-it-works').scrollIntoViewIfNeeded();
+  await save(p,`${viewport.width}x${viewport.height}-product-handoff`);
   assert.equal(await p.locator('#features').count(),0);assert.equal(await p.locator('#farm-insight').count(),0);
   report.viewports.push({viewport,captures,checks:['10 exact forward and reverse scroll checkpoints','Animated sample shortcut and reverse chapter navigation','5 mobile phases / 10 desktop shots','Shared-field dated comparison and truthful missing-data state','Motion stop/resume; resize','Concise home sections, no repeated field sample']});
   console.log(`PASS ${viewport.width}×${viewport.height}: 10 shots + reverse + controls`);await ctx.close();
@@ -146,7 +148,7 @@ try{
   if(failure==='regional-map')await p.route('**/cinematic/textures/regional-landscape.png',r=>{intercepted++;return r.fulfill({status:404,body:'Unavailable'});});
   if(failure==='surface-map')await p.route('**/cinematic/textures/surfaces/metal-normal.png',r=>{intercepted++;return r.fulfill({status:404,body:'Unavailable'});});
   if(failure==='mesh')await p.route('**/cinematic/models/spacecraft.mesh.json',r=>{intercepted++;return r.fulfill({status:404,body:'Unavailable'});});
-  if(failure==='module')await p.route('**/cinematic/main.js',r=>{intercepted++;return r.abort();});
+  if(failure==='module')await p.route(labRoute?'**/cinematic/lab-main.js':'**/cinematic/main.js',r=>{intercepted++;return r.abort();});
   await p.goto(`${url}?qa=1`);
   if(failure==='module'){
    await p.waitForFunction(()=>document.querySelector('#fallback-reason')?.textContent.startsWith('โหลดประสบการณ์ 3D ไม่สำเร็จ'),null,{timeout:30000});assert.equal(intercepted,1);
@@ -157,7 +159,9 @@ try{
  const ctx=await browser.newContext({viewport:viewports[0]});contexts.push(ctx);p=await ctx.newPage();monitor(p);await p.goto(`${url}?qa=1`);await ready(p);
  await p.evaluate(()=>document.querySelector('.cinematic canvas').dispatchEvent(new Event('webglcontextlost',{cancelable:true})));await staticReady(p);
  report.checks.push('Context loss returns to readable static content');await p.goto(`${url}?qa=1`);await ready(p);
- await p.locator('#how-it-works').scrollIntoViewIfNeeded();await p.getByRole('link',{name:'เริ่มติดตามแปลงของคุณ',exact:true}).click();await p.waitForURL('**/login?mode=register');
+ if(labRoute){await checkpoint(p,.95);await p.locator('.field-handoff').click();}
+ else{await p.locator('#how-it-works').scrollIntoViewIfNeeded();await p.getByRole('link',{name:'เริ่มติดตามแปลงของคุณ',exact:true}).click();}
+ await p.waitForURL('**/login?mode=register');
  assert.equal(await p.evaluate(()=>!!window.__agriscope),false);assert.equal(await p.locator('.cinematic canvas').count(),0);
  await p.goBack();await ready(p);assert.equal(await p.locator('#rail button').count(),10);
  report.checks.push('Next.js navigation disposes the scene; back mounts exactly one canvas and rail');await ctx.close();

@@ -300,4 +300,17 @@ const envelope=corridor.getObjectByName('Survey route envelope');
 assert.ok(envelope.isMesh&&envelope.geometry.index.count>0,'Corridor uses a finite physical cross-section for portrait readability');
 corridor.userData.apply(.39,new THREE.Vector3(2,13,-1),0);
 assert.equal(corridor.userData.clouds.visible,false,'Local cloud banks do not float outside the globe before descent');
+const labCorridor=buildSurveyCorridor({lab:true});
+corridor.userData.apply(.52,new THREE.Vector3(2,13,-1),0);
+labCorridor.userData.apply(.52,new THREE.Vector3(2,13,-1),0);
+assert.equal(corridor.userData.clouds.visible,false,'Landing cloud strata retain their established .465–.515 fade window');
+assert.equal(labCorridor.userData.clouds.visible,true,'The lab may extend its cloud fade without changing the landing route');
+const [mainSource,labMainSource]=await Promise.all([
+ readFile(new URL('../../apps/web/public/cinematic/main.js',import.meta.url),'utf8'),
+ readFile(new URL('../../apps/web/public/cinematic/lab-main.js',import.meta.url),'utf8'),
+]);
+assert.doesNotMatch(mainSource,/from ['"]\.\/lab-timeline\.js['"]/,'The landing entry graph does not request the lab camera timeline');
+assert.match(labMainSource,/from ['"]\.\/lab-timeline\.js['"]/,'Only the lab entry imports its camera timeline');
+assert.match(mainSource,/lab\?\.38:\.35/,'Landing bloom radius remains .35 while the lab opts into .38');
+assert.match(mainSource,/if\(lab\)\{fieldKey=new THREE\.SpotLight/,'The Hero Field spotlight is constructed only for the lab');
 console.log(`PASS shared tangent magnification: ${interiorSamples} authored triangle interiors, continuous scale/material weights, stable cloud placement and portrait corridor geometry`);

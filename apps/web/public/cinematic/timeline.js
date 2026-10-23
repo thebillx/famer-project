@@ -59,12 +59,12 @@ export function sampleSpacecraft(p) {
 
 export const clamp=(v,a=0,b=1)=>Math.min(b,Math.max(a,v));
 export const smooth=(a,b,p)=>{const t=clamp((p-a)/(b-a));return t*t*(3-2*t);};
-export function sampleCamera(p,aspect=1.6) {
+export function sampleCameraFromKeys(keys,p,aspect=1.6) {
   p=clamp(p); let i=0;
-  while(i<CAMERA_KEYS.length-2 && p>CAMERA_KEYS[i+1].p) i++;
-  const a=CAMERA_KEYS[i],b=CAMERA_KEYS[i+1],span=b.p-a.p,t=clamp((p-a.p)/span);
+  while(i<keys.length-2 && p>keys[i+1].p) i++;
+  const a=keys[i],b=keys[i+1],span=b.p-a.p,t=clamp((p-a.p)/span);
   function tangent(k,prop,c) {
-    const l=CAMERA_KEYS[Math.max(0,k-1)],r=CAMERA_KEYS[Math.min(CAMERA_KEYS.length-1,k+1)];
+    const l=keys[Math.max(0,k-1)],r=keys[Math.min(keys.length-1,k+1)];
     const lv=typeof l[prop]==='number'?l[prop]:l[prop][c],rv=typeof r[prop]==='number'?r[prop]:r[prop][c];
     return .65*(rv-lv)/(r.p-l.p);
   }
@@ -80,5 +80,8 @@ export function sampleCamera(p,aspect=1.6) {
   const scale=1+portrait*(.48-.20*smooth(.34,.58,p));
   position.sub(target).multiplyScalar(scale).add(target);
   return {position,target,fov:axis('fov',0)+portrait*6,roll:axis('roll',0)*(1-.5*portrait)};
+}
+export function sampleCamera(p,aspect=1.6) {
+ return sampleCameraFromKeys(CAMERA_KEYS,p,aspect);
 }
 export function seededRandom(seed=41) {return ()=>{seed|=0;seed=seed+0x6D2B79F5|0;let t=Math.imul(seed^seed>>>15,1|seed);t=t+Math.imul(t^t>>>7,61|t)^t;return ((t^t>>>14)>>>0)/4294967296;};}
