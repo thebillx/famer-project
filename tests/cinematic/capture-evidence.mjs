@@ -243,9 +243,11 @@ async function captureLabInteractions(){
   const video=page.video();
   await seek(page,.22);
   const payload=await page.locator('#payload-control').boundingBox();
-  if(payload){await page.mouse.move(payload.x-90,payload.y+20);await page.waitForTimeout(500);await page.mouse.move(payload.x+20,payload.y+20,{steps:18});}
-  await page.locator('#payload-control').click();await page.waitForTimeout(1400);
-  await page.locator('#payload-control').click();
+  assert.ok(payload,'The payload control must be visible for the interaction recording.');
+  await page.mouse.move(payload.x-90,payload.y+20);await page.waitForTimeout(500);await page.mouse.move(payload.x+20,payload.y+20,{steps:18});
+  await page.mouse.click(payload.x+20,payload.y+20);
+  assert.equal((await page.evaluate(()=>window.__agriscope.snapshot())).payloadExpanded,true,'Pointer input expands the payload disclosure.');
+  await page.waitForTimeout(1400);await page.keyboard.press('Escape');
   await seek(page,.56);await page.waitForTimeout(700);
   await page.locator('[data-hotspot="boundary"]').click();await page.waitForTimeout(1400);await page.keyboard.press('Escape');
   await seek(page,.76);await page.waitForTimeout(700);

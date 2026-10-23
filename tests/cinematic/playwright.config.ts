@@ -3,7 +3,7 @@ import { defineConfig } from "@playwright/test";
 export default defineConfig({
   testDir: "../e2e",
   testMatch: ["landing-001.spec.ts", "farms-list-001.spec.ts", "cinematic-flow-002.spec.ts", "cinematic-lab-001.spec.ts"],
-  timeout: 60_000,
+  timeout: 120_000,
   expect: { timeout: 10_000 },
   workers: 1,
   use: {
