@@ -7,6 +7,7 @@ import { buildTerrain } from '../../apps/web/public/cinematic/terrain.js';
 // including the raised tracks. This catches the corner-only curve clipping bug.
 const asset = name => JSON.parse(readFileSync(new URL(`../../apps/web/public/cinematic/models/${name}.mesh.json`, import.meta.url), 'utf8'));
 const terrain = buildTerrain({farmland:asset('farmland'), tree:asset('tree')});
+const cinematicTerrain = buildTerrain({farmland:asset('farmland'), tree:asset('tree')},{cinematic:true,day:new THREE.Texture()});
 terrain.updateMatrixWorld(true);
 const expectedLayers=new Map([
  ['Dry earth','ground'],['Rice rows','crop'],['Field tracks','bank'],
@@ -16,6 +17,28 @@ for(const mesh of terrain.children){
  if(mesh.name.startsWith('Rice field'))assert.equal(mesh.userData.terrainLayer,'parcel');
  else if(expectedLayers.has(mesh.name))assert.equal(mesh.userData.terrainLayer,expectedLayers.get(mesh.name));
 }
+const cropVisibility=group=>group.children.filter(mesh=>mesh.name.startsWith('Rice rows')).map(mesh=>mesh.visible);
+terrain.userData.update(.46);cinematicTerrain.userData.update(.46);
+const regularApproach=cropVisibility(terrain),cinematicApproach=cropVisibility(cinematicTerrain);
+assert.ok(regularApproach.length>0&&regularApproach.every(visible=>!visible),'Landing retains the accepted later crop-row reveal');
+assert.ok(cinematicApproach.every(Boolean),'Cinematic lab reveals the accepted crop mass during field approach');
+terrain.userData.update(.56);cinematicTerrain.userData.update(.56);
+terrain.userData.update(.46);cinematicTerrain.userData.update(.46);
+assert.deepEqual(cropVisibility(terrain),regularApproach,'Landing crop reveal restores exactly after reverse traversal');
+assert.deepEqual(cropVisibility(cinematicTerrain),cinematicApproach,'Cinematic crop reveal restores exactly after reverse traversal');
+const legacySurface=cinematicTerrain.children.find(mesh=>mesh.name==='Dry earth');
+const legacyShader={uniforms:{},vertexShader:'#include <common>\n#include <beginnormal_vertex>\n#include <begin_vertex>',fragmentShader:'#include <common>\n#include <normal_fragment_maps>\n#include <roughnessmap_fragment>\n#include <metalnessmap_fragment>\n#include <color_fragment>'};
+legacySurface.material.onBeforeCompile(legacyShader);
+cinematicTerrain.userData.update(.42);
+assert.equal(legacyShader.uniforms.regionalReplacement.value,0,'Legacy local terrain is intact before the authored Hero handoff');
+assert.equal(legacySurface.material.depthWrite,true,'Opaque legacy terrain writes depth before replacement');
+cinematicTerrain.userData.update(.47);
+assert.equal(legacyShader.uniforms.regionalReplacement.value,1,'Legacy local terrain fully clears once the Hero derivative owns the landscape');
+assert.equal(legacySurface.material.depthWrite,false,'Faded legacy terrain cannot occlude the Hero derivative');
+assert.ok(cinematicTerrain.children.filter(child=>child.isInstancedMesh).every(child=>!child.visible),'Cinematic lab never reveals the old procedural tree instances');
+cinematicTerrain.userData.update(.42);
+assert.equal(legacyShader.uniforms.regionalReplacement.value,0,'Reverse traversal restores the legacy terrain handoff exactly');
+assert.equal(legacySurface.material.depthWrite,true,'Reverse traversal restores legacy terrain depth writes');
 terrain.userData.update(.56);
 const materialVersions=new Map(terrain.children.filter(child=>child.userData.terrainLayer).map(mesh=>[mesh.material,mesh.material.version]));
 terrain.userData.update(.57);

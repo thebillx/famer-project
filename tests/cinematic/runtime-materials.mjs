@@ -7,6 +7,9 @@ import {descentSurface,projectDescentSurface,descentCloudHeight} from '../../app
 import {buildSurveyCorridor} from '../../apps/web/public/cinematic/survey-corridor.js';
 import {decodeMeshAsset,loadSurfaceMaps} from '../../apps/web/public/cinematic/mesh-assets.js';
 import {bindTerrainEnvironment,buildTerrain} from '../../apps/web/public/cinematic/terrain.js';
+import {buildScene4Regional} from '../../apps/web/public/cinematic/scene4-regional.js';
+import {buildScene4Hero} from '../../apps/web/public/cinematic/scene4-hero.js';
+import {buildDescentAtmosphere} from '../../apps/web/public/cinematic/descent-atmosphere.js';
 
 const load=async name=>JSON.parse(await readFile(new URL(`../../apps/web/public/cinematic/models/${name}.mesh.json`,import.meta.url)));
 const encode=(values,Type)=>{
@@ -32,16 +35,16 @@ const decodedUvFixture=decodeMeshAsset(uvFixture).children[0].geometry.attribute
 assert.deepEqual(Array.from(decodedUvFixture.array),[1,-.5,-32,.50390625,32767/512,-64],'Signed packed UVs decode with the 1/512 scale and retain the full range');
 assert.throws(()=>decodeMeshAsset({...uvFixture,meshes:[{...uvFixture.meshes[0],uv:encode([1,2,3,4],Int16Array)}]}),/Invalid authored UV count/,'Malformed packed UV counts are rejected');
 const spacecraftData=await load('spacecraft');
-const [farmland,tree]=await Promise.all([load('farmland'),load('tree')]);
+const [farmland,tree,scene4RegionalData,scene4HeroData]=await Promise.all([load('farmland'),load('tree'),load('scene4-regional'),load('scene4-hero')]);
 
 const mapRoles=new Set();
-for(const data of [spacecraftData,farmland,tree])for(const variant of data.variants||[data])for(const mesh of variant.meshes){
+for(const data of [spacecraftData,farmland,tree,scene4RegionalData,scene4HeroData])for(const variant of data.variants||[data])for(const mesh of variant.meshes){
  if(mesh.material.surface)mapRoles.add(mesh.material.surface);
 }
 assert.deepEqual([...mapRoles].sort(),['crop','leaf','metal','soil','solar','water'],'All exported authored surface roles are known');
 
 const loadedTextures=[];
-const maps=await loadSurfaceMaps([spacecraftData,farmland,tree],{loadAsync:async url=>{
+const maps=await loadSurfaceMaps([spacecraftData,farmland,tree,scene4RegionalData,scene4HeroData],{loadAsync:async url=>{
  const texture={url,dispose(){this.disposed=true;},disposed:false};
  loadedTextures.push(texture);return texture;
 }});
@@ -62,7 +65,7 @@ await assert.rejects(
 );
 const failedTextures=[];
 await assert.rejects(
- loadSurfaceMaps([spacecraftData,farmland,tree],{loadAsync:async url=>{
+ loadSurfaceMaps([spacecraftData,farmland,tree,scene4RegionalData,scene4HeroData],{loadAsync:async url=>{
   const texture={url,dispose(){this.disposed=true;},disposed:false};
   if(url.endsWith('/soil-normal.png'))throw new Error('simulated map failure');
   failedTextures.push(texture);
@@ -166,6 +169,87 @@ const open=corridorState(.39);corridorState(.95);assert.deepEqual(corridorState(
 assert.equal(corridor.userData.beam.material.uniforms.spectral.value>0,true,'Spectral passage exists only during the authored corridor beat');
 corridorState(.56);assert.equal(corridor.userData.beam.visible,false,'Data volume ends before product assessment');
 console.log('PASS articulated pivots, reverse deployment, authored emission, finite survey footprint and spectral passage');
+
+const regionalEnvironment={name:'Scene 4 environment fixture'};
+const scene4Regional=buildScene4Regional(scene4RegionalData,{environment:regionalEnvironment,surfaceMaps:maps});
+const regionalMaterials=scene4Regional.children.map(mesh=>mesh.material);
+const regionalState=p=>{
+ const applied=scene4Regional.userData.apply(p);
+ return {applied,visible:scene4Regional.visible,scale:scene4Regional.scale.toArray(),opacities:regionalMaterials.map(material=>material.opacity)};
+};
+const regionalHidden=regionalState(.42),regionalVisible=regionalState(.47);
+assert.equal(regionalHidden.visible,false,'Scene 4 continuation stays absent before the local transition');
+assert.equal(regionalVisible.visible,true,'Scene 4 continuation arrives with the atmospheric descent');
+assert.equal(regionalVisible.applied.triangles,42234);assert.equal(regionalVisible.applied.batches,6);
+assert.ok(regionalVisible.opacities.every(opacity=>opacity>0),'Every regional broad-form batch participates in the selected descent');
+assert.equal(regionalState(.70).visible,true,'Scene 4 continuation supports the boundary and quality chapters');
+assert.equal(regionalState(.80).visible,false,'Scene 4 continuation clears before the comparison settles');
+assert.deepEqual(regionalState(.47),regionalVisible,'Scene 4 continuation restores exact visibility, scale, and material opacity in reverse');
+for(const material of regionalMaterials)assert.equal(material.envMap,regionalEnvironment,'Regional materials share the bounded agricultural environment');
+const regionalGround=scene4Regional.getObjectByName('Scene 4 regional · regional-ground');
+const regionalShader={uniforms:{},vertexShader:'#include <common>\n#include <begin_vertex>',fragmentShader:'#include <common>\n#include <color_fragment>'};
+regionalGround.material.onBeforeCompile(regionalShader);
+assert.match(regionalShader.fragmentShader,/float regionalHandoff=max\(abs\(regionalPosition\.x\),abs\(regionalPosition\.z\)\)\+sin\(regionalPosition\.x\*\.19\)\*\.55\+sin\(regionalPosition\.z\*\.14\)\*\.45/,'Regional derivative follows the broad authored box edge without a circular stage seam');
+assert.match(regionalShader.fragmentShader,/float shell=smoothstep\(8\.,12\.,regionalHandoff\)/,'Regional ground underpaint closes the warm-sky gap below the Hero feather');
+assert.match(regionalShader.fragmentShader,/if\(shell<\.012\)discard/,'Regional derivative does not cover the Scene 4 Hero core');
+const regionalCanopy=scene4Regional.getObjectByName('Scene 4 regional · regional-canopy');
+const regionalCanopyShader={uniforms:{},vertexShader:'#include <common>\n#include <begin_vertex>',fragmentShader:'#include <common>\n#include <color_fragment>'};
+regionalCanopy.material.onBeforeCompile(regionalCanopyShader);
+assert.match(regionalCanopyShader.fragmentShader,/float shell=smoothstep\(12\.,31\.5,regionalHandoff\)/,'Regional forms above the underpaint still meet the Hero asset across the selected broad feather');
+
+const heroEnvironment={name:'Hero Field environment fixture'};
+const scene4Hero=buildScene4Hero(scene4HeroData,{environment:heroEnvironment,surfaceMaps:maps});
+const heroMaterials=scene4Hero.children.map(mesh=>mesh.material);
+const heroState=(p,flatten=0)=>{
+ const applied=scene4Hero.userData.apply(p,flatten);
+ return {applied,visible:scene4Hero.visible,position:scene4Hero.position.toArray(),rotation:scene4Hero.rotation.toArray(),scale:scene4Hero.scale.toArray(),opacities:heroMaterials.map(material=>material.opacity)};
+};
+const heroHidden=heroState(.42),heroVisible=heroState(.47);
+assert.equal(heroHidden.visible,false,'Scene 4 Hero derivative stays absent before the local transition');
+assert.equal(heroVisible.visible,true,'Scene 4 Hero derivative replaces the legacy local landscape during descent');
+assert.equal(heroVisible.applied.triangles,98743);assert.equal(heroVisible.applied.batches,12);
+assert.deepEqual(heroVisible.position,[0,0,0],'Hero Field remains at its authored registration origin');
+assert.deepEqual(heroVisible.rotation,[0,0,0,'XYZ'],'Hero Field does not rotate away from its sample registration');
+assert.ok(heroVisible.opacities.every(opacity=>opacity>0),'Every Hero material batch participates in the selected descent');
+assert.equal(heroState(.70).visible,true,'Hero Field remains through the settled product chapters');
+assert.equal(heroState(1).visible,true,'Hero Field remains through the application handoff');
+assert.deepEqual(heroState(.47),heroVisible,'Hero visibility, scale, registration, and material opacity restore exactly in reverse');
+for(const material of heroMaterials){
+ assert.equal(material.envMap,heroEnvironment,'Hero materials share the bounded agricultural environment');
+ assert.equal(material.transparent,true,'Hero materials retain a deterministic transition envelope');
+ assert.ok(['crop','soil','water'].includes(material.userData.surface),'Hero batches retain their exported semantic surface roles');
+}
+const heroGround=scene4Hero.getObjectByName('Scene 4 hero · hero-ground');
+const heroShader={uniforms:{},vertexShader:'#include <common>\n#include <begin_vertex>',fragmentShader:'#include <common>\n#include <color_fragment>'};
+heroGround.material.onBeforeCompile(heroShader);
+assert.match(heroShader.vertexShader,/uniform float fieldFlatten;/,'Hero materials receive the terrain-owned flatten value');
+assert.match(heroShader.vertexShader,/transformed\.y\+=dot\(position\.xz,position\.xz\)\/1800\.\*fieldFlatten;/,'Hero vertices use the exact legacy terrain, sample-boundary, and NDVI curvature displacement');
+assert.match(heroShader.fragmentShader,/float heroHandoff=max\(abs\(heroPosition\.x\),abs\(heroPosition\.z\)\)\+sin\(heroPosition\.x\*\.19\)\*\.55\+sin\(heroPosition\.z\*\.14\)\*\.45/,'Hero derivative follows the same broad authored box edge as the regional shell');
+assert.match(heroShader.fragmentShader,/float heroFeather=1\.-smoothstep\(12\.,31\.5,heroHandoff\)/,'Hero derivative uses the exact complement of the regional join');
+assert.match(heroShader.fragmentShader,/if\(heroFeather<\.012\)discard/,'Hero derivative releases its outer extent to the regional shell');
+const registeredHero=heroState(.53,.37);
+heroState(.70,.92);
+assert.deepEqual(heroState(.53,.37),registeredHero,'Hero scale, opacity, registration, and flatten restore exactly after reverse traversal');
+assert.equal(heroShader.uniforms.fieldFlatten.value,.37,'Hero apply owns the current flatten uniform without accumulating displacement');
+
+const cloudState=(atmosphere,p)=>{
+ const applied=atmosphere.userData.apply(p);
+ const banks=atmosphere.children.filter(child=>child.material.uniforms.warmEdge);
+ const sky=atmosphere.children.find(child=>!child.material.uniforms.warmEdge);
+ return {applied,visible:atmosphere.visible,scale:atmosphere.scale.toArray(),skyOpacity:sky.material.uniforms.opacity.value,opacities:banks.map(bank=>bank.material.uniforms.opacity.value),warmEdges:banks.map(bank=>bank.material.uniforms.warmEdge.value)};
+};
+const desktopAtmosphere=buildDescentAtmosphere(),mobileAtmosphere=buildDescentAtmosphere({mobile:true});
+assert.equal(desktopAtmosphere.children.length,7,'Atmosphere owns one sky shell plus six cloud banks');assert.equal(desktopAtmosphere.userData.asset.banks,6);assert.equal(desktopAtmosphere.userData.asset.samples,14);
+assert.equal(mobileAtmosphere.children.length,7,'Mobile retains the same sky and cloud composition');assert.equal(mobileAtmosphere.userData.asset.banks,6);assert.equal(mobileAtmosphere.userData.asset.samples,10);
+const cloudsBefore=cloudState(desktopAtmosphere,.395),cloudsOpen=cloudState(desktopAtmosphere,.47);
+assert.equal(cloudsBefore.visible,false,'Separate Scene 4 atmosphere stays absent before its authored passage');
+assert.equal(cloudsOpen.visible,true,'Six near/middle/far cloud banks frame the local descent');
+assert.ok(cloudsOpen.opacities.every(opacity=>opacity>0),'Every cloud bank receives a bounded opacity inside the passage');
+assert.ok(cloudState(desktopAtmosphere,.60).opacities.every(opacity=>opacity===0),'Scene 4 cloud banks clear for the Hero Field reveal');
+assert.equal(cloudState(desktopAtmosphere,.70).visible,false,'The atmospheric sky shell clears after the passage');
+assert.deepEqual(cloudState(desktopAtmosphere,.47),cloudsOpen,'Cloud bank visibility, scale, opacity, and edge light restore exactly in reverse');
+assert.deepEqual(cloudState(mobileAtmosphere,.47).opacities,cloudsOpen.opacities,'Mobile changes sample cost without changing authored cloud hierarchy');
+console.log('PASS deterministic Scene 4 regional shell and six-bank desktop/mobile atmosphere');
 
 // The corrective visual contract: no enclosing cone or screen-sized plane,
 // exact reverse state for the dynamic geometry as well as object matrices.
@@ -298,19 +382,43 @@ for(const p of [.375,.397,.405,.415,.433,.455,.465,.475]){
 }
 const envelope=corridor.getObjectByName('Survey route envelope');
 assert.ok(envelope.isMesh&&envelope.geometry.index.count>0,'Corridor uses a finite physical cross-section for portrait readability');
+assert.equal(corridor.userData.endpoint,null,'Landing corridor does not add the lab-only registration response');
+assert.equal(corridor.userData.acquisition,null,'Landing corridor does not add the lab-only acquisition plane');
 corridor.userData.apply(.39,new THREE.Vector3(2,13,-1),0);
 assert.equal(corridor.userData.clouds.visible,false,'Local cloud banks do not float outside the globe before descent');
 const labCorridor=buildSurveyCorridor({lab:true});
+assert.equal(labCorridor.userData.endpoint.geometry.type,'CircleGeometry');
+assert.equal(labCorridor.userData.endpoint.geometry.parameters.radius,1,'Registration response retains its localized unit source before the authored ellipse scale');
+assert.equal(labCorridor.userData.acquisition.geometry.type,'PlaneGeometry');
+assert.deepEqual([labCorridor.userData.acquisition.geometry.parameters.width,labCorridor.userData.acquisition.geometry.parameters.height],[4.95,4.57],'Acquisition response is confined to the exact sample boundary');
+const labRevealState=p=>{
+ labCorridor.userData.apply(p,new THREE.Vector3(2,13,-1),0);
+ return {
+  endpointVisible:labCorridor.userData.endpoint.visible,
+  endpointOpacity:labCorridor.userData.endpoint.material.uniforms.opacity.value,
+  acquisitionVisible:labCorridor.userData.acquisition.visible,
+  acquisitionOpacity:labCorridor.userData.acquisition.material.uniforms.opacity.value,
+  scan:labCorridor.userData.acquisition.material.uniforms.scan.value,
+ };
+};
+const arrivalReveal=labRevealState(.48),acquisitionReveal=labRevealState(.535);
+assert.equal(arrivalReveal.endpointVisible,true);assert.equal(arrivalReveal.acquisitionVisible,false,'Arrival uses the localized response before acquisition begins');
+assert.equal(acquisitionReveal.endpointVisible,true);assert.equal(acquisitionReveal.acquisitionVisible,true,'Acquisition adds a distinct scan front within the exact field');
+assert.ok(acquisitionReveal.acquisitionOpacity>0&&acquisitionReveal.acquisitionOpacity<=.70,'Acquisition coverage retains the bounded selected brightness');
+assert.deepEqual(labRevealState(.56),{endpointVisible:false,endpointOpacity:0,acquisitionVisible:false,acquisitionOpacity:0,scan:1},'Settled field removes the temporary arrival and acquisition effects');
+assert.deepEqual(labRevealState(.535),acquisitionReveal,'Reverse traversal restores the exact acquisition state');
 corridor.userData.apply(.52,new THREE.Vector3(2,13,-1),0);
 labCorridor.userData.apply(.52,new THREE.Vector3(2,13,-1),0);
 assert.equal(corridor.userData.clouds.visible,false,'Landing cloud strata retain their established .465–.515 fade window');
-assert.equal(labCorridor.userData.clouds.visible,true,'The lab may extend its cloud fade without changing the landing route');
+assert.equal(labCorridor.userData.clouds.visible,false,'The lab disables legacy surface cloud blobs in favor of the separate Scene 4 atmosphere');
+assert.equal(cloudState(desktopAtmosphere,.52).visible,true,'The separate Scene 4 atmosphere remains present during the lab descent');
 const [mainSource,labMainSource]=await Promise.all([
  readFile(new URL('../../apps/web/public/cinematic/main.js',import.meta.url),'utf8'),
  readFile(new URL('../../apps/web/public/cinematic/lab-main.js',import.meta.url),'utf8'),
 ]);
+assert.match(mainSource,/const flatten=terrain\.userData\.update\(p\);[\s\S]{0,160}heroWorld\?\.userData\.apply\(p,flatten\)/,'The runtime passes the terrain-owned flatten value directly to the Hero update');
 assert.doesNotMatch(mainSource,/from ['"]\.\/lab-timeline\.js['"]/,'The landing entry graph does not request the lab camera timeline');
 assert.match(labMainSource,/from ['"]\.\/lab-timeline\.js['"]/,'Only the lab entry imports its camera timeline');
 assert.match(mainSource,/lab\?\.38:\.35/,'Landing bloom radius remains .35 while the lab opts into .38');
-assert.match(mainSource,/if\(lab\)\{fieldKey=new THREE\.SpotLight/,'The Hero Field spotlight is constructed only for the lab');
+assert.match(mainSource,/if\(lab\)\{[\s\S]*?fieldKey=new THREE\.SpotLight/,'The Hero Field spotlight is constructed only for the lab');
 console.log(`PASS shared tangent magnification: ${interiorSamples} authored triangle interiors, continuous scale/material weights, stable cloud placement and portrait corridor geometry`);

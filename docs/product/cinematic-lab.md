@@ -23,9 +23,21 @@ failure and context loss retain readable Thai content and the registration path.
 
 Reference direction is recorded in
 `apps/web/public/cinematic/REFERENCE-NOTES.md`. No ThreeUI Pro or Edolus source,
-asset, branding or imagery is incorporated. Existing original compact mesh assets
-remain the runtime source; the accepted Blender masters stay editable evidence and
-are not imported as unmeasured full-scene browser payloads.
+asset, branding or imagery is incorporated. The lab adds measured compact Scene 4
+regional and Hero Field derivatives from the SHA-bound Blender establishing
+source while retaining the existing spacecraft. The separately accepted Hero
+milestone remains an archived reference and is not claimed as a byte-identical
+export source. The 9.49M-triangle authoring scene is not loaded by the browser.
+The derivatives are requested only on `/cinematic-lab`; the public landing route
+keeps its existing asset graph and visual state. One Three.js renderer still owns
+the complete journey.
+
+The runtime derivative transfers broad valley, drainage, ridge, woodland and
+riparian forms. Browser-authored cloud volumes, a lab-only cubic data corridor,
+selective destination light and a sample-bound acquisition front adapt the static
+direction for motion. All are deterministic functions of absolute scroll
+progress. The editable Blender source and object-level binding manifest remain
+external SHA-bound evidence so generator output cannot overwrite accepted masters.
 
 Acceptance for the prototype is a production build and real-browser evidence at
 desktop and mobile sizes covering ten chapters, forward/reverse traversal,

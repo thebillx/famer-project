@@ -24,19 +24,29 @@ for(const sample of at.frameProbes||[]){
 }
 report.captureOverhead={before:bt.captureOperations,after:at.captureOperations};
 await mkdir(join(root,'comparison'),{recursive:true});
-await writeFile(join(root,'comparison/renderer-comparison.json'),JSON.stringify(report,null,2)+'\n');
 const browser=await chromium.launch({...(!process.env.CI?{channel:'chrome'}:{}),headless:true});
 try{
  const page=await browser.newPage({viewport:{width:1440,height:900},deviceScaleFactor:1});
+ const groups=[
+  {slug:'spacecraft',title:'Spacecraft and payload',shots:['02','03']},
+  {slug:'descent',title:'Atmospheric descent',shots:['05']},
+  {slug:'hero-field',title:'Hero Field destination and data view',shots:['06','08']},
+ ];
+ report.visualBoards=[];
  for(const viewport of ['desktop','small-mobile']){
-  const items=[];
-  for(const shot of ['05','06','07'])for(const side of ['before','after']){
-   const file=join(root,...(side==='before'?['before']:[]),viewport,`shot-${shot}.png`);
-   items.push(`<figure><figcaption>${side.toUpperCase()} · SHOT ${shot}</figcaption><img src="data:image/png;base64,${(await readFile(file)).toString('base64')}"></figure>`);
+  for(const group of groups){
+   const items=[];
+   for(const shot of group.shots)for(const side of ['before','after']){
+    const file=join(root,...(side==='before'?['before']:[]),viewport,`shot-${shot}.png`);
+    items.push(`<figure><figcaption>${side.toUpperCase()} · SHOT ${shot}</figcaption><img src="data:image/png;base64,${(await readFile(file)).toString('base64')}"></figure>`);
+   }
+   const output=`${viewport}-${group.slug}-before-after.png`;
+   await page.setContent(`<style>body{margin:0;padding:20px;background:#09131b;color:white;font:16px system-ui}main{display:grid;grid-template-columns:1fr 1fr;gap:18px}figure{margin:0}img{width:100%}figcaption{padding:8px}</style><h1>${viewport} · ${group.title} · matched 0d0cb2f baseline</h1><main>${items.join('')}</main>`);
+   await page.waitForFunction(()=>[...document.images].every(i=>i.complete&&i.naturalWidth));
+   await page.screenshot({path:join(root,'comparison',output),fullPage:true});
+   report.visualBoards.push({viewport,sequence:group.slug,shots:group.shots,path:`comparison/${output}`});
   }
-  await page.setContent(`<style>body{margin:0;padding:20px;background:#09131b;color:white;font:16px system-ui}main{display:grid;grid-template-columns:1fr 1fr;gap:18px}figure{margin:0}img{width:100%}figcaption{padding:8px}</style><h1>${viewport} · Matched terrain shots 5, 6 and 7</h1><main>${items.join('')}</main>`);
-  await page.waitForFunction(()=>[...document.images].every(i=>i.complete&&i.naturalWidth));
-  await page.screenshot({path:join(root,'comparison',`${viewport}-before-after.png`),fullPage:true});
  }
+ await writeFile(join(root,'comparison/renderer-comparison.json'),JSON.stringify(report,null,2)+'\n');
 }finally{await browser.close();}
-console.log('PASS matched comparisons and renderer timing report');
+console.log('PASS matched spacecraft, descent, Hero Field comparisons and renderer timing report');

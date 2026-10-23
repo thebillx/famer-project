@@ -22,13 +22,14 @@ function detail(material,transition,role){
    : 'objectNormal.xz*=1.-fieldFlatten;';
   const localWaterNormal=surfaceKind===4?'\nobjectNormal.xz*=1.-.82*localDetail;':'';
   shader.vertexShader=shader.vertexShader.replace('#include <common>','#include <common>\nuniform float fieldFlatten;\nuniform float localDetail;\nvarying vec3 agriculturalPosition;\nvarying vec3 agriculturalViewNormal;\nvarying vec3 geographicNormal;').replace('#include <beginnormal_vertex>',`#include <beginnormal_vertex>\n${deformationNormal}${localWaterNormal}\nobjectNormal=normalize(objectNormal);\nagriculturalViewNormal=normalize(normalMatrix*objectNormal);`).replace('#include <begin_vertex>',`#include <begin_vertex>\nagriculturalPosition = position;\ntransformed.y+=dot(position.xz,position.xz)/${TERRAIN_CURVE_DIVISOR}.*fieldFlatten;\ngeographicNormal = normalize(normalMatrix*vec3(position.x,position.y+900.,position.z));`);
-  shader.fragmentShader=shader.fragmentShader.replace('#include <common>','#include <common>'+regionalSurfaceGLSL+'\nuniform float descentReveal;\nvarying vec3 agriculturalPosition;\nvarying vec3 agriculturalViewNormal;\nvarying vec3 geographicNormal;\nuniform float localDetail;\nuniform float surfaceKind;\nuniform sampler2D globeMap;\nuniform mat3 globeRotation;\nfloat fieldHash(vec2 p){return fract(sin(dot(p,vec2(12.9898,78.233)))*43758.5453);}\nfloat fieldNoise(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(fieldHash(i),fieldHash(i+vec2(1.,0.)),f.x),mix(fieldHash(i+vec2(0.,1.)),fieldHash(i+vec2(1.,1.)),f.x),f.y);}')
+  shader.uniforms.regionalReplacement=transition.regionalReplacement;
+  shader.fragmentShader=shader.fragmentShader.replace('#include <common>','#include <common>'+regionalSurfaceGLSL+'\nuniform float descentReveal;\nuniform float regionalReplacement;\nvarying vec3 agriculturalPosition;\nvarying vec3 agriculturalViewNormal;\nvarying vec3 geographicNormal;\nuniform float localDetail;\nuniform float surfaceKind;\nuniform sampler2D globeMap;\nuniform mat3 globeRotation;\nfloat fieldHash(vec2 p){return fract(sin(dot(p,vec2(12.9898,78.233)))*43758.5453);}\nfloat fieldNoise(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(fieldHash(i),fieldHash(i+vec2(1.,0.)),f.x),mix(fieldHash(i+vec2(0.,1.)),fieldHash(i+vec2(1.,1.)),f.x),f.y);}')
    .replace('#include <normal_fragment_maps>','#include <normal_fragment_maps>\nnormal=normalize(mix(geographicNormal,normal,localDetail));')
    .replace('#include <roughnessmap_fragment>','#include <roughnessmap_fragment>\nroughnessFactor=mix(.87,roughnessFactor,localDetail);\nfloat surfaceRoughness=fieldNoise(agriculturalPosition.xz*.68);\nif(surfaceKind>5.5)roughnessFactor=clamp(roughnessFactor+(surfaceRoughness-.5)*.055,.74,.93);\nelse if(surfaceKind>4.5)roughnessFactor=clamp(roughnessFactor+(surfaceRoughness-.5)*.05,.78,.95);\nelse if(surfaceKind>3.5)roughnessFactor=clamp(roughnessFactor+(surfaceRoughness-.5)*.035,.07,.18);\nelse roughnessFactor=clamp(roughnessFactor+(surfaceRoughness-.5)*.06,.52,.99);\nroughnessFactor=mix(.86,roughnessFactor,localDetail);')
    .replace('#include <metalnessmap_fragment>','#include <metalnessmap_fragment>\nmetalnessFactor*=localDetail;')
-   .replace('#include <color_fragment>','#include <color_fragment>\nfloat broadTone=fieldNoise(agriculturalPosition.xz*.43);\nfloat fineTone=fieldNoise(agriculturalPosition.xz*1.17+vec2(3.1,-1.7));\nfloat fieldPatch=broadTone*.64+fineTone*.36;\nfloat soilTone=fieldNoise(agriculturalPosition.xz*.84+vec2(-2.3,4.7));\nif(surfaceKind<.5){diffuseColor.rgb*=.95+.065*soilTone;diffuseColor.rgb*=mix(vec3(.955,.91,.84),vec3(1.02,1.,.95),fieldPatch);}\nelse if(surfaceKind<1.5){diffuseColor.rgb*=.965+.060*fieldPatch;diffuseColor.rgb*=vec3(1.+(fieldPatch-.5)*.018,1.+(soilTone-.5)*.022,.982);}\nelse if(surfaceKind<2.5){float rowTone=mix(.96,1.02,fieldNoise(agriculturalPosition.xz*.31));diffuseColor.rgb*=rowTone;diffuseColor.rgb*=vec3(.965,1.,.95);}\nelse if(surfaceKind<3.5){diffuseColor.rgb*=.98+.025*soilTone;diffuseColor.rgb*=vec3(1.02,.995,.94);}\nelse if(surfaceKind<4.5){diffuseColor.rgb*=vec3(.78,.90,.92);}\nelse if(surfaceKind<5.5){diffuseColor.rgb*=.985+.020*soilTone;diffuseColor.rgb*=vec3(.99,.96,.89);}\nelse{diffuseColor.rgb*=.97+.020*soilTone;diffuseColor.rgb*=vec3(.97,.95,.87);}\nvec3 earthDirection=normalize(globeRotation*vec3(agriculturalPosition.x,agriculturalPosition.y+900.,agriculturalPosition.z));\nvec2 earthUV=vec2(fract(atan(earthDirection.z,-earthDirection.x)/6.2831853),asin(earthDirection.y)/3.14159265+.5);\nvec3 geographicColor=regionalSurfaceColor(texture2D(globeMap,earthUV).rgb,vec3(agriculturalPosition.x,agriculturalPosition.y+900.,agriculturalPosition.z));\ndiffuseColor.rgb=mix(geographicColor,diffuseColor.rgb,localDetail);\ndiffuseColor.a*=descentReveal;');
+   .replace('#include <color_fragment>','#include <color_fragment>\nfloat broadTone=fieldNoise(agriculturalPosition.xz*.43);\nfloat fineTone=fieldNoise(agriculturalPosition.xz*1.17+vec2(3.1,-1.7));\nfloat fieldPatch=broadTone*.64+fineTone*.36;\nfloat soilTone=fieldNoise(agriculturalPosition.xz*.84+vec2(-2.3,4.7));\nif(surfaceKind<.5){diffuseColor.rgb*=.95+.065*soilTone;diffuseColor.rgb*=mix(vec3(.955,.91,.84),vec3(1.02,1.,.95),fieldPatch);}\nelse if(surfaceKind<1.5){diffuseColor.rgb*=.965+.060*fieldPatch;diffuseColor.rgb*=vec3(1.+(fieldPatch-.5)*.018,1.+(soilTone-.5)*.022,.982);}\nelse if(surfaceKind<2.5){float rowTone=mix(.96,1.02,fieldNoise(agriculturalPosition.xz*.31));diffuseColor.rgb*=rowTone;diffuseColor.rgb*=vec3(.965,1.,.95);}\nelse if(surfaceKind<3.5){diffuseColor.rgb*=.98+.025*soilTone;diffuseColor.rgb*=vec3(1.02,.995,.94);}\nelse if(surfaceKind<4.5){diffuseColor.rgb*=vec3(.78,.90,.92);}\nelse if(surfaceKind<5.5){diffuseColor.rgb*=.985+.020*soilTone;diffuseColor.rgb*=vec3(.99,.96,.89);}\nelse{diffuseColor.rgb*=.97+.020*soilTone;diffuseColor.rgb*=vec3(.97,.95,.87);}\nvec3 earthDirection=normalize(globeRotation*vec3(agriculturalPosition.x,agriculturalPosition.y+900.,agriculturalPosition.z));\nvec2 earthUV=vec2(fract(atan(earthDirection.z,-earthDirection.x)/6.2831853),asin(earthDirection.y)/3.14159265+.5);\nvec3 geographicColor=regionalSurfaceColor(texture2D(globeMap,earthUV).rgb,vec3(agriculturalPosition.x,agriculturalPosition.y+900.,agriculturalPosition.z));\ndiffuseColor.rgb=mix(geographicColor,diffuseColor.rgb,localDetail);\ndiffuseColor.a*=descentReveal*(1.-regionalReplacement);\nif(diffuseColor.a<.004)discard;');
  };
- material.customProgramCacheKey=()=> `agriscope-blender-field-detail-v16-${surfaceKind}`;
+ material.customProgramCacheKey=()=> `agriscope-blender-field-detail-v18-${surfaceKind}`;
 }
 
 export function bindTerrainEnvironment(group,environment){
@@ -41,18 +42,18 @@ export function bindTerrainEnvironment(group,environment){
  });
 }
 
-export function buildTerrain(assets,{mobile=false,day=null,rotation=new THREE.Matrix3(),surfaceMaps={},regional=day,regionalBlend={value:0}}={}){
+export function buildTerrain(assets,{mobile=false,day=null,rotation=new THREE.Matrix3(),surfaceMaps={},regional=day,regionalBlend={value:0},cinematic=false}={}){
  const group=decodeMeshAsset(assets.farmland,0,surfaceMaps);group.name='Blender agricultural landscape · synthetic demonstration';
  // Incoming transparent land must compose before the higher cloud strata.
  group.renderOrder=-1;
- const transition={regional:{value:regional},regionalBlend,reveal:{value:1},detail:{value:day?0:1},flatten:{value:0},map:{value:day},rotation:{value:rotation}};
+ const transition={regional:{value:regional},regionalBlend,reveal:{value:1},detail:{value:day?0:1},flatten:{value:0},regionalReplacement:{value:0},map:{value:day},rotation:{value:rotation}};
  const layerFor=name=>name==='Dry earth'?'ground':name.startsWith('Rice field')?'parcel':name.startsWith('Rice rows')?'crop':name==='Irrigation water'?'water':name==='Field tracks'||name==='Damp channel shoulder'||name==='Wet channel earth'||name==='Vegetated sample verge'?'bank':'other';
  const surfaceMeshes=[...group.children];
  for(const mesh of surfaceMeshes){mesh.userData.terrainLayer=layerFor(mesh.name);mesh.castShadow=mesh.name==='Field tracks';mesh.receiveShadow=true;if(day){detail(mesh.material,transition,mesh.name);mesh.userData.authoredTransparent=mesh.material.transparent;}}
  const cropRows=group.children.filter(mesh=>mesh.name.startsWith('Rice rows'));
- const prototypes=(assets.tree.variants||[assets.tree]).map((_,index)=>decodeMeshAsset(assets.tree,index,surfaceMaps));
- const random=seededRandom(21),count=mobile?20:30,clusterCount=mobile?8:10,dummy=new THREE.Object3D();
- const transforms=prototypes.map(()=>[]),trees=[];
+ const prototypes=assets.tree?(assets.tree.variants||[assets.tree]).map((_,index)=>decodeMeshAsset(assets.tree,index,surfaceMaps)):[];
+ const random=seededRandom(21),count=assets.tree?(mobile?20:30):0,clusterCount=mobile?8:10,dummy=new THREE.Object3D();
+ const transforms=prototypes.map(()=>[]),trees=[],treeMaterials=new Set();
  const groveAnchors=[[-5.3,4.0],[5.25,4.7],[-9.8,8.2],[10.2,8.8],[-7.2,-7.9],[7.4,-7.8],[-12.8,2.0],[13.2,1.1],[-10.5,-12.8],[-1.2,-12.3],[10.7,-12.0],[-14,-1]];
  let anchor=null;
  for(let i=0;i<count;i++){
@@ -70,6 +71,7 @@ export function buildTerrain(assets,{mobile=false,day=null,rotation=new THREE.Ma
  }
  for(let variant=0;variant<prototypes.length;variant++)for(const part of prototypes[variant].children){
   const placement=transforms[variant],instances=new THREE.InstancedMesh(part.geometry,part.material,placement.length);instances.name=`${part.name} · silhouette ${variant+1}`;instances.castShadow=true;instances.receiveShadow=true;
+  if(cinematic){part.material.transparent=true;part.material.userData.authoredOpacity=part.material.opacity;treeMaterials.add(part.material);}
   placement.forEach((matrix,i)=>instances.setMatrixAt(i,matrix));group.add(instances);trees.push({instances,placement});
  }
  const vertices=[[-2.5,-2.3],[2.45,-2.3],[2.45,2.27],[-2.5,2.27]],points=[];
@@ -82,8 +84,8 @@ export function buildTerrain(assets,{mobile=false,day=null,rotation=new THREE.Ma
  boundary.name='Sample field boundary';boundary.visible=false;group.add(boundary);group.userData.boundary=boundary;group.userData.localDetail=transition.detail;
  const debugState={layer:'all',wireframe:false};let currentProgress=0;
  const applyDebugVisibility=()=>{
-  for(const mesh of surfaceMeshes)mesh.visible=(debugState.layer==='all'||mesh.userData.terrainLayer===debugState.layer)&&!((cropRows.includes(mesh))&&currentProgress<.505);
-  for(const {instances} of trees)instances.visible=(debugState.layer==='all'||debugState.layer==='trees')&&currentProgress>=.465;
+  for(const mesh of surfaceMeshes)mesh.visible=(debugState.layer==='all'||mesh.userData.terrainLayer===debugState.layer)&&!((cropRows.includes(mesh))&&currentProgress<(cinematic?.455:.505));
+  for(const {instances} of trees)instances.visible=!cinematic&&(debugState.layer==='all'||debugState.layer==='trees')&&currentProgress>=.465;
   boundary.visible=debugState.layer==='all'&&currentProgress>=.50;
  };
  group.userData.setDebug=({layer='all',wireframe=false}={})=>{
@@ -102,10 +104,12 @@ export function buildTerrain(assets,{mobile=false,day=null,rotation=new THREE.Ma
   currentProgress=p;
   const descent=descentSurface(p);
   transition.reveal.value=descent.reveal;
+  transition.regionalReplacement.value=cinematic?smooth(.424,.468,p):0;
   if(day)group.scale.setScalar(descent.scale);
   for(const mesh of surfaceMeshes){
-   const transparent=mesh.userData.authoredTransparent||descent.reveal<1;
+   const transparent=mesh.userData.authoredTransparent||descent.reveal<1||transition.regionalReplacement.value>0;
    if(day&&mesh.material.transparent!==transparent){mesh.material.transparent=transparent;mesh.material.needsUpdate=true;}
+   if(day)mesh.material.depthWrite=!cinematic||transition.regionalReplacement.value===0;
    if(day)mesh.material.envMapIntensity=THREE.MathUtils.lerp(.30,mesh.material.userData.surface==='water'?1.65:.42,descent.detail);
   }
   const flatten=.92*smooth(.465,.59,p);transition.flatten.value=flatten;
@@ -114,6 +118,7 @@ export function buildTerrain(assets,{mobile=false,day=null,rotation=new THREE.Ma
    placement.forEach((source,i)=>{matrix.copy(source);const e=matrix.elements;e[13]+=(e[12]*e[12]+e[14]*e[14])/TERRAIN_CURVE_DIVISOR*flatten;instances.setMatrixAt(i,matrix);});
    instances.instanceMatrix.needsUpdate=true;
   }
+  if(cinematic)for(const material of treeMaterials)material.opacity=0;
   applyDebugVisibility();
   return flatten;
  };

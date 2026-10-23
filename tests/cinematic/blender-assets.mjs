@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
 import {readFileSync,readdirSync,statSync} from 'node:fs';
 import * as THREE from '../../apps/web/public/cinematic/vendor.js';
 import {decodeMeshAsset} from '../../apps/web/public/cinematic/mesh-assets.js';
@@ -192,6 +193,86 @@ assert.deepEqual(surfaceFiles.sort(),[
 ],'Authored surfaces publish complete color, normal, and roughness maps');
 const surfaceBytes=surfaceFiles.reduce((total,file)=>total+statSync(new URL(file,surfaceDir)).size,0);
 assert.ok(surfaceBytes<=1.85*1024*1024,`Surface maps stay under the 1.85 MiB transfer budget (${surfaceBytes} bytes)`);
+const scene4RegionalUrl=new URL('../../apps/web/public/cinematic/models/scene4-regional.mesh.json',import.meta.url);
+const scene4RegionalRaw=readFileSync(scene4RegionalUrl),scene4Regional=JSON.parse(scene4RegionalRaw);
+assert.equal(createHash('sha256').update(scene4RegionalRaw).digest('hex'),'2abfb8fca677075c087359a8148ca4fcc704860a874bdf5e33e6774fd137f470','Scene 4 runtime derivative stays bound to the reviewed Blender export');
+assert.equal(scene4RegionalRaw.length,774811,'Scene 4 derivative byte count is source-bound');
+assert.ok(scene4RegionalRaw.length<=800*1024,'Scene 4 derivative stays within its 800 KiB transfer budget');
+assert.equal(scene4Regional.schema,1);assert.equal(scene4Regional.conceptual,true);
+assert.match(scene4Regional.generator,/Blender 4\.5\.3 LTS · Scene 4 regional runtime derivative/);
+assert.equal(scene4Regional.triangles,42234);assert.equal(scene4Regional.meshes.length,6);
+assert.deepEqual(scene4Regional.meshes.map(mesh=>[mesh.name,mesh.material.surface]),[
+ ['Scene 4 regional · regional-access','soil'],
+ ['Scene 4 regional · regional-canopy','leaf'],
+ ['Scene 4 regional · regional-ground','soil'],
+ ['Scene 4 regional · regional-ridges','soil'],
+ ['Scene 4 regional · regional-water','water'],
+ ['Scene 4 regional · riparian-land-cover','crop'],
+],'Scene 4 derivative retains the reviewed broad-form and material batches');
+const scene4RegionalModel=decodeMeshAsset(scene4Regional),scene4RegionalBounds=new THREE.Box3().setFromObject(scene4RegionalModel);
+let scene4RegionalVertices=0,scene4RegionalTriangles=0;
+for(const mesh of scene4RegionalModel.children){
+ const {position,normal,uv}=mesh.geometry.attributes,index=mesh.geometry.index;
+ scene4RegionalVertices+=position.count;scene4RegionalTriangles+=index.count/3;
+ assert.equal(position.count,normal.count);assert.equal(position.count,uv.count);
+ assert.ok([...position.array,...uv.array].every(Number.isFinite),`${mesh.name} positions and UVs decode to finite values`);
+ for(let i=0;i<index.count;i++)assert.ok(index.getX(i)<position.count,`${mesh.name} indices stay inside its vertex buffer`);
+ for(let i=0;i<normal.count;i++){
+  const length=new THREE.Vector3().fromBufferAttribute(normal,i).length();
+  assert.ok(length>.98&&length<1.02,`${mesh.name} packed normals retain unit length`);
+ }
+}
+assert.equal(scene4RegionalVertices,25071);assert.equal(scene4RegionalTriangles,42234);
+assert.ok(scene4RegionalTriangles<=45000,'Scene 4 derivative stays within its 45k triangle budget');
+assert.deepEqual(scene4RegionalBounds.min.toArray().map(value=>+value.toFixed(5)),[-1200,-.06,-1200]);
+assert.deepEqual(scene4RegionalBounds.max.toArray().map(value=>+value.toFixed(5)),[1200,25.29082,1200]);
+console.log(`PASS scene4-regional: ${scene4RegionalTriangles} triangles, ${scene4RegionalVertices} vertices, 6 material batches and source-bound extent`);
+const scene4HeroUrl=new URL('../../apps/web/public/cinematic/models/scene4-hero.mesh.json',import.meta.url);
+const scene4HeroRaw=readFileSync(scene4HeroUrl),scene4Hero=JSON.parse(scene4HeroRaw);
+assert.equal(createHash('sha256').update(scene4HeroRaw).digest('hex'),'2b6bd63d50336983b866b4bf66a9339a8933cde2b70e28f781467056510539e9','Hero Field runtime derivative stays bound to the reviewed Blender export');
+assert.equal(scene4HeroRaw.length,2517582,'Hero Field derivative byte count is source-bound');
+assert.ok(scene4HeroRaw.length<=2.5*1024*1024,'Hero Field derivative stays within its 2.5 MiB transfer budget');
+assert.equal(scene4Hero.schema,1);assert.equal(scene4Hero.conceptual,true);
+assert.match(scene4Hero.generator,/Blender 4\.5\.3 LTS · Scene 4 hero runtime derivative/);
+assert.equal(scene4Hero.triangles,98743);assert.equal(scene4Hero.meshes.length,12);
+assert.deepEqual(scene4Hero.meshes.map(mesh=>[mesh.name,mesh.material.surface]),[
+ ['Scene 4 hero · hero-access','soil'],
+ ['Scene 4 hero · hero-bank','soil'],
+ ['Scene 4 hero · hero-fallow','soil'],
+ ['Scene 4 hero · hero-field-0','crop'],
+ ['Scene 4 hero · hero-field-1','crop'],
+ ['Scene 4 hero · hero-field-2','crop'],
+ ['Scene 4 hero · hero-field-3','crop'],
+ ['Scene 4 hero · hero-field-4','crop'],
+ ['Scene 4 hero · hero-ground','soil'],
+ ['Scene 4 hero · hero-rows','crop'],
+ ['Scene 4 hero · hero-verge','crop'],
+ ['Scene 4 hero · hero-water','water'],
+],'Hero Field derivative retains the Scene 4 landscape and material batches');
+const scene4HeroModel=decodeMeshAsset(scene4Hero),scene4HeroBounds=new THREE.Box3().setFromObject(scene4HeroModel);
+let scene4HeroVertices=0,scene4HeroTriangles=0;
+for(const mesh of scene4HeroModel.children){
+ const {position,normal,uv}=mesh.geometry.attributes,index=mesh.geometry.index;
+ scene4HeroVertices+=position.count;scene4HeroTriangles+=index.count/3;
+ assert.equal(position.count,normal.count);assert.equal(position.count,uv.count);
+ assert.ok(position.array.every(Number.isFinite)&&uv.array.every(Number.isFinite),`${mesh.name} positions and UVs decode to finite values`);
+ for(let i=0;i<index.count;i++)assert.ok(index.getX(i)<position.count,`${mesh.name} indices stay inside its vertex buffer`);
+ for(let i=0;i<normal.count;i++){
+  const length=new THREE.Vector3().fromBufferAttribute(normal,i).length();
+  assert.ok(length>.98&&length<1.02,`${mesh.name} packed normals retain unit length`);
+ }
+}
+assert.equal(scene4HeroVertices,99407);assert.equal(scene4HeroTriangles,98743);
+assert.ok(scene4HeroTriangles<=100000,'Hero Field derivative stays within its 100k triangle budget');
+assert.deepEqual(scene4HeroBounds.min.toArray().map(value=>+value.toFixed(5)),[-32.65,-.23191,-32.65]);
+assert.deepEqual(scene4HeroBounds.max.toArray().map(value=>+value.toFixed(5)),[32,1.03274,32.00543]);
+console.log(`PASS scene4-hero: ${scene4HeroTriangles} triangles, ${scene4HeroVertices} vertices, 12 material batches and source-bound extent`);
+const transferSource=readFileSync(new URL('../../tools/cinematic/blender/runtime_art_transfer.py',import.meta.url),'utf8');
+const captureSource=readFileSync(new URL('./capture-evidence.mjs',import.meta.url),'utf8');
+assert.match(transferSource,/MASTER_SHA256 = "5ef375387e51165c45e41f08db19c737b40709207e80a901443c3e35bd9f35c5"/,'Runtime exporter verifies the Scene 4 source master');
+assert.doesNotMatch(transferSource,/20f30c80278b04a91428b33f4633f18531662a3c2411bea5dfe255737cc967c7/,'Runtime exporter does not claim the separately archived Hero milestone as an input');
+assert.match(captureSource,/archivedHeroMilestoneReference:\{sha256:'20f30c80278b04a91428b33f4633f18531662a3c2411bea5dfe255737cc967c7',exporterInput:false,equivalenceClaimed:false\}/,'Evidence states the exact Hero milestone provenance boundary');
+assert.doesNotMatch(captureSource,/acceptedHeroMasterSha256/,'Evidence does not overstate an unverified cryptographic source binding');
 for(const name of ['spacecraft','farmland','tree']){
  const url=new URL(`../../apps/web/public/cinematic/models/${name}.mesh.json`,import.meta.url);
  totalBytes+=statSync(url).size;
@@ -321,6 +402,10 @@ for(const name of ['spacecraft','farmland','tree']){
  if(name==='tree')assert.equal(new Set(heights.map(v=>v.toFixed(2))).size,4,'Broadleaf and palm variants preserve visibly different crown heights');
 }
 assert.ok(totalBytes<=6*1024*1024,`Three complete mesh assets stay under the 6 MiB transfer budget (${totalBytes} bytes)`);
+assert.equal(totalBytes+scene4RegionalRaw.length,5224440,'Four runtime mesh assets retain the reviewed combined byte count');
+assert.ok(totalBytes+scene4RegionalRaw.length<6*1024*1024,'Four runtime mesh assets stay under the 6 MiB transfer budget');
+assert.equal(totalBytes+scene4RegionalRaw.length+scene4HeroRaw.length,7742022,'Five runtime mesh assets retain the reviewed combined byte count');
+assert.ok(totalBytes+scene4RegionalRaw.length+scene4HeroRaw.length<8*1024*1024,'Five runtime mesh assets stay under the 8 MiB transfer budget');
 assert.ok(totalTriangles<=175000,'Bounded original geometry budget');
 const evidence=buildEvidence();
 const evidenceMesh=evidence.group.children[0],evidencePosition=evidenceMesh.geometry.attributes.position,fullFlatten=.92;

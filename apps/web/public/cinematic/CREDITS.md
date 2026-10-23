@@ -2,6 +2,31 @@
 
 - **Spacecraft:** original AgriScope sci-fi orbital survey craft authored in Blender 4.5.3 LTS. Ceramic armour, titanium hardware, segmented energy wings and an articulated iris share stable material/pivot batches. No downloaded spacecraft geometry or AI-generated artwork. It is not a Sentinel replica or an AgriScope-owned satellite.
 - **Terrain:** original Blender-authored synthetic landscape with a continuous sample plot, raised planting rows, tracks, irrigation canal/banks and a true-geometry instanced tree prototype. This is an illustration, not surveyed land. Runtime dates, values and quality masks reuse the project's existing offline demonstration fixtures; they are not satellite observations or area measurements.
+- **Scene 4 regional derivative:** original AgriScope geometry derived from the
+  SHA-bound Scene 4 establishing master. The lab-only 774,811-byte mesh carries
+  the authored valley, waterways, access, distant ridges, woodland groups and
+  riparian land-cover masses in six material batches (42,234 triangles). Source
+  master SHA-256: `5ef375387e51165c45e41f08db19c737b40709207e80a901443c3e35bd9f35c5`;
+  runtime SHA-256: `2abfb8fca677075c087359a8148ca4fcc704860a874bdf5e33e6774fd137f470`.
+  The Hero Field remains a separate runtime derivative so its sample boundary
+  and NDVI registration stay independently testable.
+- **Scene 4 Hero Field derivative:** original AgriScope `08_EXPORT` geometry from
+  the same SHA-bound Scene 4 authoring source, preserving its authored origin,
+  orientation, sample boundary and NDVI registration. The lab-only mesh
+  is 2,517,582 bytes with 98,743 triangles in 12 semantic material batches;
+  runtime SHA-256:
+  `2b6bd63d50336983b866b4bf66a9339a8933cde2b70e28f781467056510539e9`.
+  Editable derivative SHA-256:
+  `76344b57671cb43e798434a5757446cc0069bb9d68207bfccab24b43c7ffed18`.
+  The separately accepted Hero Field milestone remains archived and
+  integrity-verified at
+  `20f30c80278b04a91428b33f4633f18531662a3c2411bea5dfe255737cc967c7`;
+  it was not an input to this exporter, and no byte or geometry equivalence is
+  claimed between the two Blender files.
+- **Scene 4 browser clouds:** original shader volumes authored for this prototype
+  from six deterministic lobe arrangements. The owner concept and Blender cloud
+  layout informed framing and depth only; no concept pixels or VDB data ship in
+  the browser.
 - **Earth day map:** NASA Earth Observatory, Blue Marble Next Generation (October 2004). Historical visual composite, not current imagery or Sentinel data. NASA does not endorse AgriScope. Catalog: https://science.nasa.gov/earth/earth-observatory/blue-marble-next-generation/base-map/.
 - **Earth clouds:** Solar System Scope, https://www.solarsystemscope.com/textures/, licensed CC BY 4.0. Attribution and modification details below.
 - **Earth night:** retained Three.js example `https://threejs.org/examples/textures/planets/earth_lights_2048.png`, downloaded 9 October 2026; NASA Blue Marble credit (Reto Stöckli and Robert Simmon); Three.js distribution MIT.

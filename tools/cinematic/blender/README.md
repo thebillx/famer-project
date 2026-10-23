@@ -20,6 +20,55 @@ MCP executes that same function for local iteration; it is not a second exporter
 Save the editable candidate with receipts and publish it with its SHA manifest.
 Unrecorded manual edits are experiments, not a deliverable source of truth.
 
+## Scene 4 runtime art transfer — 23 October 2026
+
+`runtime_art_transfer.py` reads a separate authoring copy of the verified Scene 4
+establishing master and exports either the bounded regional collections or the
+Scene 4 `08_EXPORT` Hero Field collection needed by the browser. Fixed regional
+reductions and the un-decimated Hero export produce the existing schema-1 mesh
+container while reveal collections, cameras and NDVI registration remain in the
+editable derivative for inspection. It never edits the verified master.
+
+- Scene 4 master SHA-256:
+  `5ef375387e51165c45e41f08db19c737b40709207e80a901443c3e35bd9f35c5`
+- Separately archived Hero Field milestone SHA-256 (integrity reference; not an
+  exporter input):
+  `20f30c80278b04a91428b33f4633f18531662a3c2411bea5dfe255737cc967c7`
+- Owner concept reference SHA-256:
+  `755845999cdb05ba011e2262ca60c66330c3b9b129e306015c9315d3d0da29bc`
+- Regional editable derivative SHA-256:
+  `2aafb5dc35add8e63e6810a00af080f84cc669f94e75c9e8fcbfe33fa48409bc`
+  (289,127,427 bytes)
+- Hero editable derivative SHA-256:
+  `76344b57671cb43e798434a5757446cc0069bb9d68207bfccab24b43c7ffed18`
+  (290,537,078 bytes; 23 packed dependencies)
+- Regional runtime asset SHA-256:
+  `2abfb8fca677075c087359a8148ca4fcc704860a874bdf5e33e6774fd137f470`
+  (774,811 bytes; 42,234 triangles; 25,071 vertices; six batches)
+- Hero runtime asset SHA-256:
+  `2b6bd63d50336983b866b4bf66a9339a8933cde2b70e28f781467056510539e9`
+  (2,517,582 bytes; 98,743 triangles; 99,407 vertices; 12 batches)
+
+Run with Blender 4.5.3 LTS:
+
+```sh
+AGRISCOPE_RUNTIME_TRANSFER_MASTER=/path/to/verified/AgriScope-Scene4-Establishing.blend \
+AGRISCOPE_RUNTIME_TRANSFER_SOURCE=/path/to/separate/authoring-copy.blend \
+AGRISCOPE_RUNTIME_TRANSFER_EVIDENCE=/path/to/fresh/evidence-directory \
+AGRISCOPE_RUNTIME_TRANSFER_RUNTIME=/path/to/fresh/scene4-regional.mesh.json \
+  blender --background --python tools/cinematic/blender/runtime_art_transfer.py
+```
+
+Set `AGRISCOPE_RUNTIME_TRANSFER_VARIANT=hero` and use fresh Hero evidence and
+runtime output paths to rebuild the Hero derivative.
+
+The runtime JSON was rebuilt byte-for-byte. Blender may rewrite equivalent
+container bytes when saving, so the manifest binds each delivered `.blend`
+instead of claiming byte-deterministic Blender containers. No concept pixels or
+offline VDB volumes are exported. The browser clouds are a separate original,
+bounded shader treatment; the compact mesh uses only established soil, crop,
+water and leaf surface maps.
+
 Start by reading file/scene/objects and capturing the viewport; successful install
 alone is not connection proof. Match the production p=.56 camera and flatten
 state, render, inspect pixels, export with the existing material-batched exporter,

@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 import {execFileSync} from 'node:child_process';
-import {copyFile, mkdir, readFile, readdir, rm, writeFile} from 'node:fs/promises';
-import {join, resolve} from 'node:path';
+import {copyFile, mkdir, readFile, readdir, writeFile} from 'node:fs/promises';
+import {join, relative} from 'node:path';
 
 const require=createRequire(import.meta.url);
 const {chromium}=require('playwright');
@@ -31,6 +31,7 @@ const endpointReferencePath=join(output,'motion','orbit-endpoint-browser.png');
 const endpointEncodedFramePath=join(output,'motion','orbit-endpoint-encoded.png');
 const startReferencePath=join(output,'motion','orbit-start-browser.png');
 const startEncodedFramePath=join(output,'motion','orbit-start-encoded.png');
+const handoffReferencePath=join(output,'motion','chapter-10-handoff-browser.png');
 const rawVideoDir=join(output,'motion','raw-capture');
 const timing={captureOperations:[],frameProbes:[],motionStages:[]};
 let browser;
@@ -41,6 +42,7 @@ let rawMotionPtsWindow=null;
 let endpointComparison=null;
 let startComparison=null;
 let interactionClip=null;
+let handoffProof=null;
 
 function probeVideo(path){
   return JSON.parse(execFileSync('ffprobe',['-v','error','-show_entries','format=start_time,duration','-of','json',path],{encoding:'utf8'})).format;
@@ -71,14 +73,15 @@ async function compareMotionFrame(page,referencePath,encodedPath,atEnd){
   return comparison;
 }
 
-function matchReferencePts(rawVideoPath,referencePath,{last=false}={}){
+function matchReferencePts(rawVideoPath,referencePath,{last=false,afterPts=-Infinity,region=null,label='browser endpoint',meanThreshold=10,maximumChangedPixelFraction=.12}={}){
   // Playwright's WebM clock is independent from Date.now(). Locate the actual
-  // browser endpoint on the recorded presentation timeline before trimming.
-  // Match the complete composition using the same error limits as the final
-  // encoded-frame check. A fixed Earth crop is not invariant under camera
-  // redesign and magnifies local screenshot/video colour-response differences.
+  // browser reference on the recorded presentation timeline. Whole-frame
+  // endpoints retain the strict default. Interaction references use a recorded
+  // UI region and explicit thresholds because WebM colour response is more
+  // visible when a small dark panel is enlarged for comparison.
   const width=360,height=225,bytesPerFrame=width*height*3;
-  const artworkFilter=`scale=${width}:${height}:flags=area,format=rgb24`;
+  const crop=region?`crop=${region.width}:${region.height}:${region.x}:${region.y},`:'';
+  const artworkFilter=`${crop}scale=${width}:${height}:flags=area,format=rgb24`;
   const reference=execFileSync('ffmpeg',['-hide_banner','-loglevel','error','-i',referencePath,'-vf',artworkFilter,'-frames:v','1','-f','rawvideo','pipe:1'],{maxBuffer:bytesPerFrame*2});
   const format=probeVideo(rawVideoPath);
   const sampleBufferBytes=Math.ceil((Number(format.duration)+2)*4)*bytesPerFrame;
@@ -101,14 +104,15 @@ function matchReferencePts(rawVideoPath,referencePath,{last=false}={}){
     const mean=error/channels;
     sampleMean/=channels;
     const changedPixelFraction=pixelsOver36/(width*height);
-    if(mean<10&&changedPixelFraction<.12&&sampleMean>=Math.max(referenceMean*.5,8))matches.push({index,pts:streamStart+index/4,artworkRegionMeanAbsoluteChannelDifference:mean,artworkRegionMeanChannelValue:sampleMean,pixelsOver36:changedPixelFraction,sampleFps:4});
+    const pts=streamStart+index/4;
+    if(pts>=afterPts&&mean<meanThreshold&&changedPixelFraction<maximumChangedPixelFraction&&sampleMean>=Math.max(referenceMean*.5,8))matches.push({index,pts,artworkRegionMeanAbsoluteChannelDifference:mean,artworkRegionMeanChannelValue:sampleMean,pixelsOver36:changedPixelFraction,sampleFps:4});
   }
   const match=last?matches.at(-1):matches[0];
-  assert.ok(match,`Could not locate the ${last?'final':'initial'} browser endpoint in the raw WebM presentation timeline.`);
+  assert.ok(match,`Could not locate ${label} in the decoded WebM presentation timeline.`);
   let runStart=match.index,runEnd=match.index;
   while(matches.some(candidate=>candidate.index===runStart-1))runStart--;
   while(matches.some(candidate=>candidate.index===runEnd+1))runEnd++;
-  return {...match,heldSeconds:(runEnd-runStart)/4,matchStartPts:streamStart+runStart/4,matchEndPts:streamStart+runEnd/4,threshold:10,maximumChangedPixelFraction:.12,minimumMeanChannelValue:Math.max(referenceMean*.5,8),matchedRegion:'complete viewport'};
+  return {...match,heldSeconds:(runEnd-runStart)/4,matchStartPts:streamStart+runStart/4,matchEndPts:streamStart+runEnd/4,threshold:meanThreshold,maximumChangedPixelFraction,minimumMeanChannelValue:Math.max(referenceMean*.5,8),matchedRegion:region||'complete viewport'};
 }
 
 function gitPaths(){
@@ -149,6 +153,58 @@ async function seek(page,progress){
   await page.evaluate(value=>window.__agriscope.seekCheckpoint(value),progress);
   await page.waitForFunction(value=>Math.abs(window.__agriscope.snapshot().p-value)<.0003,progress,{timeout:30000});
   return page.evaluate(()=>window.__agriscope.snapshot());
+}
+
+async function renderedStateFor(page,progress){
+  const expected=await page.evaluate(value=>({
+    shot:window.__agriscope.SHOTS.reduce((current,shot,index)=>value>=shot.p-.025?index+1:current,1),
+    beat:(window.__agriscope.BEATS||[]).filter(beat=>value>=beat.p).at(-1)?.id||null,
+  }),progress);
+  const started=Date.now();
+  await page.waitForFunction(({progress,expected})=>{
+    const state=window.__agriscope?.snapshot();
+    return state&&Math.abs(state.p-progress)<.0003&&state.shot===expected.shot&&(!expected.beat||state.beat===expected.beat);
+  },{progress,expected},{timeout:90000});
+  return {elapsedMs:Date.now()-started,expected,snapshot:await page.evaluate(()=>window.__agriscope.snapshot())};
+}
+
+async function visibleRegion(page,selectors,padding=18){
+  const boxes=[];
+  for(const selector of selectors){
+    const locator=page.locator(selector);
+    assert.ok(await locator.isVisible(),`${selector} must be visible in the recorded state.`);
+    const box=await locator.boundingBox();
+    assert.ok(box,`${selector} must have a visible recording region.`);
+    boxes.push(box);
+  }
+  const viewport=page.viewportSize();
+  assert.ok(viewport,'The interaction recording must have a fixed viewport.');
+  const left=Math.max(0,Math.floor(Math.min(...boxes.map(box=>box.x))-padding));
+  const top=Math.max(0,Math.floor(Math.min(...boxes.map(box=>box.y))-padding));
+  const right=Math.min(viewport.width,Math.ceil(Math.max(...boxes.map(box=>box.x+box.width))+padding));
+  const bottom=Math.min(viewport.height,Math.ceil(Math.max(...boxes.map(box=>box.y+box.height))+padding));
+  return {x:left,y:top,width:right-left,height:bottom-top};
+}
+
+async function captureStateReference(page,id,selectors,matchOptions){
+  await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+  const region=await visibleRegion(page,selectors);
+  const relativePath=`motion/state-${id}-browser.png`;
+  await page.screenshot({path:join(output,relativePath),timeout:60000});
+  return {id,browserReferencePath:relativePath,absoluteReferencePath:join(output,relativePath),region,matchOptions};
+}
+
+function proveRecordedStateSequence(videoPath,references,{decodedFrames=false}={}){
+  let afterPts=-Infinity;
+  return references.map(reference=>{
+    const match=matchReferencePts(videoPath,reference.absoluteReferencePath,{afterPts,region:reference.region,label:`interaction state ${reference.id}`,...reference.matchOptions});
+    assert.ok(match.heldSeconds>=.75,`${reference.id} appears for only ${match.heldSeconds.toFixed(2)} seconds in ${videoPath}.`);
+    afterPts=match.matchEndPts+.25;
+    const encodedFramePath=decodedFrames?`motion/state-${reference.id}-encoded.png`:null;
+    const encodedFramePts=(match.matchStartPts+match.matchEndPts)/2;
+    if(encodedFramePath)execFileSync('ffmpeg',['-hide_banner','-loglevel','error','-y','-i',videoPath,'-ss',String(encodedFramePts),'-frames:v','1','-update','1',join(output,encodedFramePath)]);
+    return {id:reference.id,browserReferencePath:reference.browserReferencePath,encodedFramePath,encodedFramePts,region:reference.region,match};
+  });
 }
 
 async function verifyMotionFallbacks(){
@@ -240,24 +296,63 @@ async function captureLabInteractions(){
   await mkdir(rawDir,{recursive:true});
   const context=await browser.newContext({viewport:{width:1440,height:900},deviceScaleFactor:1,recordVideo:{dir:rawDir,size:{width:1440,height:900}}});
   const page=await context.newPage();monitor(page);await ready(page);
-  const video=page.video();
+  const video=page.video(),references=[],holdMs=1600;
   await seek(page,.22);
   const payload=await page.locator('#payload-control').boundingBox();
   assert.ok(payload,'The payload control must be visible for the interaction recording.');
   await page.mouse.move(payload.x-90,payload.y+20);await page.waitForTimeout(500);await page.mouse.move(payload.x+20,payload.y+20,{steps:18});
   await page.mouse.click(payload.x+20,payload.y+20);
-  assert.equal((await page.evaluate(()=>window.__agriscope.snapshot())).payloadExpanded,true,'Pointer input expands the payload disclosure.');
-  await page.waitForTimeout(1400);await page.keyboard.press('Escape');
-  await seek(page,.56);await page.waitForTimeout(700);
-  await page.locator('[data-hotspot="boundary"]').click();await page.waitForTimeout(1400);await page.keyboard.press('Escape');
-  await seek(page,.76);await page.waitForTimeout(700);
-  const slider=page.locator('#comparison-slider');await slider.focus();await page.keyboard.press('Home');await page.waitForTimeout(900);await page.keyboard.press('End');await page.waitForTimeout(1100);
-  await seek(page,.86);await page.locator('#inspect-field').click();await page.waitForTimeout(1500);await page.locator('#inspect-field').click();await page.waitForTimeout(700);
+  await page.waitForFunction(()=>window.__agriscope.snapshot().payloadExpanded&&!document.querySelector('#payload-tip').hidden);
+  assert.equal(await page.locator('#payload-control').getAttribute('aria-expanded'),'true','Pointer input expands the payload disclosure.');
+  references.push(await captureStateReference(page,'payload-open',['#payload-control','#payload-tip'],{meanThreshold:22,maximumChangedPixelFraction:.15}));
+  await page.waitForTimeout(holdMs);await page.keyboard.press('Escape');
+  await page.waitForFunction(()=>!window.__agriscope.snapshot().payloadExpanded&&document.querySelector('#payload-tip').hidden);
+
+  await seek(page,.56);
+  await page.locator('[data-hotspot="boundary"]').click();
+  await page.waitForFunction(()=>window.__agriscope.snapshot().activeHotspot==='boundary'&&!document.querySelector('#hotspot-detail').hidden&&document.querySelector('#hotspot-detail').textContent.trim().length>0);
+  assert.ok(await page.locator('#hotspot-detail').isVisible(),'The boundary hotspot tooltip must be visible in the recording.');
+  references.push(await captureStateReference(page,'boundary-hotspot',['[data-hotspot="boundary"]','#hotspot-detail'],{meanThreshold:18,maximumChangedPixelFraction:.10}));
+  await page.waitForTimeout(holdMs);await page.keyboard.press('Escape');
+  await page.waitForFunction(()=>window.__agriscope.snapshot().activeHotspot===null&&document.querySelector('#hotspot-detail').hidden);
+
+  await seek(page,.76);
+  const slider=page.locator('#comparison-slider');await slider.focus();await page.keyboard.press('Home');
+  await page.waitForFunction(()=>window.__agriscope.snapshot().evidence.comparison===0&&document.querySelector('#comparison-slider').value==='0');
+  assert.match(await page.locator('#comparison-output').textContent(),/ก่อน/,'The Home key exposes the before comparison endpoint.');
+  references.push(await captureStateReference(page,'comparison-before',['#comparison-control'],{meanThreshold:27,maximumChangedPixelFraction:.12}));
+  await page.waitForTimeout(holdMs);await page.keyboard.press('End');
+  await page.waitForFunction(()=>window.__agriscope.snapshot().evidence.comparison===1&&document.querySelector('#comparison-slider').value==='100');
+  assert.match(await page.locator('#comparison-output').textContent(),/หลัง/,'The End key exposes the after comparison endpoint.');
+  references.push(await captureStateReference(page,'comparison-after',['#comparison-control'],{meanThreshold:28,maximumChangedPixelFraction:.13}));
+  await page.waitForTimeout(holdMs);
+
+  await seek(page,.86);await page.locator('#inspect-field').click();
+  await page.waitForFunction(()=>{const state=window.__agriscope.snapshot(),root=document;return state.evidence.status==='NOT_ASSESSABLE'&&root.querySelector('#before-value').textContent==='—'&&root.querySelector('#after-value').textContent==='—'&&root.querySelector('.map-legend').hidden;});
+  assert.equal(await page.locator('#sample-status').textContent(),'ข้อมูลยังไม่พอ','The recording visibly identifies insufficient data.');
+  references.push(await captureStateReference(page,'not-assessable',['#field-panel'],{meanThreshold:20.5,maximumChangedPixelFraction:.11}));
+  await page.waitForTimeout(holdMs);await page.locator('#inspect-field').click();
+  await page.waitForFunction(()=>{const state=window.__agriscope.snapshot(),root=document;return state.evidence.status==='NEEDS_INSPECTION'&&root.querySelector('#before-value').textContent==='0.68'&&root.querySelector('#after-value').textContent==='0.42'&&!root.querySelector('.map-legend').hidden;});
+  assert.equal(await page.locator('#sample-status').textContent(),'ควรตรวจต่อ','The valid demonstration is restored visibly.');
+  references.push(await captureStateReference(page,'valid-restored',['#field-panel'],{meanThreshold:20.5,maximumChangedPixelFraction:.11}));
+  await page.waitForTimeout(holdMs);
   await context.close();
   const rawPath=await video.path();await copyFile(rawPath,finalPath);
   const durationSeconds=Number(probeVideo(finalPath).duration);
   assert.ok(Number.isFinite(durationSeconds)&&durationSeconds>=7,'The interaction recording must retain the complete unretimed demonstrations.');
-  return {path:'motion/agriscope-lab-interactions.webm',durationSeconds,playbackSpeedMultiplier:1,sequence:'Pointer parallax and payload disclosure; field hotspot; keyboard NDVI comparison; NOT_ASSESSABLE toggle.'};
+  const rawStates=proveRecordedStateSequence(rawPath,references);
+  const finalStates=proveRecordedStateSequence(finalPath,references,{decodedFrames:true});
+  const states=references.map((reference,index)=>({
+    id:reference.id,
+    browserReferencePath:reference.browserReferencePath,
+    encodedFramePath:finalStates[index].encodedFramePath,
+    encodedFramePts:finalStates[index].encodedFramePts,
+    region:reference.region,
+    matchOptions:reference.matchOptions,
+    rawMatch:rawStates[index].match,
+    finalMatch:finalStates[index].match,
+  }));
+  return {path:'motion/agriscope-lab-interactions.webm',rawPath:relative(output,rawPath),durationSeconds,playbackSpeedMultiplier:1,minimumProvenStateHoldSeconds:.75,states,sequence:'Pointer parallax and payload disclosure; field hotspot; keyboard NDVI comparison endpoints; NOT_ASSESSABLE state; restored valid state.'};
 }
 
 async function sourceHashes(){
@@ -334,9 +429,13 @@ try{
       await page.screenshot({path,timeout:60000});
       timing.captureOperations.push({viewport:viewport.name,shot:index+1,operation:'screenshot',elapsedMs:Date.now()-screenshotStarted});
       shots.push({number:index+1,name:shotNames[index],path});
-      captures.push({shot:index+1,progress:snapshot.p,renderer:{mode:snapshot.mode,gpu:snapshot.gpu||null,drawCalls:snapshot.drawCalls,triangles:snapshot.triangles,softwareWebGL},assets:{model:snapshot.model,land:snapshot.land}});
+      captures.push({shot:index+1,progress:snapshot.p,renderer:{mode:snapshot.mode,gpu:snapshot.gpu||null,drawCalls:snapshot.drawCalls,triangles:snapshot.triangles,softwareWebGL},assets:{model:snapshot.model,land:snapshot.land,regionalWorld:snapshot.regionalWorld||null,scene4Hero:snapshot.scene4Hero||null,descentAtmosphere:snapshot.descentAtmosphere||null}});
     }
     const beats=await page.evaluate(()=>window.__agriscope.BEATS||[]);
+    if(!process.env.BASELINE_REASON){
+      assert.equal(beats.length,19,'The current cinematic lab evidence covers exactly 19 internal beats.');
+      assert.equal(new Set(beats.map(beat=>beat.id)).size,19,'The current cinematic lab evidence has one stable identifier per beat.');
+    }
     if(beats.length){
       await mkdir(join(output,viewport.name,'beats'),{recursive:true});
       for(const beat of beats){
@@ -455,7 +554,31 @@ try{
   ];
   const motionStartedAt=Date.now();
   const navigationCount={value:0};motionPage.on('framenavigated',frame=>{if(frame===motionPage.mainFrame())navigationCount.value++;});
-  for(const stage of sequence){const started=Date.now();await animateToProgress(motionPage,stage.to,stage.move);const moved=Date.now();await motionPage.waitForTimeout(stage.hold);timing.motionStages.push({...stage,actualMoveMs:moved-started,actualHoldMs:Date.now()-moved});}
+  let handoffReference=null;
+  for(const stage of sequence){
+    const started=Date.now();await animateToProgress(motionPage,stage.to,stage.move);const moved=Date.now();
+    const settled=await renderedStateFor(motionPage,stage.to);
+    if(stage.to===.95){
+      assert.equal(settled.snapshot.shot,10,'The forward journey must visibly reach chapter 10 before reversing.');
+      assert.ok(settled.snapshot.p>=.925,'The rendered journey must enter the application handoff range before reversing.');
+      assert.ok(await motionPage.locator('#narrative').isVisible(),'The chapter 10 narrative must remain visible.');
+      assert.match(await motionPage.locator('#title').textContent(),/เริ่มติดตามแปลงของคุณ/,'The rendered narrative must identify the application handoff chapter.');
+      assert.match(await motionPage.locator('#rail button[aria-current="true"]').getAttribute('aria-label'),/^ช่วง 10:/,'The navigation rail must visibly identify chapter 10.');
+      const handoff=motionPage.locator('#field-panel .field-handoff');
+      assert.ok(await handoff.isVisible(),'The desktop application handoff CTA must be visible before reversal.');
+      assert.equal(await handoff.getAttribute('href'),'/login?mode=register');
+      handoffReference={
+        absoluteReferencePath:handoffReferencePath,
+        browserReferencePath:'motion/chapter-10-handoff-browser.png',
+        region:await visibleRegion(motionPage,['#title']),
+        matchOptions:{meanThreshold:25,maximumChangedPixelFraction:.12},
+      };
+      await motionPage.screenshot({path:handoffReferencePath,timeout:60000});
+    }
+    const holdStarted=Date.now();await motionPage.waitForTimeout(stage.hold);
+    timing.motionStages.push({...stage,actualMoveMs:moved-started,settlingMs:settled.elapsedMs,settledState:{p:settled.snapshot.p,shot:settled.snapshot.shot,beat:settled.snapshot.beat},actualHoldMs:Date.now()-holdStarted});
+  }
+  assert.ok(handoffReference,'The redesigned journey sequence must include a chapter 10 handoff stage.');
   assert.equal(navigationCount.value,0,'The production page must not reload during the recording.');
   // Software recording can stall between frames while the runtime's bounded
   // damping is still converging. Wait for natural motion; never seek the endpoint
@@ -486,6 +609,8 @@ try{
   assert.ok(Number.isFinite(rawDurationSeconds)&&rawDurationSeconds>0,'Raw browser recording must contain a valid presentation timeline.');
   const firstEndpoint=matchReferencePts(rawVideoPath,startReferencePath);
   const lastEndpoint=matchReferencePts(rawVideoPath,endpointReferencePath,{last:true});
+  const rawHandoffMatch=matchReferencePts(rawVideoPath,handoffReference.absoluteReferencePath,{region:handoffReference.region,label:'chapter 10 handoff',...handoffReference.matchOptions});
+  assert.ok(rawHandoffMatch.heldSeconds>=1,`Chapter 10 appears for only ${rawHandoffMatch.heldSeconds.toFixed(2)} seconds in the raw encoded stream.`);
   assert.ok(lastEndpoint.heldSeconds>=3,`Final orbit appears for only ${lastEndpoint.heldSeconds.toFixed(2)} seconds in the raw encoded stream.`);
   // ffmpeg's decoded trim boundary can include the preceding source frame at
   // an exact fps-sampled PTS. Start one sample inside the proven orbit hold,
@@ -510,12 +635,18 @@ try{
   assert.ok(Math.abs(actualMotionDurationSeconds-measuredPtsWindowSeconds)<.25,'Encoded duration preserves the measured presentation timeline at original speed.');
   const encodedFinalMatch=matchReferencePts(videoPath,endpointReferencePath,{last:true});
   assert.ok(encodedFinalMatch.heldSeconds>=3,`Final orbit appears for only ${encodedFinalMatch.heldSeconds.toFixed(2)} seconds in the encoded WebM.`);
+  const encodedHandoffMatch=matchReferencePts(videoPath,handoffReference.absoluteReferencePath,{region:handoffReference.region,label:'chapter 10 handoff',...handoffReference.matchOptions});
+  assert.ok(encodedHandoffMatch.heldSeconds>=1,`Chapter 10 appears for only ${encodedHandoffMatch.heldSeconds.toFixed(2)} seconds in the final encoded WebM.`);
+  const handoffEncodedFramePath=join(output,'motion','chapter-10-handoff-encoded.png');
+  const handoffEncodedFramePts=(encodedHandoffMatch.matchStartPts+encodedHandoffMatch.matchEndPts)/2;
+  execFileSync('ffmpeg',['-hide_banner','-loglevel','error','-y','-i',videoPath,'-ss',String(handoffEncodedFramePts),'-frames:v','1','-update','1',handoffEncodedFramePath]);
+  handoffProof={browserReferencePath:handoffReference.browserReferencePath,encodedFramePath:'motion/chapter-10-handoff-encoded.png',encodedFramePts:handoffEncodedFramePts,region:handoffReference.region,matchOptions:handoffReference.matchOptions,rawMatch:rawHandoffMatch,finalMatch:encodedHandoffMatch};
   const endpointVerifier=await browser.newPage({viewport:{width:1440,height:900}});
   startComparison=await compareMotionFrame(endpointVerifier,startReferencePath,startEncodedFramePath,false);
   endpointComparison=await compareMotionFrame(endpointVerifier,endpointReferencePath,endpointEncodedFramePath,true);
   await endpointVerifier.close();
   // Retain the raw recording, including on success, for independent timestamp review.
-  report.motion={path:'motion/agriscope-forward-reverse.webm',durationSeconds:actualMotionDurationSeconds,captureWindowSeconds:requestedDurationSeconds,rawPresentationTimeWindow:rawMotionPtsWindow,playbackSpeedMultiplier,initialEndpoint:{shot:initialOrbitSnapshot.shot,progress:initialOrbitSnapshot.p,encodedFrameComparison:startComparison,encodedFramePath:'motion/orbit-start-encoded.png',browserReferencePath:'motion/orbit-start-browser.png'},finalEndpoint:{shot:finalOrbitSnapshot.shot,progress:finalOrbitSnapshot.p,requestedHoldSeconds:4,rawChapterHoldSeconds:lastEndpoint.heldSeconds,encodedChapterHoldSeconds:encodedFinalMatch.heldSeconds,encodedFrameComparison:endpointComparison,encodedFramePath:'motion/orbit-endpoint-encoded.png',browserReferencePath:'motion/orbit-endpoint-browser.png'},sequence:redesigned?'Forward flyby, wing, payload, activation/corridor, Thailand, descent and field; product chapters; full reverse with original-speed holds.':'Historical ten-chapter traversal.'};
+  report.motion={path:'motion/agriscope-forward-reverse.webm',durationSeconds:actualMotionDurationSeconds,captureWindowSeconds:requestedDurationSeconds,rawPresentationTimeWindow:rawMotionPtsWindow,playbackSpeedMultiplier,chapter10Handoff:handoffProof,initialEndpoint:{shot:initialOrbitSnapshot.shot,progress:initialOrbitSnapshot.p,encodedFrameComparison:startComparison,encodedFramePath:'motion/orbit-start-encoded.png',browserReferencePath:'motion/orbit-start-browser.png'},finalEndpoint:{shot:finalOrbitSnapshot.shot,progress:finalOrbitSnapshot.p,requestedHoldSeconds:4,rawChapterHoldSeconds:lastEndpoint.heldSeconds,encodedChapterHoldSeconds:encodedFinalMatch.heldSeconds,encodedFrameComparison:endpointComparison,encodedFramePath:'motion/orbit-endpoint-encoded.png',browserReferencePath:'motion/orbit-endpoint-browser.png'},sequence:redesigned?'Forward flyby, wing, payload, activation/corridor, Thailand, descent and field; visible application handoff; full reverse with original-speed holds.':'Historical ten-chapter traversal.'};
   report.rendererSamples=captures;
   report.interactions={mobile:mobileInteractionReport,fallbacks:fallbackChecks,...(interactionClip?{labClip:interactionClip}:{})};
   report.status=report.errors.length===0&&report.failedRequests.length===0?'PASS':'FAIL';
@@ -548,6 +679,13 @@ try{
     finalEncodedFrameComparison:endpointComparison,
     renderingLimitations:[`Renderer mode: ${softwareReported?'software WebGL / SwiftShader':'see renderer metadata; hardware acceleration was not benchmarked'}.`,'Small-mobile dimensions are browser viewport/touch emulation, not a physical device.','Journey values are synthetic public examples; no private data or live satellite service is used.'],
     interactionClip,
+    blenderDerivativeProvenance:{
+      scene4MasterSha256:'5ef375387e51165c45e41f08db19c737b40709207e80a901443c3e35bd9f35c5',
+      archivedHeroMilestoneReference:{sha256:'20f30c80278b04a91428b33f4633f18531662a3c2411bea5dfe255737cc967c7',exporterInput:false,equivalenceClaimed:false},
+      heroEditableDerivative:{file:'AgriScope-Runtime-Art-Transfer-hero.blend',sha256:'76344b57671cb43e798434a5757446cc0069bb9d68207bfccab24b43c7ffed18',bytes:290537078,packedDependencies:23},
+      externalManifest:'runtime-art-transfer-manifest.json',
+      note:'The editable Blender derivative and its object-level manifest are delivered outside Git. The runtime export is bound to the Scene 4 master; the archived Hero milestone is an independent integrity reference. Runtime source bytes are independently listed in runtimeAssetManifest.',
+    },
   };
   const runtimeAssets=await runtimeManifest();
   const directAssets=runtimeAssets.filter(asset=>/\.(?:js|json|jpg|png|ttf)$/i.test(asset.path)&&!asset.path.endsWith('/batch.js'));
@@ -558,7 +696,12 @@ try{
     bytes:{publicCinematicFootprint:runtimeAssets.reduce((sum,asset)=>sum+asset.bytes,0),directUncompressedTransferCandidates:directAssets.reduce((sum,asset)=>sum+asset.bytes,0),note:'Static file bytes before HTTP compression. Next.js framework chunks, caches and the Blender-only masters are outside this count.'},
     files:{publicCinematic:runtimeAssets.length,directTransferCandidates:directAssets.length,largest:directAssets.toSorted((a,b)=>b.bytes-a.bytes).slice(0,10)},
     renderer:{gpu:[...new Set(shotSamples.map(sample=>sample.renderer?.gpu).filter(Boolean))],drawCalls:ranges(shotSamples.map(sample=>sample.renderer?.drawCalls).filter(Number.isFinite)),triangles:ranges(shotSamples.map(sample=>sample.renderer?.triangles).filter(Number.isFinite)),sampleCount:shotSamples.length,note:'Ranges are actual ten-shot desktop/mobile captures and vary with scene visibility. They are not full Blender-master costs.'},
-    masterBoundary:'Accepted editable Blender masters remain external evidence and were not imported into this runtime candidate; their browser decode and frame costs remain unmeasured.',
+    scene4Derivatives:{
+      regional:{path:'apps/web/public/cinematic/models/scene4-regional.mesh.json',sha256:'2abfb8fca677075c087359a8148ca4fcc704860a874bdf5e33e6774fd137f470',bytes:774811,triangles:42234,vertices:25071,batches:6},
+      hero:{path:'apps/web/public/cinematic/models/scene4-hero.mesh.json',sha256:'2b6bd63d50336983b866b4bf66a9339a8933cde2b70e28f781467056510539e9',bytes:2517582,triangles:98743,vertices:99407,batches:12,editableDerivativeSha256:'76344b57671cb43e798434a5757446cc0069bb9d68207bfccab24b43c7ffed18',editableDerivativeBytes:290537078},
+      sourceMasterSha256:'5ef375387e51165c45e41f08db19c737b40709207e80a901443c3e35bd9f35c5',archivedHeroMilestoneReference:{sha256:'20f30c80278b04a91428b33f4633f18531662a3c2411bea5dfe255737cc967c7',exporterInput:false,equivalenceClaimed:false},combinedBytes:3292393,combinedTriangles:140977,combinedBatches:18,
+    },
+    masterBoundary:'Full editable Blender masters remain external and their browser decode/frame costs are unmeasured. The lab includes source-bound regional and Hero Field runtime derivatives (3,292,393 combined bytes, 140,977 triangles, 18 batches); their editable derivatives and manifest remain delivery provenance.',
   };
   reviewInfo.runtimeAssetManifest=runtimeAssets;
   reviewInfo.costReport='cost-report.json';

@@ -59,6 +59,7 @@ jobs:
           python3 tests/cinematic/crop-authoring.py
           node tests/cinematic/runtime-materials.mjs
           node tests/cinematic/blender-assets.mjs
+          python3 tests/cinematic/runtime-art-transfer-args.py
           node tests/cinematic/terrain.mjs
           node tests/cinematic/timeline.mjs
 
@@ -67,8 +68,8 @@ jobs:
         run: |
           # Preserve the owner's reviewed visual baseline across evidence-only
           # correction commits; otherwise a capture fix compares identical art.
-          baseline_sha="d3e21b50c3db732346d902db94ded576df834c26"
-          baseline_reason="regional landscape delivery before live Blender MCP hero crop iteration"
+          baseline_sha="0d0cb2fd7cf28ad60cc19fe24744af08468fe3b0"
+          baseline_reason="latest playable cinematic-lab foundation before the Scene 4 runtime art transfer"
           echo "sha=$baseline_sha" >> "$GITHUB_OUTPUT"
           echo "reason=$baseline_reason" >> "$GITHUB_OUTPUT"
           echo "Cinematic comparison baseline: $baseline_sha ($baseline_reason)"
@@ -115,7 +116,7 @@ jobs:
             CINEMATIC_EVIDENCE="$GITHUB_WORKSPACE/evidence/before" \
             CINEMATIC_EXPECTED_HEAD="$BASELINE_SHA" \
             CINEMATIC_BASE_SHA="$PR_BASE_SHA" \
-            CINEMATIC_URL=http://127.0.0.1:5185/ \
+            CINEMATIC_URL=http://127.0.0.1:5185/cinematic-lab \
             node "$GITHUB_WORKSPACE/tests/cinematic/capture-evidence.mjs"
           )
 

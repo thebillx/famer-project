@@ -2,6 +2,24 @@
 
 Observed 23 October 2026 for the isolated `/cinematic-lab` prototype.
 
+## Owner-approved Scene 4 composition
+
+- Local evidence: `owner-approved-concept.jpg`, SHA-256
+  `755845999cdb05ba011e2262ca60c66330c3b9b129e306015c9315d3d0da29bc`.
+- Adopted relationships: an elevated downward passage, near/middle/far cloud
+  framing, a warm destination inside cooler atmospheric depth, and a slender
+  continuous route into the Hero Field.
+- Runtime form source: `08_EXPORT` and the regional collections in the Scene 4
+  establishing master, SHA-256
+  `5ef375387e51165c45e41f08db19c737b40709207e80a901443c3e35bd9f35c5`.
+  The independently accepted Hero Field milestone remains archived at SHA-256
+  `20f30c80278b04a91428b33f4633f18531662a3c2411bea5dfe255737cc967c7`;
+  it is a visual/integrity reference and was not the runtime exporter's input.
+  Study B informed the approach framing. The establishing candidate is a working
+  baseline and does not carry independent final artistic acceptance.
+- Rights boundary: the concept is comparison evidence only. It is never drawn as
+  a browser background, texture, matte or flattened scene.
+
 ## Primary motion reference — Edolus
 
 - URL: https://edolus.com/

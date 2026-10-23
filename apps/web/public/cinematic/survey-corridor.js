@@ -38,7 +38,9 @@ export function buildSurveyCorridor({lab=false}={}){
  const ringsGeometry=new THREE.BufferGeometry(),ringPoints=new Float32Array(3*48*2*3),ringAlong=new Float32Array(3*48*2);
  ringsGeometry.setAttribute('position',new THREE.BufferAttribute(ringPoints,3));ringsGeometry.setAttribute('distanceAlong',new THREE.BufferAttribute(ringAlong,1));
  const rings=new THREE.LineSegments(ringsGeometry,material);rings.name='Scan cross-sections';group.add(rings);
- const curve=new THREE.QuadraticBezierCurve3(new THREE.Vector3(),new THREE.Vector3(),new THREE.Vector3(0,.16,0));
+ const curve=lab
+  ?new THREE.CubicBezierCurve3(new THREE.Vector3(),new THREE.Vector3(),new THREE.Vector3(),new THREE.Vector3(0,.16,0))
+  :new THREE.QuadraticBezierCurve3(new THREE.Vector3(),new THREE.Vector3(),new THREE.Vector3(0,.16,0));
  const referenceAxis=new THREE.Vector3(0,0,1),center=new THREE.Vector3(),tangent=new THREE.Vector3(),side=new THREE.Vector3(),up=new THREE.Vector3(),point=new THREE.Vector3();
  function frame(t){curve.getPoint(t,point);curve.getTangent(t,tangent);side.crossVectors(tangent,referenceAxis).normalize();up.crossVectors(side,tangent).normalize();}
 
@@ -72,9 +74,35 @@ export function buildSurveyCorridor({lab=false}={}){
  for(const [x,y,z,sx,sy,sz] of cloudLayout){
   const cloud=new THREE.Mesh(cloudGeometry,cloudMaterial);cloud.position.set(x,y,z);cloud.scale.set(sx,sy,sz);cloud.userData.anchor=[x,y,z];clouds.add(cloud);
  }
+
+ // The accepted static reveal used a soft endpoint registration followed by a
+ // boundary-confined scan. These runtime derivatives are functions of scroll
+ // position, so reverse and chapter jumps restore the exact same state.
+ let endpoint=null,endpointMaterial=null,acquisition=null,acquisitionMaterial=null;
+ if(lab){
+  endpointMaterial=new THREE.ShaderMaterial({uniforms:{opacity:{value:0}},transparent:true,depthWrite:false,depthTest:true,blending:THREE.AdditiveBlending,
+   vertexShader:'varying vec2 uvPoint;void main(){uvPoint=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
+   fragmentShader:'varying vec2 uvPoint;uniform float opacity;void main(){float radius=length((uvPoint-.5)*2.);float feather=pow(max(0.,1.-radius),2.6);gl_FragColor=vec4(.18,.68,.82,opacity*feather);}' });
+  endpoint=new THREE.Mesh(new THREE.CircleGeometry(1,48),endpointMaterial);endpoint.name='Localized field registration feather';
+  endpoint.rotation.x=-Math.PI/2;endpoint.position.set(0,fieldHeight(0,0)+.07,0);endpoint.scale.set(2.1,1.25,1);endpoint.renderOrder=8;group.add(endpoint);
+  acquisitionMaterial=new THREE.ShaderMaterial({uniforms:{opacity:{value:0},scan:{value:0}},transparent:true,depthWrite:false,depthTest:true,blending:THREE.AdditiveBlending,
+   vertexShader:'varying vec2 fieldUV;void main(){fieldUV=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
+   fragmentShader:`varying vec2 fieldUV;uniform float opacity;uniform float scan;
+    void main(){float front=exp(-pow((fieldUV.y-scan)*72.,2.));float covered=(1.-smoothstep(scan-.025,scan+.012,fieldUV.y))*.08;
+     float edge=smoothstep(0.,.025,fieldUV.x)*smoothstep(0.,.025,fieldUV.y)*smoothstep(0.,.025,1.-fieldUV.x)*smoothstep(0.,.025,1.-fieldUV.y);
+     gl_FragColor=vec4(.14,.72,.86,opacity*(front*.70+covered)*edge);}`});
+  acquisition=new THREE.Mesh(new THREE.PlaneGeometry(4.95,4.57),acquisitionMaterial);acquisition.name='Sample-bound acquisition front and coverage';
+  acquisition.rotation.x=-Math.PI/2;acquisition.position.set(-.025,fieldHeight(0,0)+.074,-.015);acquisition.renderOrder=9;group.add(acquisition);
+ }
  function apply(p,payload,flatten){
-  curve.v0.copy(payload);curve.v1.copy(payload).multiplyScalar(.46).add(new THREE.Vector3(1.4,0,-.7));
-  const strength=smooth(.27,.30,p)*(1-smooth(lab?.435:.415,lab?.51:.475,p));
+  curve.v0.copy(payload);
+  if(lab){
+   curve.v1.copy(payload).multiplyScalar(.72).add(new THREE.Vector3(-2.4,1.8,-2.8));
+   curve.v2.set(-4.8,7.5,-4.4);
+  }else{
+   curve.v1.copy(payload).multiplyScalar(.46).add(new THREE.Vector3(1.4,0,-.7));
+  }
+  const strength=smooth(.27,.30,p)*(1-smooth(lab?.455:.415,lab?.525:.475,p));
   beam.visible=sleeve.visible=packets.visible=rings.visible=strength>0;material.uniforms.opacity.value=strength*(lab?.78:.72);coreMaterial.uniforms.opacity.value=strength*(lab?.68:.55);
   sleeveMaterial.uniforms.opacity.value=strength*(lab?.035:.055);
   material.uniforms.spectral.value=.38*smooth(.365,.385,p)*(1-smooth(.395,.415,p));
@@ -82,11 +110,11 @@ export function buildSurveyCorridor({lab=false}={}){
   for(let i=0;i<=segments;i++){
    const t=i/segments;frame(t);center.copy(point);
    for(let j=0;j<sides;j++){
-    const angle=j/sides*Math.PI*2,radius=(lab?.04:.075)+(lab?.034:.065)*t,index=(i*sides+j)*3;
+    const angle=j/sides*Math.PI*2,radius=(lab?.026:.075)+(lab?.026:.065)*t,index=(i*sides+j)*3;
     point.copy(side).multiplyScalar(Math.cos(angle)).addScaledVector(up,Math.sin(angle));
     point.toArray(coreGeometry.attributes.routeNormal.array,index);point.toArray(sleeveGeometry.attributes.routeNormal.array,index);
     point.copy(center).addScaledVector(side,Math.cos(angle)*radius).addScaledVector(up,Math.sin(angle)*radius).toArray(corePoints,index);
-    point.copy(center).addScaledVector(side,Math.cos(angle)*(radius+(lab?.13:.22))).addScaledVector(up,Math.sin(angle)*(radius+(lab?.13:.22))).toArray(sleeveGeometry.attributes.position.array,index);
+    point.copy(center).addScaledVector(side,Math.cos(angle)*(radius+(lab?.085:.22))).addScaledVector(up,Math.sin(angle)*(radius+(lab?.085:.22))).toArray(sleeveGeometry.attributes.position.array,index);
    }
   }
   for(let i=0;i<32;i++){
@@ -104,7 +132,7 @@ export function buildSurveyCorridor({lab=false}={}){
    }
   }
   for(const geo of [coreGeometry,sleeveGeometry,packetsGeometry,ringsGeometry]){for(const attribute of Object.values(geo.attributes))attribute.needsUpdate=true;geo.computeBoundingSphere();}
-  cloudMaterial.uniforms.opacity.value=(lab?.31:.36)*smooth(.405,.435,p)*(1-smooth(lab?.475:.465,lab?.525:.515,p));clouds.visible=cloudMaterial.uniforms.opacity.value>0;
+  cloudMaterial.uniforms.opacity.value=(lab?0:.36)*smooth(.405,.435,p)*(1-smooth(.465,.515,p));clouds.visible=cloudMaterial.uniforms.opacity.value>0;
   for(const cloud of clouds.children){
    const [x,height,z]=cloud.userData.anchor;
    cloud.position.set(x,descentCloudHeight(x,z,p)+height,z);
@@ -113,7 +141,7 @@ export function buildSurveyCorridor({lab=false}={}){
    cloud.rotation.set(z/radius,0,-x/radius);
   }
   const resolution=smooth(.40,.545,p),scale=1+3*(1-resolution);
-  tiles.visible=p>.405&&p<.56;tileMaterial.opacity=(lab?.18:.32)*smooth(.405,.425,p)*(1-smooth(.53,.56,p));
+  tiles.visible=!lab&&p>.405&&p<.56;tileMaterial.opacity=(lab?0:.32)*smooth(.405,.425,p)*(1-smooth(.53,.56,p));
   let offset=0;
   for(let row=0;row<4;row++)for(let col=0;col<4;col++){
    const corners=[[-2.50+col*4.95/4,-2.30+row*4.57/4],[-2.50+(col+1)*4.95/4,-2.30+row*4.57/4],[-2.50+(col+1)*4.95/4,-2.30+(row+1)*4.57/4],[-2.50+col*4.95/4,-2.30+(row+1)*4.57/4]];
@@ -125,6 +153,12 @@ export function buildSurveyCorridor({lab=false}={}){
    }
   }
   tileGeometry.attributes.position.needsUpdate=true;tileGeometry.computeBoundingSphere();
+  if(endpoint){
+   const endpointOpacity=smooth(.468,.493,p)*(1-smooth(.532,.552,p));
+   endpoint.visible=endpointOpacity>.002;endpointMaterial.uniforms.opacity.value=.38*endpointOpacity;
+   const acquisitionOpacity=smooth(.505,.522,p)*(1-smooth(.548,.56,p));
+   acquisition.visible=acquisitionOpacity>.002;acquisitionMaterial.uniforms.opacity.value=.52*acquisitionOpacity;acquisitionMaterial.uniforms.scan.value=smooth(.512,.548,p);
+  }
  }
- group.userData={apply,beam,clouds,tiles};return group;
+ group.userData={apply,beam,clouds,tiles,endpoint,acquisition};return group;
 }

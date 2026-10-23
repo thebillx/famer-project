@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import * as THREE from '../../apps/web/public/cinematic/vendor.js';
 import { sampleCamera, sampleSpacecraft, BEATS, CAMERA_KEYS } from '../../apps/web/public/cinematic/timeline.js';
+assert.equal(BEATS.length,19,'The ten narrative scenes retain exactly 19 internal beats');
+assert.equal(new Set(BEATS.map(beat=>beat.id)).size,19,'Every internal beat has a unique stable identifier');
+assert.equal(new Set(BEATS.map(beat=>beat.p)).size,19,'Every internal beat occupies a distinct scroll checkpoint');
+assert.ok(BEATS.every((beat,index)=>index===0||beat.p>BEATS[index-1].p),'Internal beats stay in strict journey order');
 const aspects=[1440/900,1276/1285,390/844,375/667];
 let samples=0,boundaries=0;
 for(const aspect of aspects){

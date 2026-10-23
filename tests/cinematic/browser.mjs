@@ -26,8 +26,15 @@ function monitor(p,normal=true){
 async function ready(p){
  await p.waitForFunction(()=>window.__agriscope?.snapshot()?.ready&&window.__agriscope.snapshot().mode==='webgl',null,{timeout:60000});
  assert.equal(await p.locator('.cinematic canvas').count(),1);
- assert.equal((await state(p)).assets,7);
- assert.match((await state(p)).model.generator,/Blender 4\.5/);
+ const snapshot=await state(p);
+ assert.equal(snapshot.assets,labRoute?8:7);
+ assert.match(snapshot.model.generator,/Blender 4\.5/);
+ if(labRoute){
+  assert.equal(snapshot.regionalWorld.triangles,42234);assert.equal(snapshot.regionalWorld.batches,6);
+  assert.equal(snapshot.scene4Hero.triangles,98743);assert.equal(snapshot.scene4Hero.batches,12);
+  assert.equal(snapshot.descentAtmosphere.banks,6);
+  assert.equal(snapshot.BEATS?.length??(await p.evaluate(()=>window.__agriscope.BEATS.length)),19);
+ }
 }
 async function checkpoint(p,progress){return p.evaluate(progress=>window.__agriscope.seekCheckpoint(progress),progress);}
 async function settled(p,progress){await p.waitForFunction(progress=>Math.abs(window.__agriscope.snapshot().p-progress)<.0003,progress,{timeout:90000});}
@@ -45,7 +52,8 @@ try{
   const points=await p.evaluate(()=>window.__agriscope.SHOTS.map(s=>s.p)),captures=[];
   for(let i=0;i<points.length;i++){
    const s=await checkpoint(p,points[i]);assert.equal(s.shot,i+1);
-   assert.ok(s.drawCalls>5&&s.drawCalls<=(s.p<.5?84:58),'Bounded visible draw calls');assert.ok(s.triangles>1000);assert.ok(s.camera.every(Number.isFinite));
+   const drawBudget=labRoute?(s.p<.5?112:s.p<.7?70:58):(s.p<.5?84:58);
+   assert.ok(s.drawCalls>5&&s.drawCalls<=drawBudget,'Bounded visible draw calls');assert.ok(s.triangles>1000);assert.ok(s.camera.every(Number.isFinite));
    assert.equal(await p.locator('#fallback').isVisible(),false);
    assert.ok(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'No horizontal overflow');
    assert.equal(await p.locator('#field-panel').isVisible(),i>=8);
@@ -92,6 +100,30 @@ try{
    assert.deepEqual(s.camera,forward.camera,'Transition camera is direction independent');
    assert.equal(s.drawCalls,forward.drawCalls,'Reverse restores transparent/opaque material state');
    assert.equal(s.triangles,forward.triangles,'Reverse restores geometry visibility');
+  }
+  if(labRoute){
+   const cameraPoints=[.43,.46,.485,.51],cameraStates=[];
+   for(const progress of cameraPoints){
+    const s=await checkpoint(p,progress);
+    assert.ok([...s.camera,...s.look,s.fov,s.roll].every(Number.isFinite),`Scene 4 camera is finite at ${progress}`);
+    assert.deepEqual(s.viewport,[viewport.width,viewport.height],`Scene 4 uses the intended ${viewport.width}×${viewport.height} framing`);
+    cameraStates.push(s);
+   }
+   for(let i=cameraPoints.length-1;i>=0;i--){
+    const reverse=await checkpoint(p,cameraPoints[i]),forward=cameraStates[i];
+    for(const key of ['camera','look','scene4Hero','regionalWorld','descentAtmosphere'])assert.deepEqual(reverse[key],forward[key],`Scene 4 ${key} restores at ${cameraPoints[i]}`);
+    assert.equal(reverse.fov,forward.fov);assert.equal(reverse.roll,forward.roll);
+   }
+   const craftBefore=await checkpoint(p,.22),craftFaded=await checkpoint(p,.46),craftRestored=await checkpoint(p,.22);
+   assert.equal(craftBefore.spacecraftOpacity,1,'Spacecraft is opaque at the payload beat');
+   assert.equal(craftBefore.spacecraftDepthWrite.enabled,true,'Opaque spacecraft enables authored depth writes');
+   assert.equal(craftBefore.spacecraftDepthWrite.active,craftBefore.spacecraftDepthWrite.authored,'Opaque spacecraft restores every authored depth writer');
+   assert.ok(craftBefore.spacecraftDepthWrite.authored>0,'Spacecraft includes depth-writing authored materials');
+   assert.equal(craftFaded.spacecraftOpacity,0,'Spacecraft clears the atmospheric descent');
+   assert.equal(craftFaded.spacecraftDepthWrite.enabled,false,'Faded spacecraft cannot occlude the descent through depth writes');
+   assert.equal(craftFaded.spacecraftDepthWrite.active,0,'No faded spacecraft material keeps writing depth');
+   assert.deepEqual(craftRestored.spacecraftDepthWrite,craftBefore.spacecraftDepthWrite,'Reverse traversal restores spacecraft depth writes exactly');
+   assert.equal(craftRestored.spacecraftOpacity,craftBefore.spacecraftOpacity,'Reverse traversal restores spacecraft opacity exactly');
   }
   // Real eased input, pause, and a direction reversal inside the former pop.
   for(const progress of [.405,.435,.449431,.452550,.465,.469,.449431,.415]){
@@ -141,13 +173,18 @@ try{
  const nojs=await browser.newContext({viewport:viewports[2],javaScriptEnabled:false});contexts.push(nojs);p=await nojs.newPage();await p.goto(url);
  assert.ok(await p.locator('#fallback').isVisible());assert.equal(await p.locator('.cinematic canvas').count(),0);assert.equal(await p.locator('#motion').isVisible(),false);
  assert.equal(await p.locator('#fallback .text-link').getAttribute('href'),'/login?mode=register');await save(p,'no-javascript');report.checks.push('No JavaScript: SSR fallback preserves field dates, values and registration CTA');await nojs.close();
- for(const failure of ['webgl','texture','regional-map','surface-map','mesh','module']){
+ const failures=['webgl','texture','regional-map','surface-map','mesh','module',...(labRoute?['hero-mesh','atmosphere-module','regional-module','hero-module']:[])];
+ for(const failure of failures){
   const ctx=await browser.newContext({viewport:viewports[2]});contexts.push(ctx);p=await ctx.newPage();monitor(p,false);let intercepted=0;
   if(failure==='webgl')await p.addInitScript(()=>{const original=HTMLCanvasElement.prototype.getContext;window.__blockedWebgl=0;HTMLCanvasElement.prototype.getContext=function(type,...args){if(type.includes('webgl')){window.__blockedWebgl++;return null;}return original.call(this,type,...args);};});
   if(failure==='texture')await p.route('**/cinematic/textures/earth-day.jpg',r=>{intercepted++;return r.abort();});
   if(failure==='regional-map')await p.route('**/cinematic/textures/regional-landscape.png',r=>{intercepted++;return r.fulfill({status:404,body:'Unavailable'});});
   if(failure==='surface-map')await p.route('**/cinematic/textures/surfaces/metal-normal.png',r=>{intercepted++;return r.fulfill({status:404,body:'Unavailable'});});
   if(failure==='mesh')await p.route('**/cinematic/models/spacecraft.mesh.json',r=>{intercepted++;return r.fulfill({status:404,body:'Unavailable'});});
+  if(failure==='hero-mesh')await p.route('**/cinematic/models/scene4-hero.mesh.json',r=>{intercepted++;return r.fulfill({status:404,body:'Unavailable'});});
+  if(failure==='atmosphere-module')await p.route('**/cinematic/descent-atmosphere.js',r=>{intercepted++;return r.abort();});
+  if(failure==='regional-module')await p.route('**/cinematic/scene4-regional.js',r=>{intercepted++;return r.abort();});
+  if(failure==='hero-module')await p.route('**/cinematic/scene4-hero.js',r=>{intercepted++;return r.abort();});
   if(failure==='module')await p.route(labRoute?'**/cinematic/lab-main.js':'**/cinematic/main.js',r=>{intercepted++;return r.abort();});
   await p.goto(`${url}?qa=1`);
   if(failure==='module'){
