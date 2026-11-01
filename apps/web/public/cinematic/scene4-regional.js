@@ -6,7 +6,7 @@ import {smooth} from './timeline.js';
 function tuneRegionalMaterial(material,name,environment){
  const surface=material.userData.surface;
  const baseOpacity=material.opacity;
- const shellCurve=name.includes('regional-ground')?'smoothstep(8.,12.,regionalHandoff)':'smoothstep(12.,31.5,regionalHandoff)';
+ const shellCurve=name.includes('regional-ground')?'smoothstep(6.,14.,regionalHandoff)':'smoothstep(14.,34.,regionalHandoff)';
  material.envMap=environment;
  material.envMapIntensity=surface==='water'?1.08:surface==='leaf'?.34:.24;
  material.transparent=true;
@@ -23,7 +23,9 @@ function tuneRegionalMaterial(material,name,environment){
   // The authored broad ground sits directly below the Hero derivative during
   // the handoff. Keep its near response in the same olive family so the
   // destination reads as part of one landscape under the warm key.
-  material.roughness=.90;material.envMapIntensity=.20;material.color.setRGB(.10,.16,.065);
+  material.roughness=.91;material.envMapIntensity=.20;material.color.setRGB(.085,.145,.070);
+ }else if(name.includes('ridges')){
+  material.roughness=.94;material.envMapIntensity=.16;material.color.setRGB(.075,.125,.125);
  }else{
   material.roughness=Math.max(.84,material.roughness);
  }
@@ -57,10 +59,10 @@ export function buildScene4Regional(asset,{environment=null,surfaceMaps={}}={}){
  // A small vertical separation prevents z-fighting through that join.
  group.position.y=-.08;group.visible=false;
  group.userData.apply=p=>{
-  const surface=descentSurface(p),arrival=smooth(.424,.468,p),departure=1-smooth(.72,.78,p);
+  const surface=descentSurface(p),arrival=smooth(.402,.452,p),departure=1-smooth(.72,.78,p);
   const opacity=arrival*departure;
   group.visible=opacity>.002;group.scale.setScalar(surface.scale);
-  for(const material of materials)material.opacity=(material.userData.baseOpacity||1)*opacity;
+  for(const material of materials){material.opacity=(material.userData.baseOpacity||1)*opacity;material.depthWrite=material.userData.surface!=='water'&&opacity>.995;}
   return {opacity,scale:surface.scale,triangles:asset.triangles,batches:asset.meshes.length};
  };
  return group;

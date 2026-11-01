@@ -104,7 +104,7 @@ export function buildTerrain(assets,{mobile=false,day=null,rotation=new THREE.Ma
   currentProgress=p;
   const descent=descentSurface(p);
   transition.reveal.value=descent.reveal;
-  transition.regionalReplacement.value=cinematic?smooth(.424,.468,p):0;
+  transition.regionalReplacement.value=cinematic?smooth(.402,.452,p):0;
   if(day)group.scale.setScalar(descent.scale);
   for(const mesh of surfaceMeshes){
    const transparent=mesh.userData.authoredTransparent||descent.reveal<1||transition.regionalReplacement.value>0;

@@ -10,6 +10,7 @@ type LabState = {
   look: number[];
   pointerParallax: number[];
   regionalWorld: null | { opacity: number; scale: number; triangles: number; batches: number };
+  contextWorld: null | { opacity: number; scale: number; triangles: number; batches: number };
   scene4Hero: null | { opacity: number; scale: number; triangles: number; batches: number };
   descentAtmosphere: null | { opacity: number; scale: number; banks: number };
   spacecraftOpacity: number;
@@ -39,11 +40,12 @@ async function seek(page: import("@playwright/test").Page, progress: number) {
 
 for (const viewport of [{ width: 1440, height: 900 }, { width: 375, height: 667 }]) {
   test(`cinematic lab has deterministic chapters and purposeful controls at ${viewport.width}px`, async ({ page }) => {
-    const scene4MeshRequests = { regional: [] as string[], hero: [] as string[], legacyTree: [] as string[] };
+    const scene4MeshRequests = { regional: [] as string[], hero: [] as string[], context: [] as string[], legacyTree: [] as string[] };
     page.on("request", (request) => {
       const path = new URL(request.url()).pathname;
       if (path.endsWith("/cinematic/models/scene4-regional.mesh.json")) scene4MeshRequests.regional.push(request.url());
       if (path.endsWith("/cinematic/models/scene4-hero.mesh.json")) scene4MeshRequests.hero.push(request.url());
+      if (path.endsWith("/cinematic/models/scene4-context.mesh.json")) scene4MeshRequests.context.push(request.url());
       if (path.endsWith("/cinematic/models/tree.mesh.json")) scene4MeshRequests.legacyTree.push(request.url());
     });
     await page.setViewportSize(viewport);
@@ -52,12 +54,14 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 375, height: 667 
     await waitForLab(page);
 
     const initial = await page.evaluate(() => (window as typeof window & { __agriscope: { snapshot(): LabState } }).__agriscope.snapshot());
-    expect(initial.assets).toBe(8);
+    expect(initial.assets).toBe(9);
     expect(initial.regionalWorld).toMatchObject({ triangles: 42234, batches: 6 });
     expect(initial.scene4Hero).toMatchObject({ triangles: 98743, batches: 12 });
+    expect(initial.contextWorld).toMatchObject({ triangles: 58271, batches: 9 });
     expect(initial.descentAtmosphere).toMatchObject({ banks: 6 });
     expect(scene4MeshRequests.regional).toHaveLength(1);
     expect(scene4MeshRequests.hero).toHaveLength(1);
+    expect(scene4MeshRequests.context).toHaveLength(1);
     expect(scene4MeshRequests.legacyTree).toHaveLength(0);
     const beats = await page.evaluate(() => (window as typeof window & { __agriscope: { BEATS: { id: string; p: number }[] } }).__agriscope.BEATS);
     expect(beats).toHaveLength(19);
@@ -75,6 +79,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 375, height: 667 
       expect(reverse.look).toEqual(forward[index].look);
       expect(reverse.shot).toBe(forward[index].shot);
       expect(reverse.regionalWorld).toEqual(forward[index].regionalWorld);
+      expect(reverse.contextWorld).toEqual(forward[index].contextWorld);
       expect(reverse.scene4Hero).toEqual(forward[index].scene4Hero);
       expect(reverse.descentAtmosphere).toEqual(forward[index].descentAtmosphere);
     }
@@ -167,9 +172,11 @@ test("cinematic lab reduced-motion and module failure retain Thai content and re
 for (const [label, pattern] of [
   ["regional mesh", "**/cinematic/models/scene4-regional.mesh.json"],
   ["Hero mesh", "**/cinematic/models/scene4-hero.mesh.json"],
+  ["context mesh", "**/cinematic/models/scene4-context.mesh.json"],
   ["atmosphere module", "**/cinematic/descent-atmosphere.js"],
   ["regional module", "**/cinematic/scene4-regional.js"],
   ["Hero module", "**/cinematic/scene4-hero.js"],
+  ["context module", "**/cinematic/scene4-context.js"],
 ] as const) {
   test(`cinematic lab ${label} failure keeps a readable Thai handoff`, async ({ page }) => {
     let intercepted = 0;
@@ -203,7 +210,7 @@ test("landing entry does not load Scene 4 lab assets or camera timeline", async 
   expect(landing.assets).toBe(7);
   expect(cinematicRequests.filter((url) => new URL(url).pathname.endsWith("/cinematic/models/tree.mesh.json"))).toHaveLength(1);
   expect(cinematicRequests.some((url) => url.endsWith("/cinematic/lab-timeline.js"))).toBe(false);
-  for (const suffix of ["/cinematic/models/scene4-regional.mesh.json", "/cinematic/models/scene4-hero.mesh.json", "/cinematic/scene4-regional.js", "/cinematic/scene4-hero.js", "/cinematic/descent-atmosphere.js"]) {
+  for (const suffix of ["/cinematic/models/scene4-regional.mesh.json", "/cinematic/models/scene4-hero.mesh.json", "/cinematic/models/scene4-context.mesh.json", "/cinematic/scene4-regional.js", "/cinematic/scene4-hero.js", "/cinematic/scene4-context.js", "/cinematic/descent-atmosphere.js"]) {
     expect(cinematicRequests.some((url) => new URL(url).pathname.endsWith(suffix))).toBe(false);
   }
 });

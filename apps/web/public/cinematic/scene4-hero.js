@@ -7,7 +7,7 @@ import {smooth} from './timeline.js';
 function tuneHeroMaterial(material,name,environment,flatten){
  const surface=material.userData.surface;
  const baseOpacity=material.opacity;
- const outerGroundTone=name.includes('hero-ground')?'\nfloat outerGround=smoothstep(8.,24.,heroHandoff);\ndiffuseColor.rgb*=mix(vec3(1.),vec3(.52,.82,.45),outerGround*.82);':'';
+ const outerGroundTone=name.includes('hero-ground')?'\nfloat outerGround=smoothstep(7.,26.,heroHandoff);\ndiffuseColor.rgb*=mix(vec3(1.),vec3(.74,.88,.68),outerGround*.68);':'';
  material.envMap=environment;
  material.transparent=true;
  material.opacity=0;
@@ -56,7 +56,7 @@ function tuneHeroMaterial(material,name,environment,flatten){
    .replace('#include <begin_vertex>',`#include <begin_vertex>\ntransformed.y+=dot(position.xz,position.xz)/${TERRAIN_CURVE_DIVISOR}.*fieldFlatten;\nheroPosition=position;`);
   shader.fragmentShader=shader.fragmentShader
    .replace('#include <common>','#include <common>\nvarying vec3 heroPosition;')
-   .replace('#include <color_fragment>',`#include <color_fragment>\nfloat heroHandoff=max(abs(heroPosition.x),abs(heroPosition.z))+sin(heroPosition.x*.19)*.55+sin(heroPosition.z*.14)*.45;${outerGroundTone}\nfloat heroFeather=1.-smoothstep(12.,31.5,heroHandoff);\nif(heroFeather<.012)discard;\ndiffuseColor.a*=heroFeather;`);
+   .replace('#include <color_fragment>',`#include <color_fragment>\nfloat heroHandoff=max(abs(heroPosition.x),abs(heroPosition.z))+sin(heroPosition.x*.19)*.55+sin(heroPosition.z*.14)*.45;${outerGroundTone}\nfloat heroFeather=1.-smoothstep(14.,34.,heroHandoff);\nif(heroFeather<.012)discard;\ndiffuseColor.a*=heroFeather;`);
  };
  material.customProgramCacheKey=()=>`agriscope-scene4-hero-v3-${surface}-${name}`;
 }
@@ -69,22 +69,24 @@ function tuneHeroMaterial(material,name,environment,flatten){
 export function buildScene4Hero(asset,{environment=null,surfaceMaps={}}={}){
  const group=decodeMeshAsset(asset,0,surfaceMaps);
  group.name='Scene 4 Hero Field · Blender runtime derivative';
- const materials=new Set(),flatten={value:0};
+ const materials=new Set(),meshes=[],flatten={value:0};
  group.traverse(object=>{
   if(!object.isMesh)return;
+  object.userData.intendedCastShadow=object.name.includes('hero-rows')||object.name.includes('hero-verge');
   object.castShadow=false;
   object.receiveShadow=true;
   object.renderOrder=-1;
   tuneHeroMaterial(object.material,object.name,environment,flatten);
-  materials.add(object.material);
+  materials.add(object.material);meshes.push(object);
  });
  group.visible=false;
  group.userData.apply=(p,fieldFlatten=0)=>{
-  const surface=descentSurface(p),opacity=smooth(.424,.468,p);
+  const surface=descentSurface(p),opacity=smooth(.402,.452,p);
   flatten.value=fieldFlatten;
   group.visible=opacity>.002;
   group.scale.setScalar(surface.scale);
-  for(const material of materials)material.opacity=material.userData.baseOpacity*opacity;
+  for(const material of materials){material.opacity=material.userData.baseOpacity*opacity;material.depthWrite=material.userData.surface!=='water'&&opacity>.995;}
+  for(const mesh of meshes)mesh.castShadow=mesh.userData.intendedCastShadow&&opacity>.995;
   return {opacity,scale:surface.scale,flatten:flatten.value,triangles:asset.triangles,batches:asset.meshes.length};
  };
  return group;

@@ -54,6 +54,13 @@ class RuntimeTransferArgumentTests(unittest.TestCase):
         self.assertEqual(variant, "hero")
         self.assertEqual(runtime.name, "scene4-hero.mesh.json")
 
+    def test_environment_context_uses_context_output(self):
+        source, _, evidence, runtime, variant, _ = parse_with([], {"AGRISCOPE_RUNTIME_TRANSFER_VARIANT": "context"})
+        self.assertEqual(variant, "context")
+        self.assertEqual(runtime.name, "scene4-context.mesh.json")
+        self.assertEqual(source.name, "AgriScope-Scene4-Context-Authoring.blend")
+        self.assertEqual(evidence.name, "20261023-runtime-art-transfer-context")
+
     def test_cli_variant_is_resolved_before_default_output(self):
         *_, runtime, variant, _ = parse_with(
             ["--variant=hero"],
@@ -61,6 +68,13 @@ class RuntimeTransferArgumentTests(unittest.TestCase):
         )
         self.assertEqual(variant, "hero")
         self.assertEqual(runtime.name, "scene4-hero.mesh.json")
+
+        *_, runtime, variant, _ = parse_with(
+            ["--variant=context"],
+            {"AGRISCOPE_RUNTIME_TRANSFER_VARIANT": "regional"},
+        )
+        self.assertEqual(variant, "context")
+        self.assertEqual(runtime.name, "scene4-context.mesh.json")
 
     def test_explicit_runtime_override_precedence(self):
         *_, runtime, variant, _ = parse_with(

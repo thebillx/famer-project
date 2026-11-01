@@ -57,7 +57,7 @@ function cloudMaterial(mobile){
      float density=densityAt(samplePoint);
      float towardLight=densityAt(samplePoint+lightDirection*.12);
      float exposed=clamp(.30+(density-towardLight)*3.6+samplePoint.y*.16-samplePoint.x*.035,0.,1.);
-     float stepAlpha=1.-exp(-density*stride*2.8);
+     float stepAlpha=1.-exp(-density*stride*3.65);
      float pocket=.58+.42*sin(samplePoint.x*8.4+sin(samplePoint.z*6.7))*sin(samplePoint.y*7.1);
      exposed*=pocket;
      vec3 neutral=mix(coolColor,vec3(.58,.64,.69),exposed*.45);
@@ -77,12 +77,12 @@ function cloudMaterial(mobile){
 const BANKS=[
  // Near gates sit outside the destination opening. Middle and far strata
  // overlap the landscape in depth instead of resting on its surface.
- {name:'Near cloud · left frame',position:[-8,15,2],scale:[7.5,7.5,11],order:6,seed:1},
- {name:'Near cloud · right frame',position:[16.5,16,-5],scale:[6.5,7,10],order:5,seed:2},
- {name:'Middle cloud · west passage',position:[-23,18,-32],scale:[18,7,15],order:4,seed:3},
- {name:'Middle cloud · east passage',position:[20,19,-43],scale:[17,8,17],order:3,seed:4},
- {name:'Far cloud · broken crown',position:[-34,23,-88],scale:[29,8,22],order:2,seed:5},
- {name:'Far cloud · sunward bank',position:[31,24,-108],scale:[33,9,24],order:1,seed:6},
+ {name:'Near cloud · left frame',position:[-13,20,5],scale:[11.5,9,14],order:6,seed:1},
+ {name:'Near cloud · right frame',position:[18,20,-4],scale:[9,8.5,13],order:5,seed:2},
+ {name:'Middle cloud · west passage',position:[-24,23,-32],scale:[19,8.5,16],order:4,seed:3},
+ {name:'Middle cloud · east passage',position:[22,24,-47],scale:[18,9,18],order:3,seed:4},
+ {name:'Far cloud · broken crown',position:[-36,29,-92],scale:[31,10,23],order:2,seed:5},
+ {name:'Far cloud · sunward bank',position:[34,31,-116],scale:[35,11,26],order:1,seed:6},
 ];
 
 function seeded(seed){return ()=>{seed=(seed*1664525+1013904223)>>>0;return seed/4294967296;};}
@@ -101,7 +101,7 @@ function shape(material,seed){
 // or attempt to stream the offline VDBs into the browser.
 export function buildDescentAtmosphere({mobile=false}={}){
  const group=new THREE.Group();group.name='Scene 4 atmospheric passage · runtime derivative';
- const skyMaterial=new THREE.ShaderMaterial({uniforms:{opacity:{value:0},topColor:{value:new THREE.Color(0x183047)},horizonColor:{value:new THREE.Color(0x9b7556)},sunColor:{value:new THREE.Color(0xf1bd7d)}},transparent:true,depthWrite:false,depthTest:false,side:THREE.BackSide,
+ const skyMaterial=new THREE.ShaderMaterial({uniforms:{opacity:{value:0},topColor:{value:new THREE.Color(0x162b40)},horizonColor:{value:new THREE.Color(0x526b72)},sunColor:{value:new THREE.Color(0xf0b978)}},transparent:true,depthWrite:false,depthTest:false,side:THREE.BackSide,
   vertexShader:'varying vec3 skyDirection;void main(){skyDirection=normalize(position);gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
   fragmentShader:`varying vec3 skyDirection;uniform float opacity;uniform vec3 topColor;uniform vec3 horizonColor;uniform vec3 sunColor;
    void main(){vec3 direction=normalize(skyDirection);float altitude=smoothstep(-.08,.72,direction.y);float horizon=exp(-abs(direction.y)*5.2);float sun=pow(max(0.,dot(direction,normalize(vec3(.46,.10,-.88)))),96.);vec3 color=mix(horizonColor,topColor,altitude)+sunColor*sun*.55+horizon*sunColor*.055;gl_FragColor=vec4(color,opacity);}`});
@@ -116,16 +116,20 @@ export function buildDescentAtmosphere({mobile=false}={}){
  }
  group.visible=false;
  group.userData.apply=p=>{
-  const surface=descentSurface(p),arrival=smooth(.428,.46,p),departure=1-smooth(.535,.59,p);
+  const surface=descentSurface(p),arrival=smooth(.402,.445,p),departure=1-smooth(.545,.595,p);
   const opacity=arrival*departure;
-  const skyOpacity=.82*smooth(.40,.445,p)*(1-smooth(.60,.68,p));
-  group.visible=Math.max(opacity,skyOpacity)>.002;group.scale.setScalar(surface.scale);skyMaterial.uniforms.opacity.value=skyOpacity;
-  const edge=smooth(.405,.455,p)*(1-.38*smooth(.49,.55,p));
+  const skyOpacity=.58*smooth(.402,.45,p)*(1-smooth(.57,.64,p));
+  // Cloud banks live in the passage rather than shrinking down with the
+  // incoming terrain. This keeps their bases above the land at .43 and gives
+  // the separated layers enough parallax before the local world reaches 1:1.
+  const cloudScale=THREE.MathUtils.lerp(.72,1,smooth(.405,.47,p));
+  group.visible=Math.max(opacity,skyOpacity)>.002;group.scale.setScalar(cloudScale);skyMaterial.uniforms.opacity.value=skyOpacity;
+  const edge=smooth(.405,.455,p)*(1-.28*smooth(.50,.56,p));
   banks.forEach((bank,index)=>{
-   bank.material.uniforms.opacity.value=opacity*(index===0?.38:index===1?.27:index<4?.38:.31);
+   bank.material.uniforms.opacity.value=opacity*(index===0?.52:index===1?.43:index<4?.48:.38);
    bank.material.uniforms.warmEdge.value=edge*(index===1||index===5?1:.68);
   });
-  return {opacity,skyOpacity,scale:surface.scale,banks:banks.length};
+  return {opacity,skyOpacity,scale:cloudScale,terrainScale:surface.scale,banks:banks.length};
  };
  group.userData.asset={generator:'AgriScope Scene 4 bounded cloud-volume derivative',banks:banks.length,samples:mobile?10:14};
  return group;

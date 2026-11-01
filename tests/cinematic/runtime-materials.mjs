@@ -9,6 +9,7 @@ import {decodeMeshAsset,loadSurfaceMaps} from '../../apps/web/public/cinematic/m
 import {bindTerrainEnvironment,buildTerrain} from '../../apps/web/public/cinematic/terrain.js';
 import {buildScene4Regional} from '../../apps/web/public/cinematic/scene4-regional.js';
 import {buildScene4Hero} from '../../apps/web/public/cinematic/scene4-hero.js';
+import {buildScene4Context} from '../../apps/web/public/cinematic/scene4-context.js';
 import {buildDescentAtmosphere} from '../../apps/web/public/cinematic/descent-atmosphere.js';
 
 const load=async name=>JSON.parse(await readFile(new URL(`../../apps/web/public/cinematic/models/${name}.mesh.json`,import.meta.url)));
@@ -35,16 +36,16 @@ const decodedUvFixture=decodeMeshAsset(uvFixture).children[0].geometry.attribute
 assert.deepEqual(Array.from(decodedUvFixture.array),[1,-.5,-32,.50390625,32767/512,-64],'Signed packed UVs decode with the 1/512 scale and retain the full range');
 assert.throws(()=>decodeMeshAsset({...uvFixture,meshes:[{...uvFixture.meshes[0],uv:encode([1,2,3,4],Int16Array)}]}),/Invalid authored UV count/,'Malformed packed UV counts are rejected');
 const spacecraftData=await load('spacecraft');
-const [farmland,tree,scene4RegionalData,scene4HeroData]=await Promise.all([load('farmland'),load('tree'),load('scene4-regional'),load('scene4-hero')]);
+const [farmland,tree,scene4RegionalData,scene4HeroData,scene4ContextData]=await Promise.all([load('farmland'),load('tree'),load('scene4-regional'),load('scene4-hero'),load('scene4-context')]);
 
 const mapRoles=new Set();
-for(const data of [spacecraftData,farmland,tree,scene4RegionalData,scene4HeroData])for(const variant of data.variants||[data])for(const mesh of variant.meshes){
+for(const data of [spacecraftData,farmland,tree,scene4RegionalData,scene4HeroData,scene4ContextData])for(const variant of data.variants||[data])for(const mesh of variant.meshes){
  if(mesh.material.surface)mapRoles.add(mesh.material.surface);
 }
 assert.deepEqual([...mapRoles].sort(),['crop','leaf','metal','soil','solar','water'],'All exported authored surface roles are known');
 
 const loadedTextures=[];
-const maps=await loadSurfaceMaps([spacecraftData,farmland,tree,scene4RegionalData,scene4HeroData],{loadAsync:async url=>{
+const maps=await loadSurfaceMaps([spacecraftData,farmland,tree,scene4RegionalData,scene4HeroData,scene4ContextData],{loadAsync:async url=>{
  const texture={url,dispose(){this.disposed=true;},disposed:false};
  loadedTextures.push(texture);return texture;
 }});
@@ -65,7 +66,7 @@ await assert.rejects(
 );
 const failedTextures=[];
 await assert.rejects(
- loadSurfaceMaps([spacecraftData,farmland,tree,scene4RegionalData,scene4HeroData],{loadAsync:async url=>{
+ loadSurfaceMaps([spacecraftData,farmland,tree,scene4RegionalData,scene4HeroData,scene4ContextData],{loadAsync:async url=>{
   const texture={url,dispose(){this.disposed=true;},disposed:false};
   if(url.endsWith('/soil-normal.png'))throw new Error('simulated map failure');
   failedTextures.push(texture);
@@ -175,37 +176,95 @@ const scene4Regional=buildScene4Regional(scene4RegionalData,{environment:regiona
 const regionalMaterials=scene4Regional.children.map(mesh=>mesh.material);
 const regionalState=p=>{
  const applied=scene4Regional.userData.apply(p);
- return {applied,visible:scene4Regional.visible,scale:scene4Regional.scale.toArray(),opacities:regionalMaterials.map(material=>material.opacity)};
+ return {applied,visible:scene4Regional.visible,scale:scene4Regional.scale.toArray(),opacities:regionalMaterials.map(material=>material.opacity),depthWrites:regionalMaterials.map(material=>material.depthWrite)};
 };
-const regionalHidden=regionalState(.42),regionalVisible=regionalState(.47);
+const regionalHidden=regionalState(.395),regionalTransfer=regionalState(.43),regionalVisible=regionalState(.46);
 assert.equal(regionalHidden.visible,false,'Scene 4 continuation stays absent before the local transition');
+assert.ok(regionalTransfer.applied.opacity>0&&regionalTransfer.applied.opacity<1,'Scene 4 continuation overlaps the departing globe instead of leaving an empty handoff');
+assert.ok(regionalTransfer.depthWrites.every(depthWrite=>depthWrite===false),'Partially transparent regional forms cannot occlude the departing world');
 assert.equal(regionalVisible.visible,true,'Scene 4 continuation arrives with the atmospheric descent');
 assert.equal(regionalVisible.applied.triangles,42234);assert.equal(regionalVisible.applied.batches,6);
 assert.ok(regionalVisible.opacities.every(opacity=>opacity>0),'Every regional broad-form batch participates in the selected descent');
 assert.equal(regionalState(.70).visible,true,'Scene 4 continuation supports the boundary and quality chapters');
 assert.equal(regionalState(.80).visible,false,'Scene 4 continuation clears before the comparison settles');
-assert.deepEqual(regionalState(.47),regionalVisible,'Scene 4 continuation restores exact visibility, scale, and material opacity in reverse');
+assert.deepEqual(regionalState(.46),regionalVisible,'Scene 4 continuation restores exact visibility, scale, and material opacity in reverse');
 for(const material of regionalMaterials)assert.equal(material.envMap,regionalEnvironment,'Regional materials share the bounded agricultural environment');
 const regionalGround=scene4Regional.getObjectByName('Scene 4 regional · regional-ground');
 const regionalShader={uniforms:{},vertexShader:'#include <common>\n#include <begin_vertex>',fragmentShader:'#include <common>\n#include <color_fragment>'};
 regionalGround.material.onBeforeCompile(regionalShader);
 assert.match(regionalShader.fragmentShader,/float regionalHandoff=max\(abs\(regionalPosition\.x\),abs\(regionalPosition\.z\)\)\+sin\(regionalPosition\.x\*\.19\)\*\.55\+sin\(regionalPosition\.z\*\.14\)\*\.45/,'Regional derivative follows the broad authored box edge without a circular stage seam');
-assert.match(regionalShader.fragmentShader,/float shell=smoothstep\(8\.,12\.,regionalHandoff\)/,'Regional ground underpaint closes the warm-sky gap below the Hero feather');
+assert.match(regionalShader.fragmentShader,/float shell=smoothstep\(6\.,14\.,regionalHandoff\)/,'Regional ground underpaint closes the atmosphere gap below the Hero feather');
 assert.match(regionalShader.fragmentShader,/if\(shell<\.012\)discard/,'Regional derivative does not cover the Scene 4 Hero core');
 const regionalCanopy=scene4Regional.getObjectByName('Scene 4 regional · regional-canopy');
 const regionalCanopyShader={uniforms:{},vertexShader:'#include <common>\n#include <begin_vertex>',fragmentShader:'#include <common>\n#include <color_fragment>'};
 regionalCanopy.material.onBeforeCompile(regionalCanopyShader);
-assert.match(regionalCanopyShader.fragmentShader,/float shell=smoothstep\(12\.,31\.5,regionalHandoff\)/,'Regional forms above the underpaint still meet the Hero asset across the selected broad feather');
+assert.match(regionalCanopyShader.fragmentShader,/float shell=smoothstep\(14\.,34\.,regionalHandoff\)/,'Regional forms above the underpaint still meet the Hero asset across the selected broad feather');
+
+const contextEnvironment={name:'Hero surroundings environment fixture'};
+const scene4Context=buildScene4Context(scene4ContextData,{environment:contextEnvironment,surfaceMaps:maps});
+const contextMaterials=scene4Context.children.map(mesh=>mesh.material);
+const contextCultivation=scene4Context.getObjectByName('Scene 4 context · context-cultivation');
+const contextVerge=scene4Context.getObjectByName('Scene 4 context · context-verge');
+assert.equal(contextCultivation.userData.intendedCastShadow,true,'Context stores the selective cultivation shadow intent');
+assert.equal(contextVerge.userData.intendedCastShadow,true,'Context stores the selective verge shadow intent');
+assert.equal(contextCultivation.castShadow,false,'Selective context shadows start disabled before the transition');
+assert.equal(contextVerge.castShadow,false,'Selective context verge shadows start disabled before the transition');
+const contextState=p=>{
+ const applied=scene4Context.userData.apply(p);
+ return {applied,visible:scene4Context.visible,position:scene4Context.position.toArray(),rotation:scene4Context.rotation.toArray(),scale:scene4Context.scale.toArray(),opacities:contextMaterials.map(material=>material.opacity),depthWrites:contextMaterials.map(material=>material.depthWrite),castShadows:scene4Context.children.map(mesh=>mesh.castShadow)};
+};
+const contextHidden=contextState(.395),contextTransfer=contextState(.43),contextVisible=contextState(.46);
+assert.equal(contextHidden.visible,false,'Authored Hero surroundings stay absent before the local transition');
+assert.ok(contextTransfer.applied.opacity>0&&contextTransfer.applied.opacity<1,'Hero surroundings overlap the departing globe without a blank handoff');
+assert.ok(contextTransfer.depthWrites.every(depthWrite=>depthWrite===false),'Transparent context forms cannot cut holes through the departing world');
+assert.ok(contextTransfer.castShadows.every(castShadow=>castShadow===false),'Partially transparent context forms cannot cast opaque shadows');
+assert.equal(contextVisible.visible,true,'Hero surroundings arrive with the regional and protected Hero derivatives');
+assert.equal(contextVisible.applied.triangles,58271);assert.equal(contextVisible.applied.batches,9);
+assert.deepEqual(contextVisible.position,[0,0,0],'Context keeps the authored Hero registration origin');
+assert.deepEqual(contextVisible.rotation,[0,0,0,'XYZ'],'Context does not rotate away from the Hero and corridor registration');
+assert.ok(contextVisible.opacities.every(opacity=>opacity>0),'Every context broad-form batch participates in the selected descent');
+assert.equal(contextState(.70).visible,true,'Context supports the field boundary and quality chapters');
+assert.equal(contextState(.80).visible,false,'Context clears before the comparison settles');
+assert.deepEqual(contextState(.46),contextVisible,'Context scale, opacity and registration restore exactly in reverse');
+for(const material of contextMaterials)assert.equal(material.envMap,contextEnvironment,'Context materials share the bounded agricultural environment');
+for(const suffix of ['fallow','mature','wet','young']){
+ const name=`Scene 4 context · context-field-${suffix}`;
+ const field=scene4Context.getObjectByName(name),exported=scene4ContextData.meshes.find(mesh=>mesh.name===name);
+ assert.deepEqual(field.material.color.toArray(),exported.material.color,`${name} retains its authored field color`);
+ assert.equal(field.material.roughness,exported.material.roughness,`${name} retains its authored field roughness`);
+}
+const contextGround=scene4Context.getObjectByName('Scene 4 context · context-ground');
+const contextShader={uniforms:{},vertexShader:'#include <common>\n#include <begin_vertex>',fragmentShader:'#include <common>\n#include <color_fragment>'};
+contextGround.material.onBeforeCompile(contextShader);
+assert.match(contextShader.vertexShader,/float contextLift=1\.35\*smoothstep\(7\.,32\.,-position\.z\)/,'Distant composition forms retain their authored descent while meeting the runtime regional surface');
+assert.match(contextShader.fragmentShader,/float contextEdge=smoothstep\(29\.,38\.,-contextPosition\.z\)/,'The broad context ground feathers into the registered Hero core');
+for(const suffix of ['fallow','mature','wet','young']){
+ const field=scene4Context.getObjectByName(`Scene 4 context · context-field-${suffix}`);
+ const fieldShader={uniforms:{},vertexShader:'#include <common>\n#include <begin_vertex>',fragmentShader:'#include <common>\n#include <color_fragment>'};
+ field.material.onBeforeCompile(fieldShader);
+ assert.match(fieldShader.fragmentShader,/float contextEdge=smoothstep\(29\.,38\.,-contextPosition\.z\)/,`Context field ${suffix} feathers into the registered Hero core`);
+}
+assert.equal(contextCultivation.castShadow,true,'Selected cultivation mass restores a camera-visible vegetation shadow after becoming opaque');
+assert.equal(contextVerge.castShadow,true,'Connected verge mass restores the authored drainage silhouette after becoming opaque');
 
 const heroEnvironment={name:'Hero Field environment fixture'};
 const scene4Hero=buildScene4Hero(scene4HeroData,{environment:heroEnvironment,surfaceMaps:maps});
 const heroMaterials=scene4Hero.children.map(mesh=>mesh.material);
+const heroRows=scene4Hero.getObjectByName('Scene 4 hero · hero-rows');
+const heroVerge=scene4Hero.getObjectByName('Scene 4 hero · hero-verge');
+assert.equal(heroRows.userData.intendedCastShadow,true,'Hero stores the selective row shadow intent');
+assert.equal(heroVerge.userData.intendedCastShadow,true,'Hero stores the selective verge shadow intent');
+assert.equal(heroRows.castShadow,false,'Selective Hero row shadows start disabled before the transition');
+assert.equal(heroVerge.castShadow,false,'Selective Hero verge shadows start disabled before the transition');
 const heroState=(p,flatten=0)=>{
  const applied=scene4Hero.userData.apply(p,flatten);
- return {applied,visible:scene4Hero.visible,position:scene4Hero.position.toArray(),rotation:scene4Hero.rotation.toArray(),scale:scene4Hero.scale.toArray(),opacities:heroMaterials.map(material=>material.opacity)};
+ return {applied,visible:scene4Hero.visible,position:scene4Hero.position.toArray(),rotation:scene4Hero.rotation.toArray(),scale:scene4Hero.scale.toArray(),opacities:heroMaterials.map(material=>material.opacity),depthWrites:heroMaterials.map(material=>material.depthWrite),castShadows:scene4Hero.children.map(mesh=>mesh.castShadow)};
 };
-const heroHidden=heroState(.42),heroVisible=heroState(.47);
+const heroHidden=heroState(.395),heroTransfer=heroState(.43),heroVisible=heroState(.46);
 assert.equal(heroHidden.visible,false,'Scene 4 Hero derivative stays absent before the local transition');
+assert.ok(heroTransfer.applied.opacity>0&&heroTransfer.applied.opacity<1,'Hero Field becomes trackable before the Earth handoff completes');
+assert.ok(heroTransfer.depthWrites.every(depthWrite=>depthWrite===false),'Partially transparent Hero batches do not punch a field-shaped hole through the globe');
+assert.ok(heroTransfer.castShadows.every(castShadow=>castShadow===false),'Partially transparent Hero batches cannot cast opaque shadows');
 assert.equal(heroVisible.visible,true,'Scene 4 Hero derivative replaces the legacy local landscape during descent');
 assert.equal(heroVisible.applied.triangles,98743);assert.equal(heroVisible.applied.batches,12);
 assert.deepEqual(heroVisible.position,[0,0,0],'Hero Field remains at its authored registration origin');
@@ -213,7 +272,7 @@ assert.deepEqual(heroVisible.rotation,[0,0,0,'XYZ'],'Hero Field does not rotate 
 assert.ok(heroVisible.opacities.every(opacity=>opacity>0),'Every Hero material batch participates in the selected descent');
 assert.equal(heroState(.70).visible,true,'Hero Field remains through the settled product chapters');
 assert.equal(heroState(1).visible,true,'Hero Field remains through the application handoff');
-assert.deepEqual(heroState(.47),heroVisible,'Hero visibility, scale, registration, and material opacity restore exactly in reverse');
+assert.deepEqual(heroState(.46),heroVisible,'Hero visibility, scale, registration, and material opacity restore exactly in reverse');
 for(const material of heroMaterials){
  assert.equal(material.envMap,heroEnvironment,'Hero materials share the bounded agricultural environment');
  assert.equal(material.transparent,true,'Hero materials retain a deterministic transition envelope');
@@ -225,8 +284,10 @@ heroGround.material.onBeforeCompile(heroShader);
 assert.match(heroShader.vertexShader,/uniform float fieldFlatten;/,'Hero materials receive the terrain-owned flatten value');
 assert.match(heroShader.vertexShader,/transformed\.y\+=dot\(position\.xz,position\.xz\)\/1800\.\*fieldFlatten;/,'Hero vertices use the exact legacy terrain, sample-boundary, and NDVI curvature displacement');
 assert.match(heroShader.fragmentShader,/float heroHandoff=max\(abs\(heroPosition\.x\),abs\(heroPosition\.z\)\)\+sin\(heroPosition\.x\*\.19\)\*\.55\+sin\(heroPosition\.z\*\.14\)\*\.45/,'Hero derivative follows the same broad authored box edge as the regional shell');
-assert.match(heroShader.fragmentShader,/float heroFeather=1\.-smoothstep\(12\.,31\.5,heroHandoff\)/,'Hero derivative uses the exact complement of the regional join');
+assert.match(heroShader.fragmentShader,/float heroFeather=1\.-smoothstep\(14\.,34\.,heroHandoff\)/,'Hero derivative uses the exact complement of the regional join');
 assert.match(heroShader.fragmentShader,/if\(heroFeather<\.012\)discard/,'Hero derivative releases its outer extent to the regional shell');
+assert.equal(heroRows.castShadow,true,'Authored crop mass casts the selective Hero shadow after becoming opaque');
+assert.equal(heroVerge.castShadow,true,'Vegetated field framing casts the selective Hero shadow after becoming opaque');
 const registeredHero=heroState(.53,.37);
 heroState(.70,.92);
 assert.deepEqual(heroState(.53,.37),registeredHero,'Hero scale, opacity, registration, and flatten restore exactly after reverse traversal');
@@ -249,6 +310,29 @@ assert.ok(cloudState(desktopAtmosphere,.60).opacities.every(opacity=>opacity===0
 assert.equal(cloudState(desktopAtmosphere,.70).visible,false,'The atmospheric sky shell clears after the passage');
 assert.deepEqual(cloudState(desktopAtmosphere,.47),cloudsOpen,'Cloud bank visibility, scale, opacity, and edge light restore exactly in reverse');
 assert.deepEqual(cloudState(mobileAtmosphere,.47).opacities,cloudsOpen.opacities,'Mobile changes sample cost without changing authored cloud hierarchy');
+const passageClouds=cloudState(desktopAtmosphere,.43);
+assert.ok(passageClouds.opacities.every(opacity=>opacity>0),'Cloud layers overlap the orbital handoff at .43');
+assert.ok(passageClouds.applied.scale>passageClouds.applied.terrainScale,'Atmospheric masses stay aloft while the landscape gains scale');
+const atmosphereSky=desktopAtmosphere.children.find(child=>!child.material.uniforms.warmEdge);
+assert.ok(atmosphereSky.material.uniforms.horizonColor.value.g>atmosphereSky.material.uniforms.horizonColor.value.r,'The broad horizon stays cool while warmth remains selective');
+const scene4ProgressState=p=>{
+ const camera=sampleCamera(p,1440/900),surface=descentSurface(p),flatten=terrain.userData.update(p);
+ return {
+  camera:{position:camera.position.toArray(),target:camera.target.toArray(),fov:camera.fov,roll:camera.roll},
+  surface,
+  terrain:{scale:terrain.scale.toArray(),flatten},
+  regional:regionalState(p),
+  context:contextState(p),
+  hero:heroState(p,flatten),
+  atmosphere:cloudState(desktopAtmosphere,p),
+  corridor:corridorState(p),
+ };
+};
+for(const p of [.40,.43,.46,.485,.51,.56]){
+ const expected=scene4ProgressState(p);
+ scene4ProgressState(p===.40?.56:.40);
+ assert.deepEqual(scene4ProgressState(p),expected,`Scene 4 camera, scale, visibility, opacity, and corridor state restore exactly at ${p}`);
+}
 console.log('PASS deterministic Scene 4 regional shell and six-bank desktop/mobile atmosphere');
 
 // The corrective visual contract: no enclosing cone or screen-sized plane,

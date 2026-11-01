@@ -1,18 +1,18 @@
-"""Build compact Scene 4 regional or Hero Field runtime derivatives.
+"""Build compact Scene 4 regional, Hero Field, or context runtime derivatives.
 
 This script is intentionally separate from build_assets.py. It reads the
-SHA-bound Scene 4 authoring copy, duplicates only the regional forms into a
-review collection, applies fixed decimation ratios to those duplicates, and
-exports the existing mesh-assets.js schema=1 container. The source blend and
-its Hero/NDVI registration remain in the saved editable copy.
+SHA-bound Scene 4 authoring copy, duplicates only the selected runtime forms
+into a review collection, applies fixed decimation ratios to those duplicates,
+and exports the existing mesh-assets.js schema=1 container. The source blend
+and its Hero/NDVI registration remain in the saved editable copy.
 
 Run in Blender 4.5.3 background mode, for example:
 
     blender --background --python tools/cinematic/blender/runtime_art_transfer.py
 
-Set AGRISCOPE_RUNTIME_TRANSFER_VARIANT=hero together with fresh evidence and
-runtime paths to export the bounded 08_EXPORT Hero Field derivative. The
-default remains the existing regional export for backwards compatibility.
+Set AGRISCOPE_RUNTIME_TRANSFER_VARIANT=hero or context together with fresh
+evidence and runtime paths to export the bounded derivative for that variant.
+The default remains the existing regional export for backwards compatibility.
 """
 
 from __future__ import annotations
@@ -46,10 +46,20 @@ DEFAULT_EVIDENCE = Path(
     "/Users/bill/final-project-cinematic-refinement-evidence/"
     "20261023-runtime-art-transfer"
 )
+DEFAULT_CONTEXT_AUTHORING = Path(
+    "/Users/bill/final-project-cinematic-refinement-evidence/"
+    "20261023-runtime-art-transfer-context/authoring/"
+    "AgriScope-Scene4-Context-Authoring.blend"
+)
+DEFAULT_CONTEXT_EVIDENCE = Path(
+    "/Users/bill/final-project-cinematic-refinement-evidence/"
+    "20261023-runtime-art-transfer-context"
+)
 
 RUNTIME_COLLECTIONS = {
     "regional": "RUNTIME_ART_TRANSFER · Scene 4 regional",
     "hero": "RUNTIME_ART_TRANSFER · Scene 4 Hero Field",
+    "context": "RUNTIME_ART_TRANSFER · Scene 4 context",
 }
 REGIONAL_SOURCE_COLLECTIONS = (
     "C4_04_REGIONAL_TERRAIN",
@@ -59,6 +69,37 @@ REGIONAL_SOURCE_COLLECTIONS = (
     "C4_COMPOSITION_REGIONAL_MASSES",
 )
 HERO_SOURCE_COLLECTIONS = ("08_EXPORT",)
+CONTEXT_SOURCE_COLLECTIONS = ("HF_LANDSCAPE_COMPOSITION",)
+CONTEXT_OBJECT_ALLOWLIST = (
+    "HF_LC_Outer_Subsoil",
+    "HF_LC_Main_access",
+    "HF_LC_Main_drainage",
+    "HF_LC_Main_verge",
+    "HF_LC_Connected_Spine",
+    "HF_LC_Connected_North_access",
+    "HF_LC_Connected_West_access",
+    # These foreground and middle-distance masses retain the authored crop
+    # silhouette. HF_CROPS remains outside this export.
+    "HF_LC_Foreground_Young_0",
+    "HF_LC_Foreground_Young_1",
+    "HF_LC_Middle_Mass_014",
+    "HF_LC_Middle_Mass_036",
+    "HF_LC_Middle_Mass_037",
+    "HF_LC_Middle_Mass_039",
+    "HF_LC_Middle_Mass_061",
+    "HF_LC_Middle_Mass_062",
+    "HF_LC_Middle_Mass_065",
+    "HF_LC_Middle_Mass_087",
+    "HF_LC_Middle_Mass_090",
+    "HF_LC_Middle_Mass_114",
+)
+CONTEXT_OBJECT_PREFIXES = (
+    # The authored holdings are already broad one-quad land-cover masses. The
+    # adjoining beds provide their connected edge rhythm without exporting
+    # individual vegetation objects or the separate HF_CROPS collection.
+    "HF_LC_Holding_",
+    "HF_LC_Beds_Adjoining cultivated parcel",
+)
 
 # Fixed ratios preserve the low-poly water ribbons and belts while reducing
 # the two dense broad surfaces enough for a browser payload. Source objects are
@@ -93,6 +134,20 @@ DECIMATION_RATIOS = {
     "C4_Low_Woodland_02": 0.45,
 }
 HERO_DECIMATION_RATIOS: dict[str, float] = {}
+CONTEXT_DECIMATION_RATIOS = {
+    "HF_LC_Outer_Subsoil": 0.30,
+    "HF_LC_Main_access": 1.0,
+    "HF_LC_Main_drainage": 1.0,
+    "HF_LC_Main_verge": 1.0,
+    "HF_LC_Connected_Spine": 1.0,
+    "HF_LC_Connected_North_access": 1.0,
+    "HF_LC_Connected_West_access": 1.0,
+    # The broad cultivation silhouettes are deliberately reduced to a small
+    # proxy-safe budget while retaining their authored footprint and UVs.
+    "HF_LC_Foreground_Young_0": 0.05,
+    "HF_LC_Foreground_Young_1": 0.05,
+    **{f"HF_LC_Middle_Mass_{index:03d}": 0.035 for index in (14, 36, 37, 39, 61, 62, 65, 87, 90, 114)},
+}
 
 # Runtime material roles are limited to the established loader's surface set.
 # Values come from the authored Principled materials and stay fixed so an
@@ -291,21 +346,119 @@ HERO_MATERIAL_TO_PROFILE = {
     "Vegetated sample verge": "hero-verge",
 }
 
+CONTEXT_MATERIAL_PROFILES: dict[str, dict[str, Any]] = {
+    "context-ground": {
+        "surface": "soil",
+        "color": [0.12, 0.18, 0.075],
+        "roughness": 0.88,
+        "clearcoat": 0.0,
+        "doubleSided": False,
+    },
+    "context-access": {
+        "surface": "soil",
+        "color": [0.24, 0.23, 0.16],
+        "roughness": 0.82,
+        "clearcoat": 0.0,
+        "doubleSided": False,
+    },
+    "context-drainage": {
+        "surface": "water",
+        "color": [0.025, 0.065, 0.060],
+        "roughness": 0.30,
+        "clearcoat": 0.60,
+        "doubleSided": True,
+    },
+    "context-verge": {
+        "surface": "leaf",
+        "color": [0.045, 0.090, 0.035],
+        "roughness": 0.91,
+        "clearcoat": 0.0,
+        "doubleSided": True,
+    },
+    "context-cultivation": {
+        "surface": "crop",
+        "color": [0.12, 0.22, 0.055],
+        "roughness": 0.90,
+        "clearcoat": 0.0,
+        "doubleSided": True,
+    },
+    "context-field-mature": {
+        "surface": "crop",
+        "color": [0.085, 0.165, 0.052],
+        "roughness": 0.91,
+        "clearcoat": 0.0,
+        "doubleSided": True,
+    },
+    "context-field-young": {
+        "surface": "crop",
+        "color": [0.14, 0.22, 0.068],
+        "roughness": 0.93,
+        "clearcoat": 0.0,
+        "doubleSided": True,
+    },
+    "context-field-wet": {
+        "surface": "crop",
+        "color": [0.055, 0.125, 0.078],
+        "roughness": 0.86,
+        "clearcoat": 0.0,
+        "doubleSided": True,
+    },
+    "context-field-fallow": {
+        "surface": "soil",
+        "color": [0.17, 0.12, 0.072],
+        "roughness": 0.95,
+        "clearcoat": 0.0,
+        "doubleSided": True,
+    },
+}
+
+CONTEXT_MATERIAL_TO_PROFILE = {
+    "HF_LC_Ditch_vegetation": "context-ground",
+    "HF_LC_Access_soil.001": "context-access",
+    "HF_LC_Shallow_drainage.001": "context-drainage",
+    "HF_LC_Ditch_vegetation.001": "context-verge",
+    "HF_LC_Access_soil": "context-access",
+    "HF_Mature_rice_0": "context-cultivation",
+    "HF_Mature_rice_1": "context-cultivation",
+    "HF_Mature_rice_2": "context-cultivation",
+    "HF_Mature_rice_3": "context-cultivation",
+    "HF_Mature_rice_4": "context-cultivation",
+    "HF_Young_rice_0": "context-cultivation",
+    "HF_Young_rice_1": "context-cultivation",
+    "HF_Young_rice_2": "context-cultivation",
+    "HF_Young_rice_3": "context-cultivation",
+    "HF_Young_rice_4": "context-cultivation",
+    "HF_LC_Low_Cultivated_Beds": "context-cultivation",
+    "HF_R_Mature_West_stage0": "context-field-mature",
+    "HF_R_Young_North_stage0": "context-field-young",
+    "HF_R_Wet_East_stage0": "context-field-wet",
+    "HF_R_Fallow_Upper_stage0": "context-field-fallow",
+}
+
 VARIANT_SOURCE_COLLECTIONS = {
     "regional": REGIONAL_SOURCE_COLLECTIONS,
     "hero": HERO_SOURCE_COLLECTIONS,
+    "context": CONTEXT_SOURCE_COLLECTIONS,
 }
 VARIANT_DECIMATION_RATIOS = {
     "regional": DECIMATION_RATIOS,
     "hero": HERO_DECIMATION_RATIOS,
+    "context": CONTEXT_DECIMATION_RATIOS,
 }
 VARIANT_MATERIAL_TO_PROFILE = {
     "regional": MATERIAL_TO_PROFILE,
     "hero": HERO_MATERIAL_TO_PROFILE,
+    "context": CONTEXT_MATERIAL_TO_PROFILE,
 }
 VARIANT_MATERIAL_PROFILES = {
     "regional": MATERIAL_PROFILES,
     "hero": {**MATERIAL_PROFILES, **HERO_MATERIAL_PROFILES},
+    "context": {**MATERIAL_PROFILES, **CONTEXT_MATERIAL_PROFILES},
+}
+VARIANT_SOURCE_OBJECT_ALLOWLIST = {
+    "regional": None,
+    "hero": None,
+    "context": set(CONTEXT_OBJECT_ALLOWLIST),
 }
 
 UV_WORLD_SCALE = 0.018
@@ -330,15 +483,17 @@ def parse_args() -> tuple[Path, Path, Path, Path, str, bool]:
     if variant not in VARIANT_SOURCE_COLLECTIONS:
         raise ValueError(f"Unknown runtime transfer variant: {variant}")
     runtime_override = os.environ.get("AGRISCOPE_RUNTIME_TRANSFER_RUNTIME")
-    default_runtime = REPO_ROOT / (
-        "apps/web/public/cinematic/models/scene4-hero.mesh.json"
-        if variant == "hero"
-        else "apps/web/public/cinematic/models/scene4-regional.mesh.json"
-    )
+    default_runtime = REPO_ROOT / {
+        "regional": "apps/web/public/cinematic/models/scene4-regional.mesh.json",
+        "hero": "apps/web/public/cinematic/models/scene4-hero.mesh.json",
+        "context": "apps/web/public/cinematic/models/scene4-context.mesh.json",
+    }[variant]
+    default_authoring = DEFAULT_CONTEXT_AUTHORING if variant == "context" else DEFAULT_AUTHORING
+    default_evidence = DEFAULT_CONTEXT_EVIDENCE if variant == "context" else DEFAULT_EVIDENCE
     values = {
-        "source": Path(os.environ.get("AGRISCOPE_RUNTIME_TRANSFER_SOURCE", str(DEFAULT_AUTHORING))),
+        "source": Path(os.environ.get("AGRISCOPE_RUNTIME_TRANSFER_SOURCE", str(default_authoring))),
         "master": Path(os.environ.get("AGRISCOPE_RUNTIME_TRANSFER_MASTER", str(DEFAULT_MASTER))),
-        "evidence": Path(os.environ.get("AGRISCOPE_RUNTIME_TRANSFER_EVIDENCE", str(DEFAULT_EVIDENCE))),
+        "evidence": Path(os.environ.get("AGRISCOPE_RUNTIME_TRANSFER_EVIDENCE", str(default_evidence))),
         "runtime": Path(runtime_override) if runtime_override else default_runtime,
     }
     overwrite = os.environ.get("AGRISCOPE_RUNTIME_TRANSFER_OVERWRITE", "0") == "1"
@@ -406,12 +561,27 @@ def make_runtime_copies(variant: str) -> tuple[bpy.types.Collection, list[dict[s
     hidden_collections: list[str] = []
     source_collections = VARIANT_SOURCE_COLLECTIONS[variant]
     decimation_ratios = VARIANT_DECIMATION_RATIOS[variant]
+    allowlist = VARIANT_SOURCE_OBJECT_ALLOWLIST[variant]
     for collection_name in source_collections:
         collection = bpy.data.collections.get(collection_name)
         if collection is None:
             raise ValueError(f"Missing required source collection: {collection_name}")
         hidden_collections.append(collection_name)
-        for source_object in sorted((o for o in collection.objects if o.type == "MESH"), key=lambda o: o.name):
+        source_objects = (o for o in collection.objects if o.type == "MESH")
+        if allowlist is not None:
+            available = {o.name for o in source_objects}
+            missing = sorted(allowlist - available)
+            if missing:
+                raise ValueError(
+                    f"Missing required context source objects in {collection_name}: {', '.join(missing)}"
+                )
+            prefixed = {
+                name for name in available
+                if any(name.startswith(prefix) for prefix in CONTEXT_OBJECT_PREFIXES)
+            } if variant == "context" else set()
+            selected = allowlist | prefixed
+            source_objects = (o for o in collection.objects if o.type == "MESH" and o.name in selected)
+        for source_object in sorted(source_objects, key=lambda o: o.name):
             if not source_object.data.materials:
                 raise ValueError(f"Source mesh has no material: {source_object.name}")
             source_material_names = [m.name for m in source_object.data.materials]
@@ -446,9 +616,9 @@ def make_runtime_copies(variant: str) -> tuple[bpy.types.Collection, list[dict[s
                 "profiles": sorted({profile_for(name, variant) for name in source_material_names}),
             })
 
-    # Originals remain in this editable derivative for comparison and
-    # rollback. Hiding only regional collections keeps Hero/NDVI and the
-    # source cameras/registration available while runtime copies are visible.
+    # Originals remain in this editable derivative for comparison and rollback.
+    # Hiding only selected source collections keeps Hero/NDVI and the source
+    # cameras/registration available while runtime copies are visible.
     for collection_name in hidden_collections:
         collection = bpy.data.collections[collection_name]
         collection.hide_render = True
@@ -685,7 +855,15 @@ def main() -> None:
                 VARIANT_MATERIAL_PROFILES[variant][profile_id]["surface"]
                 for profile_id in set(VARIANT_MATERIAL_TO_PROFILE[variant].values())
             }),
-            "sourceBoundary": "08_EXPORT only; HF_LANDSCAPE_COMPOSITION and HF_CROPS are excluded" if variant == "hero" else "C4 regional source collections",
+            "sourceBoundary": (
+                "HF_LANDSCAPE_COMPOSITION bounded broad-form selection; HF_CROPS excluded"
+                if variant == "context"
+                else "08_EXPORT only; HF_LANDSCAPE_COMPOSITION and HF_CROPS are excluded"
+                if variant == "hero"
+                else "C4 regional source collections"
+            ),
+            "sourceObjectAllowlist": list(CONTEXT_OBJECT_ALLOWLIST) if variant == "context" else None,
+            "sourceObjectPrefixes": list(CONTEXT_OBJECT_PREFIXES) if variant == "context" else None,
             "oldAssetsUnchanged": True,
         },
     }

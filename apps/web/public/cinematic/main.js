@@ -17,7 +17,7 @@ export function mountJourney(root,{lab=false,cameraSampler=sampleCamera}={}){
  const media=matchMedia('(prefers-reduced-motion: reduce)'),diagnostic=params.has('qa');
  const resources=[];
  let disposed=false,initializing=false,probeStarted=false,reduced=media.matches||params.get('motion')==='reduce';
- let renderer,composer,scene,camera,spacecraft,earth,terrain,heroWorld,regionalWorld,descentAtmosphere,stars,beam,corridor,evidence,sun,fill,hemisphere,craftFill,craftRim,craftEdge,fieldKey,payloadMeshes=[],craftMaterials=[];
+ let renderer,composer,scene,camera,spacecraft,earth,terrain,heroWorld,contextWorld,regionalWorld,descentAtmosphere,stars,beam,corridor,evidence,sun,fill,hemisphere,craftFill,craftRim,craftEdge,fieldKey,payloadMeshes=[],craftMaterials=[];
  let progress=0,target=0,active=false,raf=0,last=0,frames=0,shotIndex=-1,mobileLayout=null,narrativeInsufficient=null,corridorCopy=null,focusField=false,insufficient=false,state={};
  let comparisonOverride=null,payloadExpanded=false,activeHotspot=null;
  const pointerGoal={x:0,y:0},pointer={x:0,y:0};
@@ -67,9 +67,9 @@ export function mountJourney(root,{lab=false,cameraSampler=sampleCamera}={}){
    listen(renderer.domElement,'webglcontextlost',e=>{e.preventDefault();fallback('การแสดงผล 3D หยุดชั่วคราว กรุณาโหลดหน้าใหม่เพื่อเริ่มอีกครั้ง');});
    scene=new THREE.Scene();scene.background=new THREE.Color(0x060d15);scene.fog=new THREE.FogExp2(0x11263a,.0008);
    camera=new THREE.PerspectiveCamera(46,innerWidth/innerHeight,.08,450);
-   const assetCount=lab?8:7;let loaded=0;const complete=()=>{$('loading-progress').style.width=`${++loaded/assetCount*100}%`;};
+   const assetCount=lab?9:7;let loaded=0;const complete=()=>{$('loading-progress').style.width=`${++loaded/assetCount*100}%`;};
    const loader=new THREE.TextureLoader();
-   const labModules=lab?Promise.all([import('./descent-atmosphere.js'),import('./scene4-regional.js'),import('./scene4-hero.js')]):Promise.resolve(null);
+   const labModules=lab?Promise.all([import('./descent-atmosphere.js'),import('./scene4-regional.js'),import('./scene4-hero.js'),import('./scene4-context.js')]):Promise.resolve(null);
    const textures=await Promise.all(['earth-day.jpg','earth-clouds.jpg','earth-night.png','regional-landscape.png'].map(async file=>{
     const texture=await loader.loadAsync(`/cinematic/textures/${file}`);
     if(disposed)texture.dispose();else resources.push(texture);
@@ -77,15 +77,15 @@ export function mountJourney(root,{lab=false,cameraSampler=sampleCamera}={}){
    }));
    // The lab replaces the old procedural tree instances with authored regional
    // vegetation masses. The landing route keeps its existing tree asset.
-   const meshNames=lab?['spacecraft','farmland','scene4-regional','scene4-hero']:['spacecraft','farmland','tree'];
+   const meshNames=lab?['spacecraft','farmland','scene4-regional','scene4-hero','scene4-context']:['spacecraft','farmland','tree'];
    const meshData=await Promise.all(meshNames.map(async name=>{
     const data=await loadMeshData(name,controller.signal);complete();return data;
    }));
-   const [ship,farmland,third,fourth]=meshData;
-   const tree=lab?null:third,scene4Regional=lab?third:null,scene4Hero=lab?fourth:null;
+   const [ship,farmland,third,fourth,fifth]=meshData;
+   const tree=lab?null:third,scene4Regional=lab?third:null,scene4Hero=lab?fourth:null,scene4Context=lab?fifth:null;
    const modules=await labModules;
    if(disposed)return;
-   const surfaceMaps=await loadSurfaceMaps([ship,farmland,...(tree?[tree]:[]),...(scene4Regional?[scene4Regional]:[]),...(scene4Hero?[scene4Hero]:[])],loader);
+   const surfaceMaps=await loadSurfaceMaps([ship,farmland,...(tree?[tree]:[]),...(scene4Regional?[scene4Regional]:[]),...(scene4Hero?[scene4Hero]:[]),...(scene4Context?[scene4Context]:[])],loader);
    for(const set of Object.values(surfaceMaps))for(const texture of Object.values(set)){if(disposed)texture.dispose();else resources.push(texture);}
    if(disposed)return;
    const [day,clouds,night,regional]=textures;
@@ -115,6 +115,7 @@ export function mountJourney(root,{lab=false,cameraSampler=sampleCamera}={}){
    if(lab){
     regionalWorld=modules[1].buildScene4Regional(scene4Regional,{environment:fieldEnvironment.texture,surfaceMaps:{water:surfaceMaps.water}});scene.add(regionalWorld);
     heroWorld=modules[2].buildScene4Hero(scene4Hero,{environment:fieldEnvironment.texture,surfaceMaps});scene.add(heroWorld);
+    contextWorld=modules[3].buildScene4Context(scene4Context,{environment:fieldEnvironment.texture,surfaceMaps});scene.add(contextWorld);
     descentAtmosphere=modules[0].buildDescentAtmosphere({mobile:innerWidth<760});scene.add(descentAtmosphere);
    }
    evidence=buildEvidence();scene.add(evidence.group);
@@ -131,7 +132,7 @@ export function mountJourney(root,{lab=false,cameraSampler=sampleCamera}={}){
    const initial=params.has('shot')?SHOTS[clamp(Math.floor(Number(params.get('shot'))||1)-1,0,9)].p:params.has('p')?clamp(Number(params.get('p'))||0):hashProgress??null;
    if(initial!==null){root.classList.remove('static-mode');moveTo(initial);progress=getProgress();}
    const gl=renderer.getContext(),debug=gl.getExtension('WEBGL_debug_renderer_info');
-   writeDiagnostics({assets:assetCount,model:spacecraft.userData.asset,land:terrain.userData.asset,heroLand:heroWorld?.userData.asset??null,regionalLand:regionalWorld?.userData.asset??null,gpu:debug?gl.getParameter(debug.UNMASKED_RENDERER_WEBGL):gl.getParameter(gl.RENDERER),devicePixelRatio,renderPixelRatio:renderer.getPixelRatio(),browser:navigator.userAgent});
+   writeDiagnostics({assets:assetCount,model:spacecraft.userData.asset,land:terrain.userData.asset,heroLand:heroWorld?.userData.asset??null,contextLand:contextWorld?.userData.asset??null,regionalLand:regionalWorld?.userData.asset??null,gpu:debug?gl.getParameter(debug.UNMASKED_RENDERER_WEBGL):gl.getParameter(gl.RENDERER),devicePixelRatio,renderPixelRatio:renderer.getPixelRatio(),browser:navigator.userAgent});
    if(reduced)fallback('แสดงขั้นตอนติดตามแปลงตามการตั้งค่าลดการเคลื่อนไหวของคุณ',true);else{activate();void runHardwareProbe();}
   }catch(error){
    if(!disposed){console.error('[AgriScope]',error);fallback('อุปกรณ์นี้แสดงภาพ 3D ไม่ได้ คุณยังอ่านวิธีติดตามแปลงและดูข้อมูลตัวอย่างได้');}
@@ -188,11 +189,11 @@ export function mountJourney(root,{lab=false,cameraSampler=sampleCamera}={}){
   // During descent, preserve the warm key while restoring cool sky fill and
   // environment response so crop ridges, bank slopes, and water retain depth.
   sun.intensity=(lab?1.72:1.85)+(lab?.72:.43)*agriculturalLight;fill.intensity=(lab?.94:1.05)-(lab?.30:.27)*agriculturalLight;hemisphere.intensity=.56+(lab?.18:.12)*agriculturalLight;scene.environmentIntensity=.70+(lab?.12:.08)*agriculturalLight;
-   if(fieldKey)fieldKey.intensity=360*smooth(.395,.47,p)*(1-.86*smooth(.505,.548,p))*(1-.22*smooth(.82,.94,p));
+   if(fieldKey)fieldKey.intensity=245*smooth(.405,.475,p)*(1-.62*smooth(.535,.59,p))*(1-.22*smooth(.82,.94,p));
   // Keep the far edge atmospheric, but let the nearby parcels retain warm soil
   // and crop contrast instead of disappearing into a grey fog wash.
-   scene.fog.density=.00055+descent*(lab?.0048:.0073);scene.fog.color.set(0x101c29).lerp(new THREE.Color(lab?0x304852:0x354b50),descent);
-  scene.background.set(0x060d15).lerp(new THREE.Color(0x13282f),descent);
+   scene.fog.density=.00055+descent*(lab?.0032:.0073);scene.fog.color.set(0x101c29).lerp(new THREE.Color(lab?0x29414a:0x354b50),descent);
+  scene.background.set(0x060d15).lerp(new THREE.Color(lab?0x10232f:0x13282f),descent);
   stars.material.opacity=.78*(1-smooth(.36,.49,p));stars.visible=p<.51;
   terrain.visible=surface.reveal>0;
   earth.scale.setScalar(surface.radius/40);earth.position.y=-surface.radius;
@@ -200,22 +201,26 @@ export function mountJourney(root,{lab=false,cameraSampler=sampleCamera}={}){
   terrain.userData.localDetail.value=detail;
   const flatten=terrain.userData.update(p);
    const heroState=heroWorld?.userData.apply(p,flatten)??null;
+   const contextState=contextWorld?.userData.apply(p)??null;
    const regionalState=regionalWorld?.userData.apply(p)??null;
    const atmosphericState=descentAtmosphere?.userData.apply(p)??null;
   terrain.userData.boundary.material.transparent=true;terrain.userData.boundary.material.opacity=smooth(.50,.56,p);
   // Let the spherical basemap leave as the camera commits to the local terrain.
   // Keeping it underneath the flattening mesh produces stray geographic green
   // islands through gaps between synthetic plots in shots 5–6.
-  const earthDeparture=lab?1-smooth(.405,.44,p):1;
+  // Commit to the regional continuation before the orbital globe fully leaves
+  // frame. Holding the sphere through the middle of Scene 4 made the browser
+  // read as a globe-to-flat-patch cut instead of one atmospheric passage.
+  const earthDeparture=lab?1-smooth(.405,.455,p):1;
   earth.userData.surface.visible=lab?earthDeparture>.002:p<.475;
   if(lab){earth.userData.surface.material.opacity=earthDeparture;earth.userData.surface.material.depthWrite=earthDeparture>.995;}
-  earth.userData.atmosphere.material.uniforms.opacity.value=1-smooth(lab?.405:.42,lab?.455:.49,p);
-  const orbitalCloudDeparture=1-smooth(lab?.395:.41,lab?.44:.465,p);
-  earth.userData.clouds.visible=p<(lab?.445:.49);earth.userData.clouds.material.opacity=.68*orbitalCloudDeparture;
+  earth.userData.atmosphere.material.uniforms.opacity.value=1-smooth(lab?.405:.42,lab?.465:.49,p);
+  const orbitalCloudDeparture=1-smooth(lab?.405:.41,lab?.455:.465,p);
+  earth.userData.clouds.visible=p<(lab?.48:.49);earth.userData.clouds.material.opacity=.68*orbitalCloudDeparture;
   earth.userData.clouds.rotation.y=.008*smooth(.20,.49,p);
-  earth.userData.highClouds.visible=p<(lab?.445:.49);earth.userData.highClouds.material.opacity=.36*orbitalCloudDeparture;
+  earth.userData.highClouds.visible=p<(lab?.48:.49);earth.userData.highClouds.material.opacity=.36*orbitalCloudDeparture;
   earth.userData.highClouds.rotation.y=.006+.012*smooth(.20,.49,p);
-  earth.userData.cloudShadow.visible=p<(lab?.445:.49);earth.userData.cloudShadow.material.opacity=.26*orbitalCloudDeparture;
+  earth.userData.cloudShadow.visible=p<(lab?.48:.49);earth.userData.cloudShadow.material.opacity=.26*orbitalCloudDeparture;
   earth.userData.cloudShadow.rotation.y=earth.userData.clouds.rotation.y-.0018;
   earth.userData.thailandFocus.visible=p<.445;
   earth.userData.thailandFocus.material.opacity=.72*smooth(.31,.355,p)*(1-smooth(.385,.415,p));
@@ -273,7 +278,7 @@ export function mountJourney(root,{lab=false,cameraSampler=sampleCamera}={}){
   [...$('rail').children].forEach((b,i)=>b.setAttribute('aria-current',String(i===currentRail)));
   $('bottom-left').firstChild.textContent=p<.08?'SCROLL TO EXPLORE ':p>.93?'YOUR AGRISCOPE WORKSPACE ':'EARTH OBSERVATION / THAILAND ';
   const craftDepthWriters=lab?craftMaterials.filter(material=>material.depthWrite).length:null;
-  writeDiagnostics({p:+p.toFixed(6),shot:shot+1,beat:BEATS.filter(beat=>p>=beat.p).at(-1)?.id,journeyMode:lab?'lab':'landing',roll:key.roll,camera:camera.position.toArray(),look:key.target.toArray(),fov:camera.fov,terrain:terrain.visible,scene4Hero:heroState,regionalWorld:regionalState,descentAtmosphere:atmosphericState,descentSurface:surface,surfaceTransforms:{earthScale:earth.scale.toArray(),earthPosition:earth.position.toArray(),terrainScale:terrain.scale.toArray(),heroScale:heroWorld?.scale.toArray()??null,regionalScale:regionalWorld?.scale.toArray()??null},localDetail:detail,flatten,cloudOpacity:earth.userData.clouds.material.opacity,cloudRotation:earth.userData.clouds.rotation.y,cloudShadowOpacity:earth.userData.cloudShadow.material.opacity,thailandFocusOpacity:earth.userData.thailandFocus.material.opacity,atmosphere:earth.userData.atmosphere.material.uniforms.opacity.value,beamOpacity:beam.material.uniforms.opacity.value,beamPosition:beam.position.toArray(),beamAttitude:beam.quaternion.toArray(),fog:scene.fog.density,fieldOpacity,evidenceOpacity,attitude:spacecraft.quaternion.toArray(),spacecraftPosition:spacecraft.position.toArray(),spacecraftOpacity:craftOpacity,spacecraftDepthWrite:lab?{enabled:craftDepthWriters>0,active:craftDepthWriters,authored:craftMaterials.filter(material=>material.userData.cinematicBaseDepthWrite).length,total:craftMaterials.length}:null,beam:beam.visible,evidence:sample,pointerParallax:[pointer.x,pointer.y],payloadExpanded,activeHotspot,viewport:[innerWidth,innerHeight]});
+  writeDiagnostics({p:+p.toFixed(6),shot:shot+1,beat:BEATS.filter(beat=>p>=beat.p).at(-1)?.id,journeyMode:lab?'lab':'landing',roll:key.roll,camera:camera.position.toArray(),look:key.target.toArray(),fov:camera.fov,terrain:terrain.visible,scene4Hero:heroState,contextWorld:contextState,regionalWorld:regionalState,descentAtmosphere:atmosphericState,descentSurface:surface,surfaceTransforms:{earthScale:earth.scale.toArray(),earthPosition:earth.position.toArray(),terrainScale:terrain.scale.toArray(),heroScale:heroWorld?.scale.toArray()??null,contextScale:contextWorld?.scale.toArray()??null,regionalScale:regionalWorld?.scale.toArray()??null},localDetail:detail,flatten,cloudOpacity:earth.userData.clouds.material.opacity,cloudRotation:earth.userData.clouds.rotation.y,cloudShadowOpacity:earth.userData.cloudShadow.material.opacity,thailandFocusOpacity:earth.userData.thailandFocus.material.opacity,atmosphere:earth.userData.atmosphere.material.uniforms.opacity.value,beamOpacity:beam.material.uniforms.opacity.value,beamPosition:beam.position.toArray(),beamAttitude:beam.quaternion.toArray(),fog:scene.fog.density,fieldOpacity,evidenceOpacity,attitude:spacecraft.quaternion.toArray(),spacecraftPosition:spacecraft.position.toArray(),spacecraftOpacity:craftOpacity,spacecraftDepthWrite:lab?{enabled:craftDepthWriters>0,active:craftDepthWriters,authored:craftMaterials.filter(material=>material.userData.cinematicBaseDepthWrite).length,total:craftMaterials.length}:null,beam:beam.visible,evidence:sample,pointerParallax:[pointer.x,pointer.y],payloadExpanded,activeHotspot,viewport:[innerWidth,innerHeight]});
  }
  function animate(time){
   if(!active)return;raf=requestAnimationFrame(animate);if(document.hidden)return;

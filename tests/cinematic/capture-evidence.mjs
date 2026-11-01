@@ -33,6 +33,8 @@ const startReferencePath=join(output,'motion','orbit-start-browser.png');
 const startEncodedFramePath=join(output,'motion','orbit-start-encoded.png');
 const handoffReferencePath=join(output,'motion','chapter-10-handoff-browser.png');
 const rawVideoDir=join(output,'motion','raw-capture');
+const scene4ContextFrameProgress=[.40,.43,.46,.485,.51,.56];
+const scene4ContextFrameDirectory='desktop/scene4-context';
 const timing={captureOperations:[],frameProbes:[],motionStages:[]};
 let browser;
 let motionContext;
@@ -73,7 +75,7 @@ async function compareMotionFrame(page,referencePath,encodedPath,atEnd){
   return comparison;
 }
 
-function matchReferencePts(rawVideoPath,referencePath,{last=false,afterPts=-Infinity,region=null,label='browser endpoint',meanThreshold=10,maximumChangedPixelFraction=.12}={}){
+function analyzeReferencePts(rawVideoPath,referencePath,{afterPts=-Infinity,beforePts=Infinity,region=null,meanThreshold=10,maximumChangedPixelFraction=.12}={}){
   // Playwright's WebM clock is independent from Date.now(). Locate the actual
   // browser reference on the recorded presentation timeline. Whole-frame
   // endpoints retain the strict default. Interaction references use a recorded
@@ -88,9 +90,12 @@ function matchReferencePts(rawVideoPath,referencePath,{last=false,afterPts=-Infi
   const samples=execFileSync('ffmpeg',['-hide_banner','-loglevel','error','-i',rawVideoPath,'-vf',`fps=4,${artworkFilter}`,'-f','rawvideo','pipe:1'],{maxBuffer:sampleBufferBytes});
   assert.equal(reference.length,bytesPerFrame,'Browser endpoint reference decodes to one RGB sample.');
   assert.equal(samples.length%bytesPerFrame,0,'Raw motion samples align to full decoded RGB frames.');
-  const frameCount=samples.length/bytesPerFrame,streamStart=Number(format.start_time||0),matches=[];
+  const frameCount=samples.length/bytesPerFrame,streamStart=Number(format.start_time||0),evaluated=[],matches=[];
   const referenceMean=reference.reduce((sum,value)=>sum+value,0)/reference.length;
+  const minimumMeanChannelValue=Math.max(referenceMean*.5,8);
   for(let index=0;index<frameCount;index++){
+    const pts=streamStart+index/4;
+    if(pts<afterPts||pts>beforePts)continue;
     const offset=index*bytesPerFrame;
     let error=0,channels=0,sampleMean=0,pixelsOver36=0;
     // Include the moving artwork so the loading view cannot match just because
@@ -104,15 +109,60 @@ function matchReferencePts(rawVideoPath,referencePath,{last=false,afterPts=-Infi
     const mean=error/channels;
     sampleMean/=channels;
     const changedPixelFraction=pixelsOver36/(width*height);
-    const pts=streamStart+index/4;
-    if(pts>=afterPts&&mean<meanThreshold&&changedPixelFraction<maximumChangedPixelFraction&&sampleMean>=Math.max(referenceMean*.5,8))matches.push({index,pts,artworkRegionMeanAbsoluteChannelDifference:mean,artworkRegionMeanChannelValue:sampleMean,pixelsOver36:changedPixelFraction,sampleFps:4});
+    const sample={index,pts,artworkRegionMeanAbsoluteChannelDifference:mean,artworkRegionMeanChannelValue:sampleMean,pixelsOver36:changedPixelFraction,sampleFps:4};
+    evaluated.push(sample);
+    if(mean<meanThreshold&&changedPixelFraction<maximumChangedPixelFraction&&sampleMean>=minimumMeanChannelValue)matches.push(sample);
   }
+  const score=sample=>Math.max(sample.artworkRegionMeanAbsoluteChannelDifference/meanThreshold,sample.pixelsOver36/maximumChangedPixelFraction,minimumMeanChannelValue/Math.max(sample.artworkRegionMeanChannelValue,Number.EPSILON));
+  const closestSample=evaluated.reduce((closest,sample)=>!closest||score(sample)<score(closest)?sample:closest,null);
+  return {matches,evaluatedSampleCount:evaluated.length,closestSample,sampleFps:4,threshold:meanThreshold,maximumChangedPixelFraction,minimumMeanChannelValue,matchedRegion:region||'complete viewport',evaluatedPtsWindow:{afterPts:Number.isFinite(afterPts)?afterPts:null,beforePts:Number.isFinite(beforePts)?beforePts:null}};
+}
+
+function matchReferencePts(rawVideoPath,referencePath,{last=false,label='browser endpoint',...options}={}){
+  const analysis=analyzeReferencePts(rawVideoPath,referencePath,options);
+  const {matches}=analysis;
   const match=last?matches.at(-1):matches[0];
   assert.ok(match,`Could not locate ${label} in the decoded WebM presentation timeline.`);
   let runStart=match.index,runEnd=match.index;
   while(matches.some(candidate=>candidate.index===runStart-1))runStart--;
   while(matches.some(candidate=>candidate.index===runEnd+1))runEnd++;
-  return {...match,heldSeconds:(runEnd-runStart)/4,matchStartPts:streamStart+runStart/4,matchEndPts:streamStart+runEnd/4,threshold:meanThreshold,maximumChangedPixelFraction,minimumMeanChannelValue:Math.max(referenceMean*.5,8),matchedRegion:region||'complete viewport'};
+  return {...match,heldSeconds:(runEnd-runStart)/analysis.sampleFps,matchStartPts:match.pts-(match.index-runStart)/analysis.sampleFps,matchEndPts:match.pts+(runEnd-match.index)/analysis.sampleFps,threshold:analysis.threshold,maximumChangedPixelFraction:analysis.maximumChangedPixelFraction,minimumMeanChannelValue:analysis.minimumMeanChannelValue,matchedRegion:analysis.matchedRegion};
+}
+
+function matchReferencePtsExcludingReference(rawVideoPath,referencePath,excludedReferencePath,{minimumHeldSeconds=.75,label='browser state',...options}={}){
+  const positiveAnalysis=analyzeReferencePts(rawVideoPath,referencePath,options);
+  const excludedAnalysis=analyzeReferencePts(rawVideoPath,excludedReferencePath,options);
+  assert.equal(positiveAnalysis.sampleFps,excludedAnalysis.sampleFps,`${label} positive and exclusion references must use the same sample rate.`);
+  assert.equal(positiveAnalysis.evaluatedSampleCount,excludedAnalysis.evaluatedSampleCount,`${label} positive and exclusion references must evaluate the same decoded frames.`);
+  assert.equal(positiveAnalysis.threshold,excludedAnalysis.threshold,`${label} positive and exclusion references must use the same mean-difference threshold.`);
+  assert.equal(positiveAnalysis.maximumChangedPixelFraction,excludedAnalysis.maximumChangedPixelFraction,`${label} positive and exclusion references must use the same changed-pixel threshold.`);
+  const excludedIndices=new Set(excludedAnalysis.matches.map(sample=>sample.index));
+  const overlappingSamples=positiveAnalysis.matches.filter(sample=>excludedIndices.has(sample.index));
+  const positiveOnlySamples=positiveAnalysis.matches.filter(sample=>!excludedIndices.has(sample.index));
+  const describeRuns=samples=>{
+    const runs=[];
+    for(const sample of samples){
+      const run=runs.at(-1);
+      if(run&&sample.index===run.end.index+1)run.end=sample;
+      else runs.push({start:sample,end:sample});
+    }
+    return runs.map(run=>({...run,description:{matchStartPts:run.start.pts,matchEndPts:run.end.pts,heldSeconds:(run.end.index-run.start.index)/positiveAnalysis.sampleFps,decodedFrameCount:run.end.index-run.start.index+1}}));
+  };
+  const runs=describeRuns(positiveOnlySamples);
+  const describedRuns=runs.map(run=>run.description);
+  const overlappingRejectedRuns=describeRuns(overlappingSamples).map(run=>run.description);
+  const selectedRunIndex=describedRuns.findIndex(run=>run.heldSeconds>=minimumHeldSeconds);
+  assert.ok(selectedRunIndex>=0,`Could not locate ${label} as a positive-only decoded run held for at least ${minimumHeldSeconds.toFixed(2)} seconds.`);
+  const selectedRun=runs[selectedRunIndex],match=selectedRun.start;
+  return {...match,heldSeconds:describedRuns[selectedRunIndex].heldSeconds,matchStartPts:selectedRun.start.pts,matchEndPts:selectedRun.end.pts,threshold:positiveAnalysis.threshold,maximumChangedPixelFraction:positiveAnalysis.maximumChangedPixelFraction,minimumMeanChannelValue:positiveAnalysis.minimumMeanChannelValue,matchedRegion:positiveAnalysis.matchedRegion,disambiguation:{method:'positive reference match excluding samples that also match the closed-after-Escape reference',minimumHeldSeconds,sharedThresholds:{meanAbsoluteChannelDifference:positiveAnalysis.threshold,maximumChangedPixelFraction:positiveAnalysis.maximumChangedPixelFraction},positiveCandidateSampleCount:positiveAnalysis.matches.length,excludedReferenceMatchSampleCount:excludedAnalysis.matches.length,overlappingRejectedSampleCount:overlappingSamples.length,overlappingRejectedRuns,positiveOnlySampleCount:positiveOnlySamples.length,positiveOnlyRuns:describedRuns,selectedPositiveOnlyRunIndex:selectedRunIndex}};
+}
+
+function proveReferenceRejectedInWindow(rawVideoPath,referencePath,{label='negative control',...options}={}){
+  const analysis=analyzeReferencePts(rawVideoPath,referencePath,options);
+  assert.ok(analysis.evaluatedSampleCount>0,`${label} did not evaluate any decoded WebM frames.`);
+  assert.equal(analysis.matches.length,0,`${label} incorrectly satisfies the positive-state matcher at ${analysis.matches[0]?.pts.toFixed(2)} seconds.`);
+  const closestRejectedSample=analysis.closestSample&&{...analysis.closestSample,passesMeanThreshold:analysis.closestSample.artworkRegionMeanAbsoluteChannelDifference<analysis.threshold,passesChangedPixelThreshold:analysis.closestSample.pixelsOver36<analysis.maximumChangedPixelFraction,passesMinimumMeanChannelValue:analysis.closestSample.artworkRegionMeanChannelValue>=analysis.minimumMeanChannelValue};
+  return {matched:false,matchingDecodedFrameCount:0,allEvaluatedFramesRejected:true,evaluatedDecodedFrameCount:analysis.evaluatedSampleCount,evaluatedPtsWindow:analysis.evaluatedPtsWindow,sampleFps:analysis.sampleFps,threshold:analysis.threshold,maximumChangedPixelFraction:analysis.maximumChangedPixelFraction,minimumMeanChannelValue:analysis.minimumMeanChannelValue,matchedRegion:analysis.matchedRegion,closestRejectedSample};
 }
 
 function gitPaths(){
@@ -186,19 +236,22 @@ async function visibleRegion(page,selectors,padding=18){
   return {x:left,y:top,width:right-left,height:bottom-top};
 }
 
-async function captureStateReference(page,id,selectors,matchOptions){
+async function captureStateReference(page,id,selectors,matchOptions,regionOverride=null,padding=18){
   await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
-  const region=await visibleRegion(page,selectors);
+  const region=regionOverride||await visibleRegion(page,selectors,padding);
   const relativePath=`motion/state-${id}-browser.png`;
   await page.screenshot({path:join(output,relativePath),timeout:60000});
-  return {id,browserReferencePath:relativePath,absoluteReferencePath:join(output,relativePath),region,matchOptions};
+  return {id,browserReferencePath:relativePath,absoluteReferencePath:join(output,relativePath),referenceSelectors:selectors||[],region,matchOptions};
 }
 
 function proveRecordedStateSequence(videoPath,references,{decodedFrames=false}={}){
+  const minimumHeldSeconds=.75;
   let afterPts=-Infinity;
   return references.map(reference=>{
-    const match=matchReferencePts(videoPath,reference.absoluteReferencePath,{afterPts,region:reference.region,label:`interaction state ${reference.id}`,...reference.matchOptions});
-    assert.ok(match.heldSeconds>=.75,`${reference.id} appears for only ${match.heldSeconds.toFixed(2)} seconds in ${videoPath}.`);
+    const match=reference.excludedReference
+      ? matchReferencePtsExcludingReference(videoPath,reference.absoluteReferencePath,reference.excludedReference.absoluteReferencePath,{afterPts,region:reference.region,minimumHeldSeconds,label:`interaction state ${reference.id}`,...reference.matchOptions})
+      : matchReferencePts(videoPath,reference.absoluteReferencePath,{afterPts,region:reference.region,label:`interaction state ${reference.id}`,...reference.matchOptions});
+    assert.ok(match.heldSeconds>=minimumHeldSeconds,`${reference.id} appears for only ${match.heldSeconds.toFixed(2)} seconds in ${videoPath}.`);
     afterPts=match.matchEndPts+.25;
     const encodedFramePath=decodedFrames?`motion/state-${reference.id}-encoded.png`:null;
     const encodedFramePts=(match.matchStartPts+match.matchEndPts)/2;
@@ -304,9 +357,15 @@ async function captureLabInteractions(){
   await page.mouse.click(payload.x+20,payload.y+20);
   await page.waitForFunction(()=>window.__agriscope.snapshot().payloadExpanded&&!document.querySelector('#payload-tip').hidden);
   assert.equal(await page.locator('#payload-control').getAttribute('aria-expanded'),'true','Pointer input expands the payload disclosure.');
-  references.push(await captureStateReference(page,'payload-open',['#payload-control','#payload-tip'],{meanThreshold:22,maximumChangedPixelFraction:.15}));
+  const payloadMatchOptions={meanThreshold:22,maximumChangedPixelFraction:.15};
+  const payloadOpenReference=await captureStateReference(page,'payload-open',['#payload-tip'],payloadMatchOptions,null,0);
+  references.push(payloadOpenReference);
   await page.waitForTimeout(holdMs);await page.keyboard.press('Escape');
   await page.waitForFunction(()=>!window.__agriscope.snapshot().payloadExpanded&&document.querySelector('#payload-tip').hidden);
+  const payloadClosedReference=await captureStateReference(page,'payload-closed-after-escape',null,payloadMatchOptions,payloadOpenReference.region);
+  payloadOpenReference.excludedReference=payloadClosedReference;
+  payloadClosedReference.negativeControlFor='payload-open';payloadClosedReference.capturedAfterAction='Escape';references.push(payloadClosedReference);
+  await page.waitForTimeout(holdMs);
 
   await seek(page,.56);
   await page.locator('[data-hotspot="boundary"]').click();
@@ -338,6 +397,10 @@ async function captureLabInteractions(){
   await page.waitForTimeout(holdMs);
   await context.close();
   const rawPath=await video.path();await copyFile(rawPath,finalPath);
+  const payloadOpenKnownRejectedEncodedPts=9.5;
+  assert.equal(payloadOpenKnownRejectedEncodedPts*4,Math.trunc(payloadOpenKnownRejectedEncodedPts*4),'The known rejected payload frame must align exactly with the 4 fps matcher sample grid.');
+  const payloadOpenKnownRejectedFrame=proveReferenceRejectedInWindow(finalPath,payloadOpenReference.absoluteReferencePath,{afterPts:payloadOpenKnownRejectedEncodedPts,beforePts:payloadOpenKnownRejectedEncodedPts,region:payloadOpenReference.region,label:`Decoded payload-open reference at known rejected PTS ${payloadOpenKnownRejectedEncodedPts.toFixed(2)}`,...payloadMatchOptions});
+  assert.equal(payloadOpenKnownRejectedFrame.evaluatedDecodedFrameCount,1,`Known rejected payload PTS ${payloadOpenKnownRejectedEncodedPts.toFixed(2)} must select exactly one decoded matcher sample.`);
   const durationSeconds=Number(probeVideo(finalPath).duration);
   assert.ok(Number.isFinite(durationSeconds)&&durationSeconds>=7,'The interaction recording must retain the complete unretimed demonstrations.');
   const rawStates=proveRecordedStateSequence(rawPath,references);
@@ -347,12 +410,19 @@ async function captureLabInteractions(){
     browserReferencePath:reference.browserReferencePath,
     encodedFramePath:finalStates[index].encodedFramePath,
     encodedFramePts:finalStates[index].encodedFramePts,
+    referenceSelectors:reference.referenceSelectors,
     region:reference.region,
     matchOptions:reference.matchOptions,
     rawMatch:rawStates[index].match,
     finalMatch:finalStates[index].match,
+    ...(reference.negativeControlFor?{negativeControlFor:reference.negativeControlFor,capturedAfterAction:reference.capturedAfterAction}:{}),
   }));
-  return {path:'motion/agriscope-lab-interactions.webm',rawPath:relative(output,rawPath),durationSeconds,playbackSpeedMultiplier:1,minimumProvenStateHoldSeconds:.75,states,sequence:'Pointer parallax and payload disclosure; field hotspot; keyboard NDVI comparison endpoints; NOT_ASSESSABLE state; restored valid state.'};
+  const payloadOpenIndex=references.indexOf(payloadOpenReference),payloadClosedIndex=references.indexOf(payloadClosedReference);
+  const decodedClosedMatch=finalStates[payloadClosedIndex].match;
+  const payloadOpenMatcherProof={id:payloadOpenReference.id,positiveReferenceSelectors:payloadOpenReference.referenceSelectors,browserReferencePath:payloadOpenReference.browserReferencePath,excludedReferenceId:payloadClosedReference.id,excludedReferencePath:payloadClosedReference.browserReferencePath,region:payloadOpenReference.region,regionPaddingPixels:0,matchOptions:payloadMatchOptions,selectedPositiveMatch:finalStates[payloadOpenIndex].match,disambiguation:{raw:rawStates[payloadOpenIndex].match.disambiguation,final:finalStates[payloadOpenIndex].match.disambiguation},knownRejectedEncodedFrame:{encodedFramePts:payloadOpenKnownRejectedEncodedPts,rejection:payloadOpenKnownRejectedFrame}};
+  const openReferenceRejection=proveReferenceRejectedInWindow(finalPath,payloadOpenReference.absoluteReferencePath,{afterPts:decodedClosedMatch.matchStartPts,beforePts:decodedClosedMatch.matchEndPts,region:payloadOpenReference.region,label:'Decoded payload-closed-after-escape negative control for payload-open',...payloadMatchOptions});
+  const negativeControls=[{id:payloadClosedReference.id,negativeControlFor:payloadOpenReference.id,capturedAfterAction:payloadClosedReference.capturedAfterAction,decodedVideoPath:'motion/agriscope-lab-interactions.webm',positiveReferenceSelectors:payloadOpenReference.referenceSelectors,browserReferencePath:payloadClosedReference.browserReferencePath,encodedFramePath:finalStates[payloadClosedIndex].encodedFramePath,region:payloadClosedReference.region,matchOptions:payloadMatchOptions,rawClosedStateMatch:rawStates[payloadClosedIndex].match,finalClosedStateMatch:decodedClosedMatch,positiveStateMatch:finalStates[payloadOpenIndex].match,openReferenceRejection}];
+  return {path:'motion/agriscope-lab-interactions.webm',rawPath:relative(output,rawPath),durationSeconds,playbackSpeedMultiplier:1,minimumProvenStateHoldSeconds:.75,states,payloadOpenMatcherProof,negativeControls,sequence:'Pointer parallax and payload disclosure open/closed-after-Escape negative control; field hotspot; keyboard NDVI comparison endpoints; NOT_ASSESSABLE state; restored valid state.'};
 }
 
 async function sourceHashes(){
@@ -394,6 +464,7 @@ try{
   report.browser=browser.version();
   const shotNames=['Earth / value','Spacecraft','Payload','Thailand','Descent','Field boundary','Dates / quality','NDVI comparison','Inspection summary','Application handoff'];
   const captures=[];
+  const scene4ContextFrames=[];
   let mobileInteractionReport=null;
   for(const viewport of viewports){
     const context=await browser.newContext({viewport:{width:viewport.width,height:viewport.height},deviceScaleFactor:1,isMobile:viewport.mobile,hasTouch:viewport.mobile});
@@ -429,7 +500,7 @@ try{
       await page.screenshot({path,timeout:60000});
       timing.captureOperations.push({viewport:viewport.name,shot:index+1,operation:'screenshot',elapsedMs:Date.now()-screenshotStarted});
       shots.push({number:index+1,name:shotNames[index],path});
-      captures.push({shot:index+1,progress:snapshot.p,renderer:{mode:snapshot.mode,gpu:snapshot.gpu||null,drawCalls:snapshot.drawCalls,triangles:snapshot.triangles,softwareWebGL},assets:{model:snapshot.model,land:snapshot.land,regionalWorld:snapshot.regionalWorld||null,scene4Hero:snapshot.scene4Hero||null,descentAtmosphere:snapshot.descentAtmosphere||null}});
+      captures.push({shot:index+1,progress:snapshot.p,renderer:{mode:snapshot.mode,gpu:snapshot.gpu||null,drawCalls:snapshot.drawCalls,triangles:snapshot.triangles,softwareWebGL},assets:{model:snapshot.model,land:snapshot.land,regionalWorld:snapshot.regionalWorld||null,scene4Hero:snapshot.scene4Hero||null,contextWorld:snapshot.contextWorld||null,descentAtmosphere:snapshot.descentAtmosphere||null}});
     }
     const beats=await page.evaluate(()=>window.__agriscope.BEATS||[]);
     if(!process.env.BASELINE_REASON){
@@ -442,6 +513,17 @@ try{
         const snapshot=await seek(page,beat.p);
         await page.screenshot({path:join(output,viewport.name,'beats',`${beat.id}.png`),timeout:60000});
         captures.push({beat:beat.id,viewport:viewport.name,progress:snapshot.p,renderer:{gpu:snapshot.gpu,drawCalls:snapshot.drawCalls,triangles:snapshot.triangles,softwareWebGL}});
+      }
+    }
+    if(viewport.name==='desktop'){
+      await mkdir(join(output,scene4ContextFrameDirectory),{recursive:true});
+      for(const progress of scene4ContextFrameProgress){
+        const snapshot=await seek(page,progress);
+        const relativePath=`${scene4ContextFrameDirectory}/progress-${progress.toFixed(3)}.png`;
+        const screenshotStarted=Date.now();
+        await page.screenshot({path:join(output,relativePath),timeout:60000});
+        timing.captureOperations.push({viewport:viewport.name,progress,operation:'scene4-context-screenshot',elapsedMs:Date.now()-screenshotStarted});
+        scene4ContextFrames.push({progress:snapshot.p,path:relativePath,renderer:{gpu:snapshot.gpu||null,drawCalls:snapshot.drawCalls,triangles:snapshot.triangles,softwareWebGL},asset:snapshot.contextWorld||null});
       }
     }
     if(!viewport.mobile)for(const progress of [.095,.18,.30,.42,.56])await measureFrames(page,progress,false);
@@ -512,6 +594,7 @@ try{
     report.viewports.push({name:viewport.name,width:viewport.width,height:viewport.height,mobileEmulation:viewport.mobile,shots:10});
     await context.close();
   }
+  report.scene4ContextFrames={directory:scene4ContextFrameDirectory,viewport:{width:1440,height:900},progress:scene4ContextFrameProgress,frames:scene4ContextFrames};
 
   const fallbackChecks=await verifyMotionFallbacks();
 
@@ -541,7 +624,9 @@ try{
   const sequence=redesigned?[
     {to:.095,move:3500,hold:900},{to:.18,move:3000,hold:900},
     {to:.22,move:2200,hold:1500},{to:.30,move:3500,hold:1600},
-    {to:.36,move:3000,hold:1000},{to:.46,move:3500,hold:1000},
+    {to:.36,move:3000,hold:1000},
+    {to:.40,move:1200,hold:900,label:'scene4-context-pass-start'},{to:.56,move:4800,hold:1500,label:'scene4-context-pass-boundary'},{to:.40,move:4800,hold:900,label:'scene4-context-pass-return'},
+    {to:.46,move:3500,hold:1000},
     {to:.56,move:3000,hold:1500},{to:.76,move:2800,hold:1200},
     {to:.95,move:2800,hold:1500},{to:.56,move:4000,hold:900},
     {to:.30,move:4500,hold:900},{to:.18,move:3500,hold:900},
@@ -646,7 +731,7 @@ try{
   endpointComparison=await compareMotionFrame(endpointVerifier,endpointReferencePath,endpointEncodedFramePath,true);
   await endpointVerifier.close();
   // Retain the raw recording, including on success, for independent timestamp review.
-  report.motion={path:'motion/agriscope-forward-reverse.webm',durationSeconds:actualMotionDurationSeconds,captureWindowSeconds:requestedDurationSeconds,rawPresentationTimeWindow:rawMotionPtsWindow,playbackSpeedMultiplier,chapter10Handoff:handoffProof,initialEndpoint:{shot:initialOrbitSnapshot.shot,progress:initialOrbitSnapshot.p,encodedFrameComparison:startComparison,encodedFramePath:'motion/orbit-start-encoded.png',browserReferencePath:'motion/orbit-start-browser.png'},finalEndpoint:{shot:finalOrbitSnapshot.shot,progress:finalOrbitSnapshot.p,requestedHoldSeconds:4,rawChapterHoldSeconds:lastEndpoint.heldSeconds,encodedChapterHoldSeconds:encodedFinalMatch.heldSeconds,encodedFrameComparison:endpointComparison,encodedFramePath:'motion/orbit-endpoint-encoded.png',browserReferencePath:'motion/orbit-endpoint-browser.png'},sequence:redesigned?'Forward flyby, wing, payload, activation/corridor, Thailand, descent and field; visible application handoff; full reverse with original-speed holds.':'Historical ten-chapter traversal.'};
+  report.motion={path:'motion/agriscope-forward-reverse.webm',durationSeconds:actualMotionDurationSeconds,captureWindowSeconds:requestedDurationSeconds,rawPresentationTimeWindow:rawMotionPtsWindow,playbackSpeedMultiplier,scene4ContextPass:{progress:[.40,.56,.40],playbackSpeedMultiplier:1},chapter10Handoff:handoffProof,initialEndpoint:{shot:initialOrbitSnapshot.shot,progress:initialOrbitSnapshot.p,encodedFrameComparison:startComparison,encodedFramePath:'motion/orbit-start-encoded.png',browserReferencePath:'motion/orbit-start-browser.png'},finalEndpoint:{shot:finalOrbitSnapshot.shot,progress:finalOrbitSnapshot.p,requestedHoldSeconds:4,rawChapterHoldSeconds:lastEndpoint.heldSeconds,encodedChapterHoldSeconds:encodedFinalMatch.heldSeconds,encodedFrameComparison:endpointComparison,encodedFramePath:'motion/orbit-endpoint-encoded.png',browserReferencePath:'motion/orbit-endpoint-browser.png'},sequence:redesigned?'Forward flyby, wing, payload, activation/corridor, Thailand, original-speed Scene 4 context pass from .40 to .56 and back to .40, descent and field; visible application handoff; full reverse with original-speed holds.':'Historical ten-chapter traversal.'};
   report.rendererSamples=captures;
   report.interactions={mobile:mobileInteractionReport,fallbacks:fallbackChecks,...(interactionClip?{labClip:interactionClip}:{})};
   report.status=report.errors.length===0&&report.failedRequests.length===0?'PASS':'FAIL';
@@ -671,20 +756,23 @@ try{
     sourceAndAssetHashes:hashes,
     viewportSizes:viewports.map(({name,width,height,mobile})=>({name,width,height,mobileEmulation:mobile})),
     motionDurationSeconds:actualMotionDurationSeconds,
-    captureMethod:{screenshots:'Playwright Chromium screenshots at the ten existing seekCheckpoint shot positions; contact sheets composed from those PNGs in Chromium.',motion:`${motionDescription} Raw WebM trim boundaries are found by matching the complete browser orbit frame against decoded raw-stream frames sampled at 4 fps on the presentation-time clock; wall-clock offsets are not used. The final encoded frame is compared across the full viewport with a browser capture after a 4-second orbit hold.`,baselineOnly:checkpointsOnly},
+    captureMethod:{screenshots:'Playwright Chromium screenshots at the ten existing seekCheckpoint shot positions plus six desktop Scene 4 context frames at .40, .43, .46, .485, .51 and .56; contact sheets composed from the ten-shot PNGs in Chromium.',motion:`${motionDescription} Raw WebM trim boundaries are found by matching the complete browser orbit frame against decoded raw-stream frames sampled at 4 fps on the presentation-time clock; wall-clock offsets are not used. The final encoded frame is compared across the full viewport with a browser capture after a 4-second orbit hold.`,baselineOnly:checkpointsOnly},
     playbackSpeedMultiplier:report.motion?.playbackSpeedMultiplier??null,
     rawMotionPtsWindow,
     timingDiagnostics:'timing-diagnostics.json',
     initialEncodedFrameComparison:startComparison,
     finalEncodedFrameComparison:endpointComparison,
     renderingLimitations:[`Renderer mode: ${softwareReported?'software WebGL / SwiftShader':'see renderer metadata; hardware acceleration was not benchmarked'}.`,'Small-mobile dimensions are browser viewport/touch emulation, not a physical device.','Journey values are synthetic public examples; no private data or live satellite service is used.'],
+    scene4ContextFrames:report.scene4ContextFrames||null,
     interactionClip,
     blenderDerivativeProvenance:{
       scene4MasterSha256:'5ef375387e51165c45e41f08db19c737b40709207e80a901443c3e35bd9f35c5',
       archivedHeroMilestoneReference:{sha256:'20f30c80278b04a91428b33f4633f18531662a3c2411bea5dfe255737cc967c7',exporterInput:false,equivalenceClaimed:false},
       heroEditableDerivative:{file:'AgriScope-Runtime-Art-Transfer-hero.blend',sha256:'76344b57671cb43e798434a5757446cc0069bb9d68207bfccab24b43c7ffed18',bytes:290537078,packedDependencies:23},
+      contextRuntimeDerivative:{file:'apps/web/public/cinematic/models/scene4-context.mesh.json',sha256:'990cf2e4635d91bebc9fd8c459c06af0a41b9a35dc73f9fefbdf452f59c32298',bytes:2949364,triangles:58271,vertices:121851,batches:9},
+      contextEditableDerivative:{file:'AgriScope-Runtime-Art-Transfer-context.blend',sha256:'176264aeb686cf76b9035498cfd951ff0433183592d646f5b6ab5a140fbe3801',bytes:292247876,dependenciesPacked:true},
       externalManifest:'runtime-art-transfer-manifest.json',
-      note:'The editable Blender derivative and its object-level manifest are delivered outside Git. The runtime export is bound to the Scene 4 master; the archived Hero milestone is an independent integrity reference. Runtime source bytes are independently listed in runtimeAssetManifest.',
+      note:'The editable Blender derivatives and their object-level manifests are delivered outside Git. The runtime exports are bound to the Scene 4 master; the archived Hero milestone is an independent integrity reference. Runtime source bytes are independently listed in runtimeAssetManifest.',
     },
   };
   const runtimeAssets=await runtimeManifest();
@@ -699,9 +787,10 @@ try{
     scene4Derivatives:{
       regional:{path:'apps/web/public/cinematic/models/scene4-regional.mesh.json',sha256:'2abfb8fca677075c087359a8148ca4fcc704860a874bdf5e33e6774fd137f470',bytes:774811,triangles:42234,vertices:25071,batches:6},
       hero:{path:'apps/web/public/cinematic/models/scene4-hero.mesh.json',sha256:'2b6bd63d50336983b866b4bf66a9339a8933cde2b70e28f781467056510539e9',bytes:2517582,triangles:98743,vertices:99407,batches:12,editableDerivativeSha256:'76344b57671cb43e798434a5757446cc0069bb9d68207bfccab24b43c7ffed18',editableDerivativeBytes:290537078},
-      sourceMasterSha256:'5ef375387e51165c45e41f08db19c737b40709207e80a901443c3e35bd9f35c5',archivedHeroMilestoneReference:{sha256:'20f30c80278b04a91428b33f4633f18531662a3c2411bea5dfe255737cc967c7',exporterInput:false,equivalenceClaimed:false},combinedBytes:3292393,combinedTriangles:140977,combinedBatches:18,
+      context:{path:'apps/web/public/cinematic/models/scene4-context.mesh.json',sha256:'990cf2e4635d91bebc9fd8c459c06af0a41b9a35dc73f9fefbdf452f59c32298',bytes:2949364,triangles:58271,vertices:121851,batches:9,editableDerivativeSha256:'176264aeb686cf76b9035498cfd951ff0433183592d646f5b6ab5a140fbe3801',editableDerivativeBytes:292247876,editableDerivativeDependenciesPacked:true},
+      sourceMasterSha256:'5ef375387e51165c45e41f08db19c737b40709207e80a901443c3e35bd9f35c5',archivedHeroMilestoneReference:{sha256:'20f30c80278b04a91428b33f4633f18531662a3c2411bea5dfe255737cc967c7',exporterInput:false,equivalenceClaimed:false},combinedBytes:6241757,combinedTriangles:199248,combinedVertices:246329,combinedBatches:27,
     },
-    masterBoundary:'Full editable Blender masters remain external and their browser decode/frame costs are unmeasured. The lab includes source-bound regional and Hero Field runtime derivatives (3,292,393 combined bytes, 140,977 triangles, 18 batches); their editable derivatives and manifest remain delivery provenance.',
+    masterBoundary:'Full editable Blender masters remain external and their browser decode/frame costs are unmeasured. The lab includes source-bound regional, Hero Field and Scene 4 context runtime derivatives (6,241,757 combined bytes, 199,248 triangles, 246,329 vertices, 27 batches); their editable derivatives and manifests remain delivery provenance.',
   };
   reviewInfo.runtimeAssetManifest=runtimeAssets;
   reviewInfo.costReport='cost-report.json';
