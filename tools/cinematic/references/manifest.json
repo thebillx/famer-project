@@ -1,0 +1,55 @@
+{
+  "kind": "local-reference-captures",
+  "sourceUrl": "https://edolus.com/",
+  "captures": [
+    {
+      "file": "earth-limb-and-spacecraft.jpg",
+      "sourceUrl": "https://edolus.com/",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "capturedAt": "2026-10-11T16:57:56.863333+00:00",
+      "captureTimeBasis": "Original screenshot file modification time; capture harness did not record an independent timestamp.",
+      "method": "Local Playwright Chromium 154.0.8037.98; settled entry/PageDown sequence; visually classified from pixels by Codex. JPEG quality 88, full viewport, no crop.",
+      "visibleContent": "Textured Earth limb, blue atmospheric rim and a foreground spacecraft with bright solar-panel reflections.",
+      "originalPngSha256": "8b6e3fb835da678552db516e0f9394654cf5a69be0939c55b88d8d4c0b875172",
+      "sha256": "563b9c99775e4dc0887ef36b1e54e7cd3e3379fbe2bce348ad0c888d5ba4a8f0"
+    },
+    {
+      "file": "orbital-spacecraft.jpg",
+      "sourceUrl": "https://edolus.com/",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "capturedAt": "2026-10-11T16:58:00.493138+00:00",
+      "captureTimeBasis": "Original screenshot file modification time; capture harness did not record an independent timestamp.",
+      "method": "Local Playwright Chromium 154.0.8037.98; settled entry/PageDown sequence; visually classified from pixels by Codex. JPEG quality 88, full viewport, no crop.",
+      "visibleContent": "Spacecraft silhouetted against textured Earth and a blue limb; reflective bus panels and gridded solar array.",
+      "originalPngSha256": "9ec6fd047d62c131f01ab4cc33afa7abdeba247c48a28784cb36cb88c83f1d5c",
+      "sha256": "8a459484e4e36c1727c0018616af18c9e8a480fe15cee5189b9a1d52fa9b9531"
+    },
+    {
+      "file": "spacecraft-in-cloud.jpg",
+      "sourceUrl": "https://edolus.com/",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "capturedAt": "2026-10-11T16:58:06.258521+00:00",
+      "captureTimeBasis": "Original screenshot file modification time; capture harness did not record an independent timestamp.",
+      "method": "Local Playwright Chromium 154.0.8037.98; settled entry/PageDown sequence; visually classified from pixels by Codex. JPEG quality 88, full viewport, no crop.",
+      "visibleContent": "Spacecraft within a pale cloud layer, with distant surfaces softened by atmosphere; no Earth limb visible.",
+      "originalPngSha256": "d6ef892afebc585204298b4e955bfe0fdbd6ec0dba8d9d0b1a0f5e1cd9a3f225",
+      "sha256": "6863f5e493bff3924d8d509ddee8236deea37043870298fc982ee8ac2b1df81f"
+    }
+  ],
+  "unavailableScenes": [],
+  "limitations": [
+    "Local reference captures, not CI app renders.",
+    "Scene identity established by inspecting pixels, not scroll position or filenames.",
+    "Reference artwork remains the property of its creators; included only as review evidence, never bundled into the application.",
+    "No claim of visual equivalence or physical-device performance."
+  ]
+}
