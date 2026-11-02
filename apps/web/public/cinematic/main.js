@@ -188,7 +188,7 @@ export function mountJourney(root,{lab=false,cameraSampler=sampleCamera}={}){
   const agriculturalLight=smooth(.43,.57,p);
   // During descent, preserve the warm key while restoring cool sky fill and
   // environment response so crop ridges, bank slopes, and water retain depth.
-  sun.intensity=(lab?1.72:1.85)+(lab?.72:.43)*agriculturalLight;fill.intensity=(lab?.94:1.05)-(lab?.30:.27)*agriculturalLight;hemisphere.intensity=.56+(lab?.18:.12)*agriculturalLight;scene.environmentIntensity=.70+(lab?.12:.08)*agriculturalLight;
+   sun.intensity=(lab?1.55:1.85)+(lab?.52:.43)*agriculturalLight;fill.intensity=(lab?.98:1.05)-(lab?.22:.27)*agriculturalLight;hemisphere.intensity=.56+(lab?.18:.12)*agriculturalLight;scene.environmentIntensity=.70+(lab?.12:.08)*agriculturalLight;
    if(fieldKey)fieldKey.intensity=245*smooth(.405,.475,p)*(1-.62*smooth(.535,.59,p))*(1-.22*smooth(.82,.94,p));
   // Keep the far edge atmospheric, but let the nearby parcels retain warm soil
   // and crop contrast instead of disappearing into a grey fog wash.

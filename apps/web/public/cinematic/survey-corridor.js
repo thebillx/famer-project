@@ -102,7 +102,7 @@ export function buildSurveyCorridor({lab=false}={}){
   }else{
    curve.v1.copy(payload).multiplyScalar(.46).add(new THREE.Vector3(1.4,0,-.7));
   }
-  const strength=smooth(.27,.30,p)*(1-smooth(lab?.455:.415,lab?.525:.475,p));
+  const strength=smooth(.27,.30,p)*(1-smooth(lab?.455:.415,lab?.57:.475,p));
   beam.visible=sleeve.visible=packets.visible=rings.visible=strength>0;material.uniforms.opacity.value=strength*(lab?.78:.72);coreMaterial.uniforms.opacity.value=strength*(lab?.68:.55);
   sleeveMaterial.uniforms.opacity.value=strength*(lab?.035:.055);
   material.uniforms.spectral.value=.38*smooth(.365,.385,p)*(1-smooth(.395,.415,p));

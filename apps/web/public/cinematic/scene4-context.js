@@ -6,8 +6,10 @@ import {smooth} from './timeline.js';
 function tuneContextMaterial(material,name,environment){
  const surface=material.userData.surface,baseOpacity=material.opacity;
  const field=name.includes('context-field-');
+ const ground=name.includes('context-ground');
  const connected=name.includes('context-cultivation')?'1.':'smoothstep(7.,32.,-contextPosition.z)';
- const edge=name.includes('context-ground')||field?'smoothstep(29.,38.,-contextPosition.z)':'1.';
+ const extent=ground||field?'(1.-smoothstep(.90,.995,abs(contextPosition.x)/185.))':'1.';
+ const edge=name.includes('context-ground')||field?`smoothstep(29.,38.,-contextPosition.z)*${extent}`:'1.';
  material.envMap=environment;
  material.transparent=true;
  material.opacity=0;
@@ -29,18 +31,36 @@ function tuneContextMaterial(material,name,environment){
  }else if(name.includes('context-access')){
   material.envMapIntensity=.18;material.roughness=.88;
   material.color.setRGB(.19,.16,.10);
+ }else if(ground){
+  material.envMapIntensity=.15;material.roughness=.95;
+  material.color.setRGB(.062,.115,.078);
  }else{
   material.envMapIntensity=.15;material.roughness=.95;
   material.color.setRGB(.075,.13,.062);
  }
- material.userData.baseOpacity=baseOpacity;
+ material.userData.baseOpacity=baseOpacity*(ground?.88:1);
  material.onBeforeCompile=shader=>{
   shader.vertexShader=shader.vertexShader
    .replace('#include <common>','#include <common>\nvarying vec3 contextPosition;')
-   .replace('#include <begin_vertex>',`#include <begin_vertex>\nfloat contextLift=1.35*smoothstep(7.,32.,-position.z);\nif(position.z<7.)transformed.y+=contextLift;\ncontextPosition=position;`);
+   .replace('#include <begin_vertex>',`#include <begin_vertex>
+float contextLift=1.35*smoothstep(7.,32.,-position.z);
+if(position.z<7.)transformed.y+=contextLift;
+${ground?`transformed.y+=.18*sin(position.x*.08+position.z*.031)+.10*sin(position.z*.12-position.x*.041);`:''}
+contextPosition=position;`);
   shader.fragmentShader=shader.fragmentShader
    .replace('#include <common>','#include <common>\nvarying vec3 contextPosition;')
-   .replace('#include <color_fragment>',`#include <color_fragment>\nfloat contextConnection=${connected};\nfloat contextEdge=${edge};\nfloat contextBroad=.94+.08*sin(contextPosition.x*.085+contextPosition.z*.031)*sin(contextPosition.z*.047);\ndiffuseColor.rgb*=contextBroad;\ndiffuseColor.a*=contextConnection*contextEdge;\nif(diffuseColor.a<.012)discard;`);
+   .replace('#include <color_fragment>',`#include <color_fragment>
+float contextConnection=${connected};
+float contextEdge=${edge};
+float contextBroad=.94+.08*sin(contextPosition.x*.085+contextPosition.z*.031)*sin(contextPosition.z*.047);
+diffuseColor.rgb*=contextBroad;
+${ground?`float contextBelt=.5+.5*sin(contextPosition.x*.045-contextPosition.z*.022);
+float contextDrain=.5+.5*sin(contextPosition.z*.061+contextPosition.x*.017);
+vec3 contextCover=mix(vec3(.07,.13,.09),vec3(.14,.17,.10),smoothstep(.25,.78,contextBelt));
+contextCover=mix(contextCover,vec3(.10,.20,.19),smoothstep(.68,.9,contextDrain)*.24);
+diffuseColor.rgb=mix(diffuseColor.rgb,contextCover,.32);`:''}
+diffuseColor.a*=contextConnection*contextEdge;
+if(diffuseColor.a<.012)discard;`);
  };
  material.customProgramCacheKey=()=>`agriscope-scene4-context-v1-${surface}-${name}`;
 }

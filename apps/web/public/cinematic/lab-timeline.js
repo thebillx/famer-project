@@ -18,11 +18,11 @@ export const LAB_CAMERA_KEYS = [
  // world gains scale. The former -35/-27 targets looked past the Hero origin,
  // then swung back abruptly after the Earth had already disappeared.
  {p:.43,pos:[5.8,31,32],target:[-.4,1,-18],fov:55,roll:.022},
- {p:.46,pos:[4.8,25.5,27],target:[-.8,.6,-12],fov:54,roll:.014},
+ {p:.46,pos:[4.8,25.5,27],target:[-.8,-5.0,-12],fov:54,roll:.014},
  // Hold the establishing view long enough to keep the destination embedded
  // in the connected regional shell; the next key still resolves to the
  // accepted Hero Field approach without a second camera cut.
- {p:.485,pos:[5.6,23.5,24],target:[-1,-1.7,-10],fov:52,roll:.007},
+ {p:.485,pos:[5.6,23.5,24],target:[-1,-5.2,-10],fov:52,roll:.007},
  {p:.51,pos:[5.2,14.8,14.2],target:[-1.5,-.1,-3.2],fov:47,roll:0},
  {p:.56,pos:[4.0,7.1,7.8],target:[-.55,.05,0],fov:45,roll:0},
  {p:.65,pos:[3.0,7.4,6.9],target:[-.8,.05,0],fov:44,roll:0},
