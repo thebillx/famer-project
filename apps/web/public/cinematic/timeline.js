@@ -16,9 +16,9 @@ export const CAMERA_KEYS = [
   {p:.275, pos:[8,15.8,13], target:[-2,11.8,0], fov:47, roll:0},
   {p:.43, pos:[8,19,23], target:[-3,10.8,0], fov:43, roll:0},
   {p:.587, pos:[7,16,10], target:[0,11.8,0], fov:43, roll:0},
-  {p:.78, pos:[2.4,13.8,5.8], target:[0,12.4,1.5], fov:48, roll:0},
-  {p:.90, pos:[1.7,14,5.4], target:[0,12.4,1.5], fov:48, roll:0},
-  {p:1, pos:[3.2,17,9], target:[0,10.5,0], fov:46, roll:0}
+  {p:.78, pos:[7.2,14.6,9.9], target:[1.7,11.4,0], fov:48, roll:0},
+  {p:.90, pos:[6.5,15.8,10.7], target:[1.7,11.4,0], fov:48, roll:0},
+  {p:1, pos:[5.8,17,12], target:[1.5,10.5,0], fov:46, roll:0}
 ];
 
 // The spacecraft stays in the orbital world while its payload opens with scroll.

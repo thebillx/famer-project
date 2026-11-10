@@ -24,6 +24,7 @@ const report = {
   softwareWebGL: software,
   viewports: [],
   checks: [],
+  textureUploads: null,
   errors: [],
   warnings: [],
   limitations: [
@@ -105,6 +106,134 @@ async function staticReady(page) {
   assert.equal(await page.locator("#fallback").isVisible(), true); assert.equal(await page.locator("#loading").isVisible(), false);
   assert.equal(await page.locator("#fallback .text-link").getAttribute("href"), "/login");
   await assertStaticSample(page); assert.match(await page.locator("#fallback").textContent(), /ข้อมูลเป็นตัวอย่างสาธิต/);
+}
+
+async function installTextureProbe(page, maxTextureSize, { failResizeContext = false } = {}) {
+  await page.addInitScript(({ cap, fail2d }) => {
+    const originalGetContext = HTMLCanvasElement.prototype.getContext;
+    const patchedContexts = new WeakSet();
+    const probe = { cap, contexts: 0, uploads: [] };
+    window.__agriscopeTextureProbe = probe;
+    HTMLCanvasElement.prototype.getContext = function getContext(type, ...args) {
+      if (fail2d && type === "2d") return null;
+      const context = originalGetContext.call(this, type, ...args);
+      if (!context || !["webgl", "webgl2", "experimental-webgl"].includes(type) || patchedContexts.has(context)) return context;
+      patchedContexts.add(context);
+      probe.contexts += 1;
+      const originalGetParameter = context.getParameter;
+      context.getParameter = function getParameter(parameter) {
+        if (parameter === 0x0d33) return cap;
+        return originalGetParameter.call(this, parameter);
+      };
+      const recordUpload = (kind, uploadArgs) => {
+        let width;
+        let height;
+        let source;
+        if (kind === "texImage2D") {
+          source = uploadArgs.length === 6 ? uploadArgs[5] : undefined;
+          if (source && Number.isFinite(source.width) && Number.isFinite(source.height)) {
+            width = source.width;
+            height = source.height;
+          } else if (uploadArgs.length >= 9 && Number.isFinite(uploadArgs[3]) && Number.isFinite(uploadArgs[4])) {
+            width = uploadArgs[3];
+            height = uploadArgs[4];
+          }
+        } else {
+          source = uploadArgs.length === 7 ? uploadArgs[6] : undefined;
+          if (source && Number.isFinite(source.width) && Number.isFinite(source.height)) {
+            width = source.width;
+            height = source.height;
+          } else if (uploadArgs.length >= 9 && Number.isFinite(uploadArgs[4]) && Number.isFinite(uploadArgs[5])) {
+            width = uploadArgs[4];
+            height = uploadArgs[5];
+          }
+        }
+        if (Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0) {
+          const sourceKind = source?.constructor?.name || null;
+          const imageSource = ["HTMLImageElement", "HTMLCanvasElement", "ImageBitmap", "OffscreenCanvas", "VideoFrame"].includes(sourceKind);
+          probe.uploads.push({ kind, width, height, sourceKind, imageSource });
+        }
+      };
+      const originalTexImage2D = context.texImage2D;
+      context.texImage2D = function texImage2D(...uploadArgs) {
+        recordUpload("texImage2D", uploadArgs);
+        return originalTexImage2D.apply(this, uploadArgs);
+      };
+      const originalTexSubImage2D = context.texSubImage2D;
+      context.texSubImage2D = function texSubImage2D(...uploadArgs) {
+        recordUpload("texSubImage2D", uploadArgs);
+        return originalTexSubImage2D.apply(this, uploadArgs);
+      };
+      return context;
+    };
+  }, { cap: maxTextureSize, fail2d: failResizeContext });
+}
+
+async function authoredTextureDimensions(page) {
+  return page.evaluate((files) => Promise.all(files.map((file) => new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve({ file, width: image.naturalWidth, height: image.naturalHeight });
+    image.onerror = () => reject(new Error(`Unable to inspect authored texture ${file}`));
+    image.src = `/cinematic/textures/${file}`;
+  }))), ["earth-day.jpg", "earth-clouds.jpg", "earth-night.png"]);
+}
+
+async function assertMobileFieldPanel(page, viewport) {
+  const panel = page.locator("#field-panel");
+  const collapsed = await panel.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const style = getComputedStyle(element);
+    const visibleChildren = Array.from(element.children).filter((child) => {
+      const childStyle = getComputedStyle(child);
+      return childStyle.display !== "none" && childStyle.visibility !== "hidden";
+    });
+    const lastVisible = visibleChildren[visibleChildren.length - 1];
+    return {
+      top: rect.top,
+      bottom: rect.bottom,
+      height: rect.height,
+      clientHeight: element.clientHeight,
+      scrollHeight: element.scrollHeight,
+      maxHeight: parseFloat(style.maxHeight),
+      overflowY: style.overflowY,
+      lastVisibleBottom: lastVisible?.getBoundingClientRect().bottom ?? rect.top,
+      paddingBottom: parseFloat(style.paddingBottom),
+      borderBottom: parseFloat(style.borderBottomWidth),
+    };
+  });
+  assert.ok(Math.abs(collapsed.top - 184) <= 1, `${viewport.width}x${viewport.height}: field panel starts at the mobile content offset`);
+  assert.ok(Math.abs(collapsed.maxHeight - (viewport.height - 242)) <= 1, `${viewport.width}x${viewport.height}: field panel max-height matches the mobile viewport cap`);
+  assert.ok(collapsed.height <= collapsed.maxHeight + 1, `${viewport.width}x${viewport.height}: collapsed field panel respects max-height`);
+  const collapsedOverflow = collapsed.scrollHeight > collapsed.clientHeight + 1;
+  if (collapsedOverflow) assert.ok(Math.abs(collapsed.height - collapsed.maxHeight) <= 1, `${viewport.width}x${viewport.height}: collapsed overflow fills only the bounded scroll cap`);
+  else {
+    const contentGap = collapsed.bottom - collapsed.lastVisibleBottom - collapsed.paddingBottom - collapsed.borderBottom;
+    assert.ok(contentGap >= -1 && contentGap <= 2, `${viewport.width}x${viewport.height}: collapsed field panel hugs its final visible content`);
+    assert.ok(Math.abs(collapsed.clientHeight - collapsed.scrollHeight) <= 1, `${viewport.width}x${viewport.height}: collapsed field panel has no hidden overflow`);
+  }
+  assert.ok(collapsed.bottom <= viewport.height + 1, `${viewport.width}x${viewport.height}: collapsed field panel stays inside the viewport`);
+  assert.equal(collapsed.overflowY, "auto", `${viewport.width}x${viewport.height}: field panel exposes scrolling for expanded content`);
+
+  const trend = page.locator("#inspect-field");
+  await trend.click();
+  assert.equal(await trend.getAttribute("aria-expanded"), "true");
+  const expanded = await panel.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const style = getComputedStyle(element);
+    return { top: rect.top, bottom: rect.bottom, clientHeight: element.clientHeight, scrollHeight: element.scrollHeight, overflowY: style.overflowY };
+  });
+  assert.equal(expanded.overflowY, "auto", `${viewport.width}x${viewport.height}: expanded trend remains scrollable`);
+  assert.ok(expanded.scrollHeight >= expanded.clientHeight, `${viewport.width}x${viewport.height}: expanded trend has measurable content`);
+  assert.ok(expanded.bottom <= viewport.height + 1, `${viewport.width}x${viewport.height}: expanded field panel stays inside the viewport`);
+
+  await page.locator(".field-handoff").scrollIntoViewIfNeeded();
+  const handoff = await page.locator(".field-handoff").boundingBox();
+  assert.ok(handoff && handoff.y >= expanded.top - 1 && handoff.y + handoff.height <= expanded.bottom + 1, `${viewport.width}x${viewport.height}: field handoff is reachable within the panel`);
+  await trend.scrollIntoViewIfNeeded();
+  const collapse = await trend.boundingBox();
+  assert.ok(collapse && collapse.y >= expanded.top - 1 && collapse.y + collapse.height <= expanded.bottom + 1, `${viewport.width}x${viewport.height}: trend collapse control is reachable after scrolling`);
+  await trend.click();
+  assert.equal(await trend.getAttribute("aria-expanded"), "false");
 }
 
 async function settle(page, progress) { await page.waitForFunction((value) => Math.abs(window.__agriscope.snapshot().p - value) < 0.001, progress, { timeout: 60000 }); }
@@ -211,6 +340,7 @@ try {
     assert.equal(await page.locator("#narrative").evaluate((element) => getComputedStyle(element).opacity), "0"); assert.equal(await page.locator("#narrative").evaluate((element) => element.inert), true); assert.equal(await page.locator("#instrument").evaluate((element) => getComputedStyle(element).visibility), "hidden");
     const metrics = await page.locator("#field-panel .metrics b").allTextContents(); assert.ok(metrics.some((value) => value.includes("18.4"))); assert.ok(metrics.some((value) => value.includes("0.71"))); assert.match(await page.locator("#field-panel").textContent(), /ข้อมูลสาธิต/);
     const trend = page.locator("#inspect-field"); assert.equal(await trend.getAttribute("aria-expanded"), "false"); await trend.click(); assert.equal(await trend.getAttribute("aria-expanded"), "true"); assert.equal(await page.locator("#trend").isVisible(), true); await trend.click(); assert.equal(await trend.getAttribute("aria-expanded"), "false");
+    if (mobile) await assertMobileFieldPanel(page, viewport);
     await page.evaluate(() => { if (document.activeElement instanceof HTMLElement) document.activeElement.blur(); });
     for (let index = forward.length - 1; index >= 0; index -= 1) { const reverse = await checkpoint(page, SHOT_POINTS[index]); assertSnapshot(reverse, viewport, `reverse shot ${index + 1}`); assertSameState(reverse, forward[index].snapshot, `reverse shot ${index + 1}`); assert.deepEqual(await page.screenshot(), forward[index].pixels); }
     await checkpoint(page, HANDOFF); await page.locator("#inspect-field").focus(); await checkpoint(page, 0.78); assert.notEqual(await page.evaluate(() => document.activeElement?.id), "inspect-field");
@@ -223,10 +353,43 @@ try {
     await page.goto(`${url}?qa=1&shot=5`); await ready(page, viewport); await settle(page, 0.78); assert.equal((await state(page)).shot, 5);
     const resized = { width: viewport.height, height: viewport.width }; await page.setViewportSize(resized); const resizedState = await checkpoint(page, 0.78); assert.deepEqual(resizedState.viewport, [resized.width, resized.height]); assertSnapshot(resizedState, resized, "resized"); assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)); await page.setViewportSize(viewport);
     await page.goto(`${url}?qa=1`); await ready(page, viewport); await page.getByRole("link", { name: "เข้าสู่ระบบ", exact: true }).first().click(); await page.waitForURL(/\/login\?mode=login$/); assert.equal(await page.locator(".cinematic canvas").count(), 0); await page.goBack(); await ready(page, viewport); assert.equal(await page.locator(".cinematic canvas").count(), 1); assert.equal(await page.locator("#rail button").count(), 5); assert.deepEqual(normalMonitor.networkErrors, [], "Normal runtime has no failed requests or HTTP errors");
-    report.viewports.push({ viewport, captures: ["0", ".16", ".34", ".55", ".78", ".95"], checks: ["five checkpoints and reverse pixel/state determinism", "globe/camera/geometry/render invariants", "handoff focus, trend, navigation, resize, scroll, and remount"] }); await context.close();
+    report.viewports.push({ viewport, captures: ["0", ".16", ".34", ".55", ".78", ".95"], checks: ["five checkpoints and reverse pixel/state determinism", "globe/camera/geometry/render invariants", "handoff focus, trend, navigation, resize, scroll, and remount", ...(mobile ? ["mobile field-panel content-height, scroll cap, and reachable controls"] : [])] }); await context.close();
   }
 
-  const reduced = await browser.newContext({ viewport: viewports[1], reducedMotion: "reduce" }); contexts.push(reduced); let page = await reduced.newPage(); monitor(page); await page.goto(`${url}?qa=1`); await staticReady(page); assert.equal(await page.locator("#motion").getAttribute("aria-pressed"), "true"); await page.locator("#resume").click(); await ready(page, viewports[1]); report.checks.push("reduced motion fallback and opt-in"); await reduced.close();
+  const textureCap = 4096;
+  let page;
+  const lowGpu = await browser.newContext({ viewport: viewports[1] }); contexts.push(lowGpu);
+  page = await lowGpu.newPage(); const lowGpuMonitor = monitor(page);
+  await installTextureProbe(page, textureCap);
+  await page.goto(`${url}?qa=1`); await ready(page, viewports[1]);
+  const authored = await authoredTextureDimensions(page);
+  for (const { file, width, height } of authored) {
+    assert.ok(finite(width) && finite(height) && width > 0 && height > 0, `${file}: authored image dimensions are finite`);
+    assert.ok(Math.abs(width / height - 2) < 0.001, `${file}: authored image aspect ratio remains 2:1`);
+  }
+  const textureProbe = await page.evaluate(() => window.__agriscopeTextureProbe);
+  assert.ok(textureProbe.contexts > 0, "Low GPU-cap run created a real WebGL context");
+  assert.ok(textureProbe.uploads.length > 0, "Low GPU-cap run observed real texture uploads");
+  for (const { width, height } of textureProbe.uploads) {
+    assert.ok(Number.isInteger(width) && Number.isInteger(height) && width > 0 && height > 0, "Uploaded texture dimensions are finite positive integers");
+    assert.ok(width <= textureCap && height <= textureCap, `Uploaded texture ${width}x${height} stays within maxTextureSize ${textureCap}`);
+  }
+  const authoredUploads = textureProbe.uploads.filter(({ imageSource, width, height }) => imageSource && width >= 1024 && height >= 512);
+  assert.ok(authoredUploads.some(({ width, height }) => width === textureCap && height === textureCap / 2), "Oversized authored texture is uploaded at the capped 2:1 dimensions");
+  assert.ok(authoredUploads.every(({ width, height }) => Math.abs(width / height - 2) < 0.001), "Uploaded authored image/canvas textures preserve their 2:1 aspect ratio");
+  report.textureUploads = {
+    cap: textureCap,
+    count: textureProbe.uploads.length,
+    maxWidth: Math.max(...textureProbe.uploads.map(({ width }) => width)),
+    maxHeight: Math.max(...textureProbe.uploads.map(({ height }) => height)),
+    authored: authoredUploads.map(({ kind, width, height, sourceKind }) => ({ kind, width, height, sourceKind })),
+  };
+  await save(page, "low-cap-4096-p-0");
+  assert.deepEqual(lowGpuMonitor.networkErrors, [], "Low GPU-cap runtime has no failed requests or HTTP errors");
+  assert.deepEqual(lowGpuMonitor.runtimeErrors, [], "Low GPU-cap runtime has no WebGL or shader errors");
+  await lowGpu.close(); report.checks.push("4096px maxTextureSize cap preserves real WebGL rendering and texture dimensions");
+
+  const reduced = await browser.newContext({ viewport: viewports[1], reducedMotion: "reduce" }); contexts.push(reduced); page = await reduced.newPage(); monitor(page); await page.goto(`${url}?qa=1`); await staticReady(page); assert.equal(await page.locator("#motion").getAttribute("aria-pressed"), "true"); await page.locator("#resume").click(); await ready(page, viewports[1]); report.checks.push("reduced motion fallback and opt-in"); await reduced.close();
   const motionParam = await browser.newContext({ viewport: viewports[1] }); contexts.push(motionParam); page = await motionParam.newPage(); monitor(page); await page.goto(`${url}?qa=1&motion=reduce`); await staticReady(page); assert.equal(await page.locator("#motion").getAttribute("aria-pressed"), "true"); await page.locator("#resume").click(); await ready(page, viewports[1]); report.checks.push("motion=reduce query fallback and opt-in"); await motionParam.close();
   const nojs = await browser.newContext({ viewport: viewports[1], javaScriptEnabled: false }); contexts.push(nojs); page = await nojs.newPage(); await page.goto(url); assert.equal(await page.locator("#fallback").isVisible(), true); assert.equal(await page.locator(".cinematic canvas").count(), 0); assert.equal(await page.locator("#motion").isVisible(), false); assert.equal(await page.locator("#fallback .text-link").getAttribute("href"), "/login"); await assertStaticSample(page); report.checks.push("no-JavaScript synthetic sample and CTA"); await nojs.close();
   for (const failure of ["module", "webgl", "texture"]) {
@@ -237,6 +400,13 @@ try {
     await page.goto(`${url}?qa=1`); if (failure === "module") { await page.waitForSelector("#fallback-reason"); assert.match(await page.locator("#fallback-reason").textContent(), /โหลดประสบการณ์ 3D ไม่สำเร็จ/); } else await staticReady(page);
     if (failure !== "webgl") assert.equal(intercepted, 1); assert.equal(await page.locator("#resume").isVisible(), false); assert.equal(await page.locator(".cinematic canvas").count(), 0); await assertStaticSample(page); assertFailureErrors(failure, failureMonitor.runtimeErrors); await context.close(); report.checks.push(`${failure} fallback remains readable`);
   }
+  const resizeFailure = await browser.newContext({ viewport: viewports[1] }); contexts.push(resizeFailure); page = await resizeFailure.newPage(); const resizeFailureMonitor = monitor(page, false);
+  await installTextureProbe(page, textureCap, { failResizeContext: true });
+  await page.goto(`${url}?qa=1`); await staticReady(page);
+  assert.equal(await page.locator("#rail button").count(), 0, "Texture resize failure disposes the rail controls");
+  assert.equal(await page.locator(".cinematic canvas").count(), 0, "Texture resize failure removes the renderer canvas");
+  assertFailureErrors("texture", resizeFailureMonitor.runtimeErrors);
+  await resizeFailure.close(); report.checks.push("texture resize context failure uses the static fallback and disposes runtime DOM");
   assert.deepEqual(report.errors, [], "No normal runtime or shader errors"); report.status = "PASS"; console.log(`PASS ${report.checks.length} cinematic browser checks`);
 } catch (error) {
   report.status = "FAIL"; report.failure = error.stack; process.exitCode = 1; console.error(error);

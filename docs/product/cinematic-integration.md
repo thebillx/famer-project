@@ -15,6 +15,28 @@ tests. The runtime loads Earth textures and the authored spacecraft. Previous
 native descent assets and offline authoring tools remain available as historical
 work. The delivery for this change ends with a reviewed PR.
 
+### Temporary authoring-artifact inventory
+
+The current five-shot entry graph does not load the historical public paths
+listed below. They remain in place for offline import, hash checks and Blender /
+exporter callers. The complete path inventory is maintained in
+`tools/cinematic/references/static-asset-board.json`; the grouped totals here
+avoid duplicating that table.
+
+- Native descent payloads: 19,063,385 bytes.
+- Inactive farmland/tree/Scene 4 meshes: 9,078,212 bytes.
+- Inactive regional atlas plus crop/foil/leaf/soil/water surfaces: 2,576,036
+  bytes.
+- Historical native/descent/Scene 4 modules: 78,335 bytes.
+- Total temporary authoring artifacts: 30,795,968 bytes.
+
+The six active metal/solar surface maps remain runtime inputs (180,680 bytes)
+and are excluded from that temporary-artifact total.
+
+Manual legacy checks remain `tests/cinematic/native-assets.mjs` and
+`tests/cinematic/native-journey.mjs`; Blender authoring callers remain under
+`tools/cinematic/blender/`.
+
 ## Historical integration record
 
 Status: CONTRACT_READY. Owner mission: 10 October 2026.

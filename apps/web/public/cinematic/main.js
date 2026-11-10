@@ -147,7 +147,6 @@ export function mountJourney(root) {
       if(shot===0) $('title').innerHTML = 'มองเห็นความเปลี่ยนแปลง<br><span>จากวงโคจรถึงแปลงจริง</span>';
       else $('title').textContent = item.thai;
       $('description').textContent = item.text;
-      $('chapter').textContent = `${item.name} / ${String(shot+1).padStart(2,'0')}`;
     }
     [...$('rail').children].forEach((button,index) => button.setAttribute('aria-current',String(index===shot)));
     $('bottom-left').firstChild.textContent = p<.08 ? 'SCROLL TO EXPLORE ' : p>=.88 ? 'FROM ORBIT TO YOUR FIELD ' : 'EARTH OBSERVATION / THAILAND ';
@@ -241,6 +240,19 @@ export function mountJourney(root) {
       }
       complete();
       if(disposed || epoch!==assetEpoch) return;
+      for(const texture of resources) {
+        const image = texture.image;
+        const scale = Math.min(1,renderer.capabilities.maxTextureSize/Math.max(image.width,image.height));
+        if(scale===1) continue;
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1,Math.floor(image.width*scale));
+        canvas.height = Math.max(1,Math.floor(image.height*scale));
+        const context = canvas.getContext('2d');
+        if(!context) throw new Error('Texture resizing is unavailable');
+        context.drawImage(image,0,0,canvas.width,canvas.height);
+        texture.image = canvas;
+        texture.needsUpdate = true;
+      }
       const [day,clouds,night] = textures;
       textures.forEach(texture => {
         texture.colorSpace = texture===clouds ? THREE.NoColorSpace : THREE.SRGBColorSpace;

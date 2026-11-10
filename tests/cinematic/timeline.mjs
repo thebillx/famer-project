@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
 import * as THREE from '../../apps/web/public/cinematic/vendor.js';
+import {buildSpacecraft} from '../../apps/web/public/cinematic/spacecraft.js';
 import { sampleCamera, sampleSpacecraft, SHOTS, CAMERA_KEYS } from '../../apps/web/public/cinematic/timeline.js';
 assert.deepEqual(SHOTS,[
  {p:0,name:'ORBITAL SILENCE',thai:'จากวงโคจร ถึงแปลงจริง',text:'มองเห็นความเปลี่ยนแปลงของแปลงเกษตร ผ่านภาพถ่ายดาวเทียม Sentinel-2'},
@@ -61,3 +63,36 @@ for(const p of craftCheckpoints){
 assert.equal(sampleSpacecraft(.55).deployment,0,'Deployment remains closed before the fifth shot');
 assert.equal(sampleSpacecraft(.78).deployment,1,'Deployment reaches the fifth-shot checkpoint');
 console.log(`PASS ${SHOTS.length} public shots: source copy, fixed craft pose, and reverse-stable progress deployment`);
+
+// Keep the final inspection's deployed wings inside the frame through handoff.
+const asset=JSON.parse(readFileSync(new URL('../../apps/web/public/cinematic/models/spacecraft.mesh.json',import.meta.url)));
+const craft=buildSpacecraft(asset),pose=sampleSpacecraft(.78),vertices=[];
+craft.position.copy(pose.position);
+craft.quaternion.copy(pose.quaternion);
+craft.userData.apply(pose);
+craft.updateMatrixWorld(true);
+craft.traverse(object=>{
+ if(!object.isMesh) return;
+ const positions=object.geometry.attributes.position;
+ for(let index=0;index<positions.count;index++) vertices.push(new THREE.Vector3().fromBufferAttribute(positions,index).applyMatrix4(object.matrixWorld));
+});
+let framingSamples=0;
+for(const aspect of aspects){
+ for(let index=0;index<=50;index++){
+  const p=.78+.22*index/50,key=sampleCamera(p,aspect),camera=new THREE.PerspectiveCamera(key.fov,aspect,.08,450);
+  camera.position.copy(key.position);camera.lookAt(key.target);camera.rotateZ(key.roll);camera.updateMatrixWorld(true);
+  const projection=new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix,camera.matrixWorldInverse);
+  const projected=new THREE.Vector3();
+  let extentX=0,extentY=0,extentZ=0;
+  for(const vertex of vertices){
+   projected.copy(vertex).applyMatrix4(projection);
+   extentX=Math.max(extentX,Math.abs(projected.x));
+   extentY=Math.max(extentY,Math.abs(projected.y));
+   extentZ=Math.max(extentZ,Math.abs(projected.z));
+  }
+  assert.ok(extentX<=.95,`Payload wings retain a horizontal margin at ${p}, aspect ${aspect}`);
+  assert.ok(extentY<=1&&extentZ<=1,`Payload remains inside the vertical/depth frame at ${p}, aspect ${aspect}`);
+  framingSamples++;
+ }
+}
+console.log(`PASS payload framing: ${framingSamples} camera/aspect samples keep all ${vertices.length} authored vertices in frame`);
