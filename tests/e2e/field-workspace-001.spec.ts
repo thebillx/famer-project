@@ -127,14 +127,14 @@ const ndviSummary = (observation: Observation): ObservationNdviSummary => ({
   valid_pixel_ratio: 0.9
 });
 
-const raster = (observation: Observation): ObservationRaster => ({
+const raster = (observation: Observation, bounds: ObservationRaster["bounds"] = [98.98, 18.79, 98.99, 18.8]): ObservationRaster => ({
   observation_id: observation.observation_id,
   field_id: field.id,
   acquired_at: observation.acquired_at,
   algorithm_version: analysisVersion,
   geometry_hash: geometryHash,
   crs: "EPSG:4326",
-  bounds: [98.98, 18.79, 98.99, 18.8],
+  bounds,
   width: 32,
   height: 32,
   nodata: -9999,
@@ -220,6 +220,7 @@ type Operation = "preview" | "ndvi-summary" | "ndvi-raster" | "ndvi-raster/image
 
 type MockOptions = {
   observations?: Observation[];
+  rasterBounds?: ObservationRaster["bounds"];
   requestGates?: Map<string, Promise<void>>;
   summaryErrors?: Record<string, ErrorResponse>;
   changeResponse?: FieldChange | ErrorResponse;
@@ -299,7 +300,7 @@ async function mockFieldWorkspace(page: Page, options: MockOptions = {}) {
         return observation ? json(route, ndviSummary(observation)) : apiError(route, { status: 404, code: "not_found", message: "not found" });
       }
       const observation = (options.observations ?? [poorQuality, after, before, legacy, unavailable]).find((item) => item.observation_id === observationId);
-      return observation ? json(route, raster(observation)) : apiError(route, { status: 404, code: "not_found", message: "not found" });
+      return observation ? json(route, raster(observation, options.rasterBounds)) : apiError(route, { status: 404, code: "not_found", message: "not found" });
     }
     if (path === `/api/v1/fields/${field.id}/change`) {
       calls.change += 1;
@@ -640,7 +641,15 @@ test("[mocked-api] map initialization errors remain visible until a real retry s
 });
 
 test("[mocked-api] known raster and vector landmarks remain registered after pan and zoom", async ({ page }) => {
-  await mockFieldWorkspace(page, { observations: [after, before] });
+  let releaseRaster: (() => void) | undefined;
+  const rasterGate = new Promise<void>((resolve) => { releaseRaster = resolve; });
+  const calls = await mockFieldWorkspace(page, {
+    observations: [after, before],
+    requestGates: new Map([
+      [requestGateKey(before.observation_id, "ndvi-raster"), rasterGate],
+      [requestGateKey(after.observation_id, "ndvi-raster"), rasterGate]
+    ])
+  });
   await page.goto(`/fields/${field.id}`);
   await expect(page.getByRole("link", { name: "เปรียบเทียบภาพ" })).toBeVisible();
   await page.getByRole("link", { name: "เปรียบเทียบภาพ" }).click();
@@ -661,6 +670,20 @@ test("[mocked-api] known raster and vector landmarks remain registered after pan
   expect(distance(initial.cyan, initial.clay)).toBeLessThanOrEqual(10);
 
   const mapCanvas = compareMap.locator(".maplibregl-canvas");
+  const originalMapCanvas = await mapCanvas.elementHandle();
+  const expectSpatialMapStable = async (landmarks: Awaited<ReturnType<typeof renderedLandmarks>>, requireChange = true) => {
+    await expect(compareMap).toHaveAttribute("data-image-ready", "true");
+    expect(await mapCanvas.evaluate((node, original) => node === original, originalMapCanvas)).toBe(true);
+    const current = await renderedLandmarks(page);
+    expect(current.cyanCount).toBeGreaterThan(10);
+    if (requireChange) expect(current.clayCount).toBeGreaterThan(10);
+    expect(current.cyan).not.toBeNull();
+    if (requireChange) expect(current.clay).not.toBeNull();
+    if (!current.cyan || (requireChange && !current.clay)) throw new Error("landmarks disappeared after non-spatial update");
+    expect(distance(landmarks.cyan!, current.cyan)).toBeLessThanOrEqual(2);
+    if (requireChange && current.clay) expect(distance(landmarks.clay!, current.clay)).toBeLessThanOrEqual(2);
+  };
+
   const box = await mapCanvas.boundingBox();
   expect(box).not.toBeNull();
   if (!box) return;
@@ -680,7 +703,79 @@ test("[mocked-api] known raster and vector landmarks remain registered after pan
   if (!moved.cyan || !moved.clay) throw new Error("landmarks disappeared after map interaction");
   expect(distance(moved.cyan, moved.clay)).toBeLessThanOrEqual(10);
   expect(distance(initial.cyan, moved.cyan)).toBeGreaterThan(10);
+
+  await expectSpatialMapStable(moved);
+  await page.getByRole("slider", { name: "เลื่อนเพื่อเปรียบเทียบภาพก่อนและภาพล่าสุด" }).focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(page.getByRole("slider", { name: "เลื่อนเพื่อเปรียบเทียบภาพก่อนและภาพล่าสุด" })).toHaveValue("51");
+  await expectSpatialMapStable(moved);
+
+  await expect.poll(() => calls.raster[before.observation_id] ?? 0).toBeGreaterThan(0);
+  await expect.poll(() => calls.raster[after.observation_id] ?? 0).toBeGreaterThan(0);
+  releaseRaster?.();
+  await expectSpatialMapStable(moved);
+
+  await page.getByRole("button", { name: "NDVI", exact: true }).click();
+  await expect.poll(() => calls.image[after.observation_id] ?? 0).toBe(1);
+  await expect(compareMap).toHaveAttribute("data-image-ready", "true");
+  await expectSpatialMapStable(moved, false);
+
+  await page.getByRole("button", { name: "พื้นที่ NDVI ลดลง" }).click();
+  await expect.poll(async () => (await renderedLandmarks(page)).clayCount).toBeGreaterThan(10);
+  await expectSpatialMapStable(moved);
+  await page.getByRole("button", { name: "ภาพดาวเทียม" }).click();
+  await expectSpatialMapStable(moved, false);
+  await page.getByRole("button", { name: "พื้นที่ NDVI ลดลง" }).click();
+  await expect.poll(async () => (await renderedLandmarks(page)).clayCount).toBeGreaterThan(10);
+  await expectSpatialMapStable(moved);
   await captureVisual(page, "field-compare-spatial-registration");
+});
+
+test("[mocked-api] genuine raster extent changes refit the camera and keep landmarks registered", async ({ page }) => {
+  let releaseRaster: (() => void) | undefined;
+  const rasterGate = new Promise<void>((resolve) => { releaseRaster = resolve; });
+  const expandedBounds: ObservationRaster["bounds"] = [98.9, 18.7, 99.07, 18.89];
+  const calls = await mockFieldWorkspace(page, {
+    observations: [after, before],
+    rasterBounds: expandedBounds,
+    requestGates: new Map([
+      [requestGateKey(before.observation_id, "ndvi-raster"), rasterGate],
+      [requestGateKey(after.observation_id, "ndvi-raster"), rasterGate]
+    ])
+  });
+  await page.goto(`/fields/${field.id}/compare?before=${before.observation_id}&after=${after.observation_id}`);
+  const compareMap = map(page);
+  await expect(compareMap).toHaveAttribute("data-map-ready", "true");
+  await expect(compareMap).toHaveAttribute("data-image-ready", "true");
+  await expect.poll(() => calls.raster[before.observation_id] ?? 0).toBe(1);
+  await expect.poll(() => calls.raster[after.observation_id] ?? 0).toBe(1);
+
+  await page.getByRole("button", { name: "พื้นที่ NDVI ลดลง" }).click();
+  await expect.poll(async () => (await renderedLandmarks(page)).clayCount).toBeGreaterThan(10);
+  const beforePan = await renderedLandmarks(page);
+  if (!beforePan.cyan) throw new Error("landmark fixture did not render before extent refit");
+  const mapCanvas = compareMap.locator(".maplibregl-canvas");
+  const box = await mapCanvas.boundingBox();
+  expect(box).not.toBeNull();
+  if (!box) return;
+  await page.mouse.move(box.x + box.width * 0.5, box.y + box.height * 0.5);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.68, box.y + box.height * 0.62, { steps: 8 });
+  await page.mouse.up();
+  await page.waitForTimeout(150);
+  const moved = await renderedLandmarks(page);
+  if (!moved.cyan) throw new Error("landmark fixture did not move before extent refit");
+  expect(distance(beforePan.cyan, moved.cyan)).toBeGreaterThan(10);
+
+  releaseRaster?.();
+  await expect(compareMap).toHaveAttribute("data-spatial-extent", expandedBounds.join(","));
+  await expect.poll(async () => (await renderedLandmarks(page)).clayCount).toBeGreaterThan(10);
+  const refit = await renderedLandmarks(page);
+  expect(refit.cyan).not.toBeNull();
+  expect(refit.clay).not.toBeNull();
+  if (!refit.cyan || !refit.clay) throw new Error("landmark fixture did not render after extent refit");
+  expect(distance(moved.cyan, refit.cyan)).toBeGreaterThan(10);
+  expect(distance(refit.cyan, refit.clay)).toBeLessThanOrEqual(10);
 });
 
 test("[mocked-api] empty history and terminal auth keep protected field content out of the UI", async ({ browser }) => {
