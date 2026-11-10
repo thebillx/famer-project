@@ -573,7 +573,7 @@ try{
         assert.doesNotMatch(await page.locator('#sample-explanation').textContent(),/ลดลง|ควรตรวจ/,'The panel must not retain a valid-data conclusion.');
         assert.equal(await page.locator('.map-legend').isVisible(),false,'No change legend is shown without common support.');
         await page.locator('#rail button[aria-label^="ช่วง 7:"]').click();
-        await page.waitForFunction(()=>Math.abs(window.__agriscope.snapshot().p-.65)<.003,null,{timeout:10000});
+        await renderedStateFor(page,.65);
         assert.equal((await page.evaluate(()=>window.__agriscope.snapshot())).evidence.status,'NOT_ASSESSABLE');
         assert.match(await page.locator('#title').textContent(),/ตรวจคุณภาพก่อนเปรียบเทียบ/,'Reverse chapter navigation keeps the insufficient-data narrative.');
         await page.setViewportSize({width:800,height:900});
@@ -599,7 +599,7 @@ try{
       }else{
         await page.locator('#rail button[aria-label^="ช่วง 7:"]').click();
       }
-      await page.waitForFunction(()=>Math.abs(window.__agriscope.snapshot().p-.65)<.003,null,{timeout:10000});
+      await renderedStateFor(page,.65);
       assert.equal((await page.evaluate(()=>window.__agriscope.snapshot())).shot,7,'Mobile chapter navigation selects the date-quality chapter.');
       await seek(page,.95);
       let registrationCta='not checked in baseline';

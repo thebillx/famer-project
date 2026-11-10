@@ -136,6 +136,9 @@ async function expectParcelClearOfPanels(page: import("@playwright/test").Page, 
 
 for (const viewport of [{ width: 1440, height: 900 }, { width: 1920, height: 800 }, { width: 390, height: 844 }, { width: 375, height: 667 }]) {
   test(`cinematic lab has deterministic chapters and purposeful controls at ${viewport.width}px`, async ({ page }) => {
+    // Each viewport exercises roughly 80 rendered seeks, including reverse travel.
+    // Software WebGL needs a larger aggregate budget for the complete sequence.
+    test.setTimeout(180_000);
     const cinematicRequests: string[] = [];
     page.on("request", (request) => {
       const path = new URL(request.url()).pathname;

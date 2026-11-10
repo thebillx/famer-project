@@ -24,7 +24,8 @@ jobs:
   cinematic-evidence:
     # Playwright 1.54.2 supports Ubuntu 24.04 browser dependencies.
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    # Budget for both complete software-WebGL captures, controls and artifact upload.
+    timeout-minutes: 90
     steps:
       - name: Check out exact PR head
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
