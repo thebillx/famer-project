@@ -85,4 +85,11 @@
  .cinematic.lab-mode .comparison-control{margin-top:10px;padding-top:9px}
  .cinematic.lab-mode .comparison-control legend{font-size:11px}
  .cinematic.lab-mode .evidence-panel{max-height:calc(100svh - 335px)}
+ .cinematic.lab-mode .field-panel{max-height:calc(100svh - 395px);padding:12px}
+ .cinematic.lab-mode .field-panel .eyebrow{margin-bottom:5px}
+ .cinematic.lab-mode .field-panel h2{font-size:19px}
+ .cinematic.lab-mode .field-panel .metrics{padding:6px 0}
+ .cinematic.lab-mode .field-panel .sample-explanation{margin-top:7px}
+ .cinematic.lab-mode .field-panel.is-handoff{max-height:230px}
+ .cinematic.lab-mode .field-panel .chapter-cta:not([hidden]){display:flex;margin-top:8px}
 }

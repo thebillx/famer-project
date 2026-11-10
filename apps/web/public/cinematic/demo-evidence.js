@@ -30,8 +30,9 @@ export function buildEvidence(){
    #include <tonemapping_fragment>
    #include <colorspace_fragment>
   }`});
- const group=new THREE.Group();group.add(new THREE.Mesh(geometry,material));group.name='Synthetic dated comparison · one field';
- return {group,apply(p,insufficient=false,flatten=0,comparisonOverride=null){
+ const mesh=new THREE.Mesh(geometry,material);
+ const group=new THREE.Group();group.add(mesh);group.name='Synthetic dated comparison · one field';
+ return {group,mesh,uniforms,apply(p,insufficient=false,flatten=0,comparisonOverride=null){
   const state=sampleEvidence(p,insufficient);
   group.visible=p>=.64&&!insufficient;
   const comparison=comparisonOverride===null?state.comparison:Math.min(1,Math.max(0,comparisonOverride));

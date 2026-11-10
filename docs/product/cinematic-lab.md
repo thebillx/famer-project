@@ -22,22 +22,33 @@ to use `/login?mode=register`. Reduced motion, JavaScript/module/asset/WebGL
 failure and context loss retain readable Thai content and the registration path.
 
 Reference direction is recorded in
-`apps/web/public/cinematic/REFERENCE-NOTES.md`. No ThreeUI Pro or Edolus source,
-asset, branding or imagery is incorporated. The lab adds measured compact Scene 4
-regional and Hero Field derivatives from the SHA-bound Blender establishing
-source while retaining the existing spacecraft. The separately accepted Hero
-milestone remains an archived reference and is not claimed as a byte-identical
-export source. The 9.49M-triangle authoring scene is not loaded by the browser.
-The derivatives are requested only on `/cinematic-lab`; the public landing route
-keeps its existing asset graph and visual state. One Three.js renderer still owns
-the complete journey.
+`apps/web/public/cinematic/REFERENCE-NOTES.md`. Edolus supplies cinematography
+principles including a full-viewport world, deliberate holds, sparse labels and
+continuous perceived travel. Generated hybrid imagery and authored Blender GLBs
+supply the lab descent. The existing spacecraft supplies the orbital chapters.
 
-The runtime derivative transfers broad valley, drainage, ridge, woodland and
-riparian forms. Browser-authored cloud volumes, a lab-only cubic data corridor,
-selective destination light and a sample-bound acquisition front adapt the static
-direction for motion. All are deterministic functions of absolute scroll
-progress. The editable Blender source and object-level binding manifest remain
-external SHA-bound evidence so generator output cannot overwrite accepted masters.
+The native descent follows three readable scales from orbit through basin to one
+field. Brief moving-cloud passages conceal the two approved scale changes.
+Progress .30–.56 drives twelve seconds of absolute native animation. The final
+field camera holds through the boundary, dates/quality, NDVI, inspection and
+workspace chapters. The complete journey retains all ten chapters and nineteen
+beats. Native parcel projection registers the boundary, comparison cells and
+hotspots to the same visible field. Wide screens crop the authored 16:9 cameras
+to fill the viewport. Portrait screens keep the complete parcel above the data
+controls, with a soft foreground falloff into the panel background. This framing
+holds from field arrival through the final chapter. The mobile registration
+action sits in the final field panel.
+
+The four GLBs and lighting environment are source-bound by SHA-256 and byte
+length. Distant generated imagery and photo-projected foreground support this
+shot's limited camera travel. Editable native parcels, palms, irrigation, camera
+and moving clouds are retained in the external Blender masters. The accepted
+12-second descent is one scoped visual milestone. Full-product acceptance
+requires review of the integrated journey and its adjacent transitions.
+
+ADR-0014 records the owner-authorized hybrid integration. The public landing
+route retains its existing asset graph. One Three.js renderer owns the journey,
+render targets and cleanup. Native assets load only in the active lab experience.
 
 Acceptance for the prototype is a production build and real-browser evidence at
 desktop and mobile sizes covering ten chapters, forward/reverse traversal,

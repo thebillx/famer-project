@@ -1,6 +1,6 @@
 # Cinematic reference record
 
-Observed 23 October 2026 for the isolated `/cinematic-lab` prototype.
+Observed 23 October 2026 and revisited 10 November 2026 for `/cinematic-lab`.
 
 ## Owner-approved Scene 4 composition
 
@@ -17,8 +17,15 @@ Observed 23 October 2026 for the isolated `/cinematic-lab` prototype.
   it is a visual/integrity reference and was not the runtime exporter's input.
   Study B informed the approach framing. The establishing candidate is a working
   baseline and does not carry independent final artistic acceptance.
-- Rights boundary: the concept is comparison evidence only. It is never drawn as
-  a browser background, texture, matte or flattened scene.
+- The owner subsequently approved generated distant imagery combined with
+  editable foreground for the authored shot. The native descent uses those
+  generated derivatives with moving clouds. The approved storyboard is
+  `20261107-orbit-to-field-storyboard/Storyboard-v2.png` in external evidence.
+- The accepted descent candidate has SHA-256
+  `adc66c8edf8804cc2d4f9138ad9065cc0b11667b445f20d082ed89744c05afa1`.
+  Independent review inspected all 288 frames plus dense transition frames.
+  Root sampled actual playback at 1×. Full ten-chapter integration remains a
+  separate visual review scope.
 
 ## Primary motion reference — Edolus
 

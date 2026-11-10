@@ -10,14 +10,16 @@ import {spaceEnvironment,agriculturalEnvironment} from './space-light.js';
 import {SHOTS,BEATS,sampleCamera,sampleSpacecraft,clamp,smooth} from './timeline.js';
 
 // One instance per React mount. Assets, listeners and GPU resources belong to it.
-export function mountJourney(root,{lab=false,cameraSampler=sampleCamera}={}){
+export function mountJourney(root,{lab=false,cameraSampler=sampleCamera,nativeFactory=null}={}){
  const controller=new AbortController();
  const listen=(element,event,handler,options={})=>element.addEventListener(event,handler,{...options,signal:controller.signal});
  const $=id=>root.querySelector(`#${id}`),params=new URLSearchParams(location.search);
+ const chapterCta=$('chapter-cta'),chapterCtaParent=chapterCta.parentElement;
+ if(nativeFactory)$('field-panel').insertBefore(chapterCta,$('inspect-field'));
  const media=matchMedia('(prefers-reduced-motion: reduce)'),diagnostic=params.has('qa');
  const resources=[];
  let disposed=false,initializing=false,probeStarted=false,reduced=media.matches||params.get('motion')==='reduce';
- let renderer,composer,scene,camera,spacecraft,earth,terrain,heroWorld,contextWorld,regionalWorld,descentAtmosphere,stars,beam,corridor,evidence,sun,fill,hemisphere,craftFill,craftRim,craftEdge,fieldKey,payloadMeshes=[],craftMaterials=[];
+ let renderer,composer,nativeJourney,nativeFrame,scene,camera,spacecraft,earth,terrain,heroWorld,contextWorld,regionalWorld,descentAtmosphere,stars,beam,corridor,evidence,sun,fill,hemisphere,craftFill,craftRim,craftEdge,fieldKey,payloadMeshes=[],craftMaterials=[];
  let progress=0,target=0,active=false,raf=0,last=0,frames=0,shotIndex=-1,mobileLayout=null,narrativeInsufficient=null,corridorCopy=null,focusField=false,insufficient=false,state={};
  let comparisonOverride=null,payloadExpanded=false,activeHotspot=null;
  const pointerGoal={x:0,y:0},pointer={x:0,y:0};
@@ -60,16 +62,16 @@ export function mountJourney(root,{lab=false,cameraSampler=sampleCamera}={}){
   initializing=true;root.classList.add('preparing');$('loading').hidden=false;
   try{
    if(renderer&&composer){activate();return;}
-   renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});
+   renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance',logarithmicDepthBuffer:Boolean(nativeFactory)});
    renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=lab?1.04:.98;
    renderer.info.autoReset=false;renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
    $('scene-root').appendChild(renderer.domElement);
    listen(renderer.domElement,'webglcontextlost',e=>{e.preventDefault();fallback('การแสดงผล 3D หยุดชั่วคราว กรุณาโหลดหน้าใหม่เพื่อเริ่มอีกครั้ง');});
    scene=new THREE.Scene();scene.background=new THREE.Color(0x060d15);scene.fog=new THREE.FogExp2(0x11263a,.0008);
    camera=new THREE.PerspectiveCamera(46,innerWidth/innerHeight,.08,450);
-   const assetCount=lab?9:7;let loaded=0;const complete=()=>{$('loading-progress').style.width=`${++loaded/assetCount*100}%`;};
+   const assetCount=nativeFactory?11:lab?9:7;let loaded=0;const complete=()=>{$('loading-progress').style.width=`${++loaded/assetCount*100}%`;};
    const loader=new THREE.TextureLoader();
-   const labModules=lab?Promise.all([import('./descent-atmosphere.js'),import('./scene4-regional.js'),import('./scene4-hero.js'),import('./scene4-context.js')]):Promise.resolve(null);
+   const labModules=lab&&!nativeFactory?Promise.all([import('./descent-atmosphere.js'),import('./scene4-regional.js'),import('./scene4-hero.js'),import('./scene4-context.js')]):Promise.resolve(null);
    const textures=await Promise.all(['earth-day.jpg','earth-clouds.jpg','earth-night.png','regional-landscape.png'].map(async file=>{
     const texture=await loader.loadAsync(`/cinematic/textures/${file}`);
     if(disposed)texture.dispose();else resources.push(texture);
@@ -77,7 +79,7 @@ export function mountJourney(root,{lab=false,cameraSampler=sampleCamera}={}){
    }));
    // The lab replaces the old procedural tree instances with authored regional
    // vegetation masses. The landing route keeps its existing tree asset.
-   const meshNames=lab?['spacecraft','farmland','scene4-regional','scene4-hero','scene4-context']:['spacecraft','farmland','tree'];
+   const meshNames=nativeFactory?['spacecraft','farmland']:lab?['spacecraft','farmland','scene4-regional','scene4-hero','scene4-context']:['spacecraft','farmland','tree'];
    const meshData=await Promise.all(meshNames.map(async name=>{
     const data=await loadMeshData(name,controller.signal);complete();return data;
    }));
@@ -112,7 +114,7 @@ export function mountJourney(root,{lab=false,cameraSampler=sampleCamera}={}){
    terrain=buildTerrain({farmland,tree},{mobile:innerWidth<760,day,rotation,surfaceMaps,regional,regionalBlend:earth.userData.regionalBlend,cinematic:lab});scene.add(terrain);
    const fieldEnvironment=agriculturalEnvironment(renderer);resources.push(fieldEnvironment);
    bindTerrainEnvironment(terrain,fieldEnvironment.texture);
-   if(lab){
+   if(modules){
     regionalWorld=modules[1].buildScene4Regional(scene4Regional,{environment:fieldEnvironment.texture,surfaceMaps:{water:surfaceMaps.water}});scene.add(regionalWorld);
     heroWorld=modules[2].buildScene4Hero(scene4Hero,{environment:fieldEnvironment.texture,surfaceMaps});scene.add(heroWorld);
     contextWorld=modules[3].buildScene4Context(scene4Context,{environment:fieldEnvironment.texture,surfaceMaps});scene.add(contextWorld);
@@ -121,7 +123,19 @@ export function mountJourney(root,{lab=false,cameraSampler=sampleCamera}={}){
    evidence=buildEvidence();scene.add(evidence.group);
    corridor=buildSurveyCorridor({lab});scene.add(corridor);beam=corridor.userData.beam;
    composer=new THREE.EffectComposer(renderer);composer.addPass(new THREE.RenderPass(scene,camera));
-   composer.addPass(new THREE.UnrealBloomPass(new THREE.Vector2(innerWidth/2,innerHeight/2),lab?.16:.10,lab?.38:.35,1.5));composer.addPass(new THREE.OutputPass());
+   composer.addPass(new THREE.UnrealBloomPass(new THREE.Vector2(innerWidth/2,innerHeight/2),lab?.16:.10,lab?.38:.35,1.5));
+   if(nativeFactory){
+    composer.renderToScreen=false;
+    nativeJourney=await nativeFactory({
+     renderer,
+     signal:controller.signal,
+     onAssetLoaded:complete,
+     boundary:terrain.userData.boundary,
+     evidenceMesh:evidence.mesh,
+     evidenceUniforms:evidence.uniforms,
+    });
+    if(disposed){nativeJourney.dispose();return;}
+   }else composer.addPass(new THREE.OutputPass());
    const phases=[0,1,3,6,9];
    SHOTS.forEach((shot,i)=>{
     const button=document.createElement('button');button.type='button';button.dataset.phase=String(phases.includes(i));
@@ -138,7 +152,12 @@ export function mountJourney(root,{lab=false,cameraSampler=sampleCamera}={}){
    if(!disposed){console.error('[AgriScope]',error);fallback('อุปกรณ์นี้แสดงภาพ 3D ไม่ได้ คุณยังอ่านวิธีติดตามแปลงและดูข้อมูลตัวอย่างได้');}
   }finally{initializing=false;}
  }
- function renderScene(){renderer.info.reset();composer.render();writeDiagnostics({drawCalls:renderer.info.render.calls,triangles:renderer.info.render.triangles});}
+ function renderScene(){
+  renderer.info.reset();
+  if(nativeJourney)nativeJourney.render(composer);
+  else composer.render();
+  writeDiagnostics({drawCalls:renderer.info.render.calls,triangles:renderer.info.render.triangles});
+ }
  async function runHardwareProbe(){
   if(probeStarted||!diagnostic||!params.has('hardware-probe'))return;probeStarted=true;
   const shot=Math.max(1,Math.min(10,Number(params.get('hardware-probe'))||6)),base=SHOTS[shot-1].p,recording=params.get('recording')==='1';
@@ -227,11 +246,23 @@ export function mountJourney(root,{lab=false,cameraSampler=sampleCamera}={}){
   const payload=spacecraft.localToWorld(spacecraft.userData.payloadPosition.clone()),ground=new THREE.Vector3(0,.12,0);
   corridor.userData.apply(p,payload,flatten);
   const sample=evidence.apply(p,insufficient,flatten,lab?comparisonOverride:null);
+  nativeFrame=nativeJourney?.applyFrame({
+   progress:p,
+   width:innerWidth,
+   height:innerHeight,
+   pixelRatio:renderer.getPixelRatio(),
+   boundaryVisible:terrain.userData.boundary.visible,
+   boundaryOpacity:terrain.userData.boundary.material.opacity,
+   evidenceVisible:evidence.group.visible,
+   evidenceOpacity:evidence.uniforms.opacity.value,
+   comparison:sample.comparison,
+   insufficient,
+  })??null;
   const fieldOpacity=smooth(.835,.86,p),evidenceOpacity=smooth(.635,.655,p)*(1-smooth(.815,.84,p));
   panel('field-panel',fieldOpacity);panel('evidence-panel',evidenceOpacity);
   if(focusField&&fieldOpacity>=.5){$('inspect-field').focus({preventScroll:true});focusField=false;}
   const narrative=$('narrative'),chapterCta=$('chapter-cta');
-  const compactChapter=mobile&&p>=.62;
+  const compactChapter=mobile&&p>=(nativeJourney?.535:.62);
   narrative.style.opacity=1;narrative.inert=false;
   narrative.classList.toggle('mobile-chapter',compactChapter);
   $('field-panel').classList.toggle('is-handoff',mobile&&p>=.925);
@@ -243,11 +274,15 @@ export function mountJourney(root,{lab=false,cameraSampler=sampleCamera}={}){
   const projectedGround=ground.clone().project(camera);
   $('geo').style.left=`${clamp((projectedGround.x*.5+.5)*innerWidth+18,24,innerWidth-210)}px`;
   $('geo').style.top=`${clamp((-projectedGround.y*.5+.5)*innerHeight-24,110,innerHeight*.56)}px`;
+  if(nativeFrame?.nativeWeight>0){
+   $('geo').style.left=`${clamp(nativeFrame.targetCss.x+18,24,innerWidth-210)}px`;
+   $('geo').style.top=`${clamp(nativeFrame.targetCss.y-24,110,innerHeight*(mobile?.44:.56))}px`;
+  }
   const optic=payload.project(camera);
   $('instrument').style.left=`${clamp((optic.x*.5+.5)*innerWidth-27,24,innerWidth-230)}px`;
   $('instrument').style.top=`${clamp((-optic.y*.5+.5)*innerHeight-27,110,innerHeight*.48)}px`;
   if(lab){
-   const payloadControl=$('payload-control'),payloadVisible=p>=.17&&p<.31;
+   const payloadControl=$('payload-control'),payloadVisible=p>=.17&&p<(nativeJourney?.29:.31);
    payloadControl.hidden=!payloadVisible;payloadControl.inert=!payloadVisible;
    payloadControl.style.left=`${clamp((optic.x*.5+.5)*innerWidth+18,20,innerWidth-155)}px`;
    payloadControl.style.top=`${clamp((-optic.y*.5+.5)*innerHeight-20,105,innerHeight*.55)}px`;
@@ -256,7 +291,11 @@ export function mountJourney(root,{lab=false,cameraSampler=sampleCamera}={}){
    const fieldVisible=p>=.535&&p<.635,hotspots=$('field-hotspots');hotspots.hidden=!fieldVisible;hotspots.inert=!fieldVisible;
    if(fieldVisible){
     const points=[new THREE.Vector3(-2.12,fieldHeight(-2.12,-1.84)+.08,-1.84),new THREE.Vector3(.95,fieldHeight(.95,.25)+.10,.25)];
-    [...hotspots.children].forEach((button,index)=>{const point=terrain.localToWorld(points[index].clone()).project(camera);button.style.left=`${clamp((point.x*.5+.5)*innerWidth,24,innerWidth-80)}px`;button.style.top=`${clamp((-point.y*.5+.5)*innerHeight,110,innerHeight-90)}px`;});
+    [...hotspots.children].forEach((button,index)=>{
+     const fieldPoint=points[index],projected=terrain.localToWorld(fieldPoint.clone()).project(camera);
+     const point=nativeJourney?nativeJourney.projectFieldPoint(fieldPoint.x,fieldPoint.z):{x:(projected.x*.5+.5)*innerWidth,y:(-projected.y*.5+.5)*innerHeight};
+     button.style.left=`${clamp(point.x,24,innerWidth-80)}px`;button.style.top=`${clamp(point.y,110,innerHeight-90)}px`;
+    });
    }else if(activeHotspot){activeHotspot=null;$('hotspot-detail').hidden=true;}
   }
   const illustrative=p>=.265&&p<.335;
@@ -278,6 +317,13 @@ export function mountJourney(root,{lab=false,cameraSampler=sampleCamera}={}){
   [...$('rail').children].forEach((b,i)=>b.setAttribute('aria-current',String(i===currentRail)));
   $('bottom-left').firstChild.textContent=p<.08?'SCROLL TO EXPLORE ':p>.93?'YOUR AGRISCOPE WORKSPACE ':'EARTH OBSERVATION / THAILAND ';
   const craftDepthWriters=lab?craftMaterials.filter(material=>material.depthWrite).length:null;
+  if(nativeJourney)writeDiagnostics({
+   nativeJourney:nativeJourney.snapshot(),
+   visualCameraOwner:nativeFrame.nativeWeight===1?'native':'main',
+   visualCamera:nativeFrame.nativeWeight===1?nativeFrame.visualCamera:{
+    position:camera.position.toArray(),quaternion:camera.quaternion.toArray(),fov:camera.fov,
+   },
+  });
   writeDiagnostics({p:+p.toFixed(6),shot:shot+1,beat:BEATS.filter(beat=>p>=beat.p).at(-1)?.id,journeyMode:lab?'lab':'landing',roll:key.roll,camera:camera.position.toArray(),look:key.target.toArray(),fov:camera.fov,terrain:terrain.visible,scene4Hero:heroState,contextWorld:contextState,regionalWorld:regionalState,descentAtmosphere:atmosphericState,descentSurface:surface,surfaceTransforms:{earthScale:earth.scale.toArray(),earthPosition:earth.position.toArray(),terrainScale:terrain.scale.toArray(),heroScale:heroWorld?.scale.toArray()??null,contextScale:contextWorld?.scale.toArray()??null,regionalScale:regionalWorld?.scale.toArray()??null},localDetail:detail,flatten,cloudOpacity:earth.userData.clouds.material.opacity,cloudRotation:earth.userData.clouds.rotation.y,cloudShadowOpacity:earth.userData.cloudShadow.material.opacity,thailandFocusOpacity:earth.userData.thailandFocus.material.opacity,atmosphere:earth.userData.atmosphere.material.uniforms.opacity.value,beamOpacity:beam.material.uniforms.opacity.value,beamPosition:beam.position.toArray(),beamAttitude:beam.quaternion.toArray(),fog:scene.fog.density,fieldOpacity,evidenceOpacity,attitude:spacecraft.quaternion.toArray(),spacecraftPosition:spacecraft.position.toArray(),spacecraftOpacity:craftOpacity,spacecraftDepthWrite:lab?{enabled:craftDepthWriters>0,active:craftDepthWriters,authored:craftMaterials.filter(material=>material.userData.cinematicBaseDepthWrite).length,total:craftMaterials.length}:null,beam:beam.visible,evidence:sample,pointerParallax:[pointer.x,pointer.y],payloadExpanded,activeHotspot,viewport:[innerWidth,innerHeight]});
  }
  function animate(time){
@@ -294,6 +340,7 @@ export function mountJourney(root,{lab=false,cameraSampler=sampleCamera}={}){
  function resizeViewport(){
   renderer.setPixelRatio(Math.min(devicePixelRatio,innerWidth<760?1.25:1.5));renderer.setSize(innerWidth,innerHeight);
   composer?.setSize(innerWidth,innerHeight);camera.aspect=innerWidth/innerHeight;
+  nativeJourney?.resize(innerWidth,innerHeight,renderer.getPixelRatio());
  }
  function updateSample(){
   $('sample-status').textContent=insufficient?'ข้อมูลยังไม่พอ':'ควรตรวจต่อ';
@@ -350,9 +397,11 @@ export function mountJourney(root,{lab=false,cameraSampler=sampleCamera}={}){
  if(reduced)fallback('แสดงขั้นตอนติดตามแปลงตามการตั้งค่าลดการเคลื่อนไหวของคุณ',true);else init();
  return ()=>{
   disposed=true;active=false;controller.abort();cancelAnimationFrame(raf);
+  if(nativeFactory)chapterCtaParent.appendChild(chapterCta);
   if(window.__agriscope===diagnostics)delete window.__agriscope;
   const geometries=new Set(),materials=new Set(),textures=new Set(resources);
   scene?.traverse(o=>{if(o.geometry)geometries.add(o.geometry);for(const m of (Array.isArray(o.material)?o.material:[o.material]).filter(Boolean)){materials.add(m);for(const v of Object.values(m))if(v?.isTexture)textures.add(v);}});
+  nativeJourney?.dispose();
   geometries.forEach(g=>g.dispose());materials.forEach(m=>m.dispose());textures.forEach(t=>t.dispose());
   composer?.passes.forEach(p=>p.dispose?.());composer?.dispose();renderer?.dispose();renderer?.forceContextLoss();renderer?.domElement.remove();$('rail').replaceChildren();
  };

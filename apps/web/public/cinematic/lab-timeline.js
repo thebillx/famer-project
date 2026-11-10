@@ -10,8 +10,10 @@ export const LAB_CAMERA_KEYS = [
  {p:.18,pos:[4.8,11.1,4.4],target:[.4,13,0],fov:50,roll:.07},
  {p:.22,pos:[2.7,14,5.7],target:[0,13.1,1],fov:42,roll:0},
  {p:.265,pos:[3.9,17.3,7.2],target:[0,12.8,0],fov:46,roll:-.08},
- {p:.30,pos:[6.2,22,11.8],target:[1,7,-1],fov:49,roll:-.12},
- {p:.33,pos:[6.4,26.5,17.5],target:[0,1,0],fov:49,roll:-.08},
+ // Approach the limb before the native orbital plate takes over. Both views
+ // then read as the same near-horizon scale during their short overlap.
+ {p:.30,pos:[6.2,5,11.8],target:[0,-15,-8],fov:49,roll:-.04},
+ {p:.33,pos:[6.4,3,11],target:[0,-20,-9],fov:49,roll:-.02},
  {p:.36,pos:[6.0,30,23],target:[0,-2,-7],fov:49,roll:0},
  {p:.40,pos:[7.0,34,29],target:[-.5,-1,-15],fov:49,roll:.028},
  // Keep the registered destination in the lower passage while the regional

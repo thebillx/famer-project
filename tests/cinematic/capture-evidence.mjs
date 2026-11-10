@@ -82,7 +82,9 @@ function analyzeReferencePts(rawVideoPath,referencePath,{afterPts=-Infinity,befo
   // UI region and explicit thresholds because WebM colour response is more
   // visible when a small dark panel is enlarged for comparison.
   const width=360,height=225,bytesPerFrame=width*height*3;
-  const crop=region?`crop=${region.width}:${region.height}:${region.x}:${region.y},`:'';
+  // YUV 4:2:0 otherwise rounds odd crop coordinates and sizes to chroma
+  // boundaries, shifting video controls relative to the RGB browser reference.
+  const crop=region?`crop=${region.width}:${region.height}:${region.x}:${region.y}:exact=1,`:'';
   const artworkFilter=`${crop}scale=${width}:${height}:flags=area,format=rgb24`;
   const reference=execFileSync('ffmpeg',['-hide_banner','-loglevel','error','-i',referencePath,'-vf',artworkFilter,'-frames:v','1','-f','rawvideo','pipe:1'],{maxBuffer:bytesPerFrame*2});
   const format=probeVideo(rawVideoPath);
@@ -379,21 +381,29 @@ async function captureLabInteractions(){
   const slider=page.locator('#comparison-slider');await slider.focus();await page.keyboard.press('Home');
   await page.waitForFunction(()=>window.__agriscope.snapshot().evidence.comparison===0&&document.querySelector('#comparison-slider').value==='0');
   assert.match(await page.locator('#comparison-output').textContent(),/ก่อน/,'The Home key exposes the before comparison endpoint.');
-  references.push(await captureStateReference(page,'comparison-before',['#comparison-control'],{meanThreshold:27,maximumChangedPixelFraction:.12}));
+  // Exact cropping preserves the slider geometry. The tighter changed-pixel
+  // bound distinguishes the two endpoint positions and their output text.
+  const comparisonMatchOptions={meanThreshold:27,maximumChangedPixelFraction:.02};
+  const comparisonBefore=await captureStateReference(page,'comparison-before',['#comparison-control'],comparisonMatchOptions);
+  references.push(comparisonBefore);
   await page.waitForTimeout(holdMs);await page.keyboard.press('End');
   await page.waitForFunction(()=>window.__agriscope.snapshot().evidence.comparison===1&&document.querySelector('#comparison-slider').value==='100');
   assert.match(await page.locator('#comparison-output').textContent(),/หลัง/,'The End key exposes the after comparison endpoint.');
-  references.push(await captureStateReference(page,'comparison-after',['#comparison-control'],{meanThreshold:28,maximumChangedPixelFraction:.13}));
+  const comparisonAfter=await captureStateReference(page,'comparison-after',['#comparison-control'],comparisonMatchOptions);
+  references.push(comparisonAfter);
   await page.waitForTimeout(holdMs);
 
   await seek(page,.86);await page.locator('#inspect-field').click();
   await page.waitForFunction(()=>{const state=window.__agriscope.snapshot(),root=document;return state.evidence.status==='NOT_ASSESSABLE'&&root.querySelector('#before-value').textContent==='—'&&root.querySelector('#after-value').textContent==='—'&&root.querySelector('.map-legend').hidden;});
   assert.equal(await page.locator('#sample-status').textContent(),'ข้อมูลยังไม่พอ','The recording visibly identifies insufficient data.');
-  references.push(await captureStateReference(page,'not-assessable',['#field-panel'],{meanThreshold:20.5,maximumChangedPixelFraction:.11}));
+  const assessmentMatchOptions={meanThreshold:20.5,maximumChangedPixelFraction:.02};
+  const notAssessable=await captureStateReference(page,'not-assessable',['#field-panel'],assessmentMatchOptions);
+  references.push(notAssessable);
   await page.waitForTimeout(holdMs);await page.locator('#inspect-field').click();
   await page.waitForFunction(()=>{const state=window.__agriscope.snapshot(),root=document;return state.evidence.status==='NEEDS_INSPECTION'&&root.querySelector('#before-value').textContent==='0.68'&&root.querySelector('#after-value').textContent==='0.42'&&!root.querySelector('.map-legend').hidden;});
   assert.equal(await page.locator('#sample-status').textContent(),'ควรตรวจต่อ','The valid demonstration is restored visibly.');
-  references.push(await captureStateReference(page,'valid-restored',['#field-panel'],{meanThreshold:20.5,maximumChangedPixelFraction:.11}));
+  const validRestored=await captureStateReference(page,'valid-restored',['#field-panel'],assessmentMatchOptions);
+  references.push(validRestored);
   await page.waitForTimeout(holdMs);
   await context.close();
   const rawPath=await video.path();await copyFile(rawPath,finalPath);
@@ -422,6 +432,17 @@ async function captureLabInteractions(){
   const payloadOpenMatcherProof={id:payloadOpenReference.id,positiveReferenceSelectors:payloadOpenReference.referenceSelectors,browserReferencePath:payloadOpenReference.browserReferencePath,excludedReferenceId:payloadClosedReference.id,excludedReferencePath:payloadClosedReference.browserReferencePath,region:payloadOpenReference.region,regionPaddingPixels:0,matchOptions:payloadMatchOptions,selectedPositiveMatch:finalStates[payloadOpenIndex].match,disambiguation:{raw:rawStates[payloadOpenIndex].match.disambiguation,final:finalStates[payloadOpenIndex].match.disambiguation},knownRejectedEncodedFrame:{encodedFramePts:payloadOpenKnownRejectedEncodedPts,rejection:payloadOpenKnownRejectedFrame}};
   const openReferenceRejection=proveReferenceRejectedInWindow(finalPath,payloadOpenReference.absoluteReferencePath,{afterPts:decodedClosedMatch.matchStartPts,beforePts:decodedClosedMatch.matchEndPts,region:payloadOpenReference.region,label:'Decoded payload-closed-after-escape negative control for payload-open',...payloadMatchOptions});
   const negativeControls=[{id:payloadClosedReference.id,negativeControlFor:payloadOpenReference.id,capturedAfterAction:payloadClosedReference.capturedAfterAction,decodedVideoPath:'motion/agriscope-lab-interactions.webm',positiveReferenceSelectors:payloadOpenReference.referenceSelectors,browserReferencePath:payloadClosedReference.browserReferencePath,encodedFramePath:finalStates[payloadClosedIndex].encodedFramePath,region:payloadClosedReference.region,matchOptions:payloadMatchOptions,rawClosedStateMatch:rawStates[payloadClosedIndex].match,finalClosedStateMatch:decodedClosedMatch,positiveStateMatch:finalStates[payloadOpenIndex].match,openReferenceRejection}];
+  for(const [reference,opposite] of [
+    [comparisonBefore,comparisonAfter],[comparisonAfter,comparisonBefore],
+    [notAssessable,validRestored],[validRestored,notAssessable],
+  ]){
+    const oppositeState=finalStates[references.indexOf(opposite)];
+    const rejection=proveReferenceRejectedInWindow(finalPath,reference.absoluteReferencePath,{
+      afterPts:oppositeState.match.matchStartPts,beforePts:oppositeState.match.matchEndPts,
+      region:reference.region,label:`${reference.id} rejected during ${opposite.id}`,...reference.matchOptions,
+    });
+    negativeControls.push({id:opposite.id,negativeControlFor:reference.id,decodedVideoPath:'motion/agriscope-lab-interactions.webm',region:reference.region,matchOptions:reference.matchOptions,rejection});
+  }
   return {path:'motion/agriscope-lab-interactions.webm',rawPath:relative(output,rawPath),durationSeconds,playbackSpeedMultiplier:1,minimumProvenStateHoldSeconds:.75,states,payloadOpenMatcherProof,negativeControls,sequence:'Pointer parallax and payload disclosure open/closed-after-Escape negative control; field hotspot; keyboard NDVI comparison endpoints; NOT_ASSESSABLE state; restored valid state.'};
 }
 
@@ -500,7 +521,7 @@ try{
       await page.screenshot({path,timeout:60000});
       timing.captureOperations.push({viewport:viewport.name,shot:index+1,operation:'screenshot',elapsedMs:Date.now()-screenshotStarted});
       shots.push({number:index+1,name:shotNames[index],path});
-      captures.push({shot:index+1,progress:snapshot.p,renderer:{mode:snapshot.mode,gpu:snapshot.gpu||null,drawCalls:snapshot.drawCalls,triangles:snapshot.triangles,softwareWebGL},assets:{model:snapshot.model,land:snapshot.land,regionalWorld:snapshot.regionalWorld||null,scene4Hero:snapshot.scene4Hero||null,contextWorld:snapshot.contextWorld||null,descentAtmosphere:snapshot.descentAtmosphere||null}});
+      captures.push({shot:index+1,progress:snapshot.p,renderer:{mode:snapshot.mode,gpu:snapshot.gpu||null,drawCalls:snapshot.drawCalls,triangles:snapshot.triangles,softwareWebGL},assets:{model:snapshot.model,land:snapshot.land,regionalWorld:snapshot.regionalWorld||null,scene4Hero:snapshot.scene4Hero||null,contextWorld:snapshot.contextWorld||null,descentAtmosphere:snapshot.descentAtmosphere||null,nativeJourney:snapshot.nativeJourney||null}});
     }
     const beats=await page.evaluate(()=>window.__agriscope.BEATS||[]);
     if(!process.env.BASELINE_REASON){
@@ -747,6 +768,7 @@ try{
   const checkedOutSha=execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'}).trim();
   if(hashes.length===0)hashes=await sourceHashes().catch(error=>[{error:String(error)}]);
   const softwareReported=report.rendererSamples?.some(sample=>/swiftshader|software|llvmpipe/i.test(sample.renderer.gpu||''))??softwareWebGL;
+  const nativeAssets=report.rendererSamples?.find(sample=>sample.assets?.nativeJourney)?.assets.nativeJourney.assets;
   const motionDescription=report.motion
     ? `Playwright Chromium recording of the complete forward/reverse journey; playback was ${report.motion.playbackSpeedMultiplier>1?`uniformly retimed ${report.motion.playbackSpeedMultiplier.toFixed(3)}×`:'not retimed'}; ffprobe measured ${actualMotionDurationSeconds??'unavailable'} seconds.`
     : report.motionOmitted||'Playwright Chromium recording was not completed.';
@@ -765,7 +787,12 @@ try{
     renderingLimitations:[`Renderer mode: ${softwareReported?'software WebGL / SwiftShader':'see renderer metadata; hardware acceleration was not benchmarked'}.`,'Small-mobile dimensions are browser viewport/touch emulation, not a physical device.','Journey values are synthetic public examples; no private data or live satellite service is used.'],
     scene4ContextFrames:report.scene4ContextFrames||null,
     interactionClip,
-    blenderDerivativeProvenance:{
+    blenderDerivativeProvenance:nativeAssets?{
+      runtimeAssets:nativeAssets,
+      source:'apps/web/public/cinematic/native-journey-manifest.js',
+      architecture:'docs/decisions/ADR-0014-native-cinematic-descent.md',
+      note:'Native identities were verified against the exact bytes decoded by the running reader. Editable Blender masters and the accepted descent receipt are retained in external evidence.',
+    }:{
       scene4MasterSha256:'5ef375387e51165c45e41f08db19c737b40709207e80a901443c3e35bd9f35c5',
       archivedHeroMilestoneReference:{sha256:'20f30c80278b04a91428b33f4633f18531662a3c2411bea5dfe255737cc967c7',exporterInput:false,equivalenceClaimed:false},
       heroEditableDerivative:{file:'AgriScope-Runtime-Art-Transfer-hero.blend',sha256:'76344b57671cb43e798434a5757446cc0069bb9d68207bfccab24b43c7ffed18',bytes:290537078,packedDependencies:23},
@@ -776,7 +803,7 @@ try{
     },
   };
   const runtimeAssets=await runtimeManifest();
-  const directAssets=runtimeAssets.filter(asset=>/\.(?:js|json|jpg|png|ttf)$/i.test(asset.path)&&!asset.path.endsWith('/batch.js'));
+  const directAssets=runtimeAssets.filter(asset=>/\.(?:js|json|jpg|png|ttf|glb|hdr)$/i.test(asset.path)&&!asset.path.endsWith('/batch.js'));
   const shotSamples=(report.rendererSamples||[]).filter(sample=>sample.shot);
   const ranges=values=>values.length?{minimum:Math.min(...values),maximum:Math.max(...values)}:null;
   const costReport={
@@ -784,13 +811,18 @@ try{
     bytes:{publicCinematicFootprint:runtimeAssets.reduce((sum,asset)=>sum+asset.bytes,0),directUncompressedTransferCandidates:directAssets.reduce((sum,asset)=>sum+asset.bytes,0),note:'Static file bytes before HTTP compression. Next.js framework chunks, caches and the Blender-only masters are outside this count.'},
     files:{publicCinematic:runtimeAssets.length,directTransferCandidates:directAssets.length,largest:directAssets.toSorted((a,b)=>b.bytes-a.bytes).slice(0,10)},
     renderer:{gpu:[...new Set(shotSamples.map(sample=>sample.renderer?.gpu).filter(Boolean))],drawCalls:ranges(shotSamples.map(sample=>sample.renderer?.drawCalls).filter(Number.isFinite)),triangles:ranges(shotSamples.map(sample=>sample.renderer?.triangles).filter(Number.isFinite)),sampleCount:shotSamples.length,note:'Ranges are actual ten-shot desktop/mobile captures and vary with scene visibility. They are not full Blender-master costs.'},
-    scene4Derivatives:{
+    scene4Derivatives:nativeAssets?{
+      assets:nativeAssets,
+      combinedBytes:nativeAssets.reduce((sum,asset)=>sum+asset.byte_length,0),
+    }:{
       regional:{path:'apps/web/public/cinematic/models/scene4-regional.mesh.json',sha256:'2abfb8fca677075c087359a8148ca4fcc704860a874bdf5e33e6774fd137f470',bytes:774811,triangles:42234,vertices:25071,batches:6},
       hero:{path:'apps/web/public/cinematic/models/scene4-hero.mesh.json',sha256:'2b6bd63d50336983b866b4bf66a9339a8933cde2b70e28f781467056510539e9',bytes:2517582,triangles:98743,vertices:99407,batches:12,editableDerivativeSha256:'76344b57671cb43e798434a5757446cc0069bb9d68207bfccab24b43c7ffed18',editableDerivativeBytes:290537078},
       context:{path:'apps/web/public/cinematic/models/scene4-context.mesh.json',sha256:'990cf2e4635d91bebc9fd8c459c06af0a41b9a35dc73f9fefbdf452f59c32298',bytes:2949364,triangles:58271,vertices:121851,batches:9,editableDerivativeSha256:'176264aeb686cf76b9035498cfd951ff0433183592d646f5b6ab5a140fbe3801',editableDerivativeBytes:292247876,editableDerivativeDependenciesPacked:true},
       sourceMasterSha256:'5ef375387e51165c45e41f08db19c737b40709207e80a901443c3e35bd9f35c5',archivedHeroMilestoneReference:{sha256:'20f30c80278b04a91428b33f4633f18531662a3c2411bea5dfe255737cc967c7',exporterInput:false,equivalenceClaimed:false},combinedBytes:6241757,combinedTriangles:199248,combinedVertices:246329,combinedBatches:27,
     },
-    masterBoundary:'Full editable Blender masters remain external and their browser decode/frame costs are unmeasured. The lab includes source-bound regional, Hero Field and Scene 4 context runtime derivatives (6,241,757 combined bytes, 199,248 triangles, 246,329 vertices, 27 batches); their editable derivatives and manifests remain delivery provenance.',
+    masterBoundary:nativeAssets
+      ? 'Editable Blender masters remain external. Native GLB and HDR identities are taken from the running reader. Renderer counts above include the actual visible stages and their shadow passes.'
+      : 'Full editable Blender masters remain external and their browser decode/frame costs are unmeasured. The lab includes source-bound regional, Hero Field and Scene 4 context runtime derivatives (6,241,757 combined bytes, 199,248 triangles, 246,329 vertices, 27 batches); their editable derivatives and manifests remain delivery provenance.',
   };
   reviewInfo.runtimeAssetManifest=runtimeAssets;
   reviewInfo.costReport='cost-report.json';
