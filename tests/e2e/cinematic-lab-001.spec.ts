@@ -124,7 +124,8 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
     }
     await page.goto(`${route}?qa=1#mission`);
     await waitForJourney(page);
-    await expect.poll(async () => Math.abs((await state(page)).p - 0.34)).toBeLessThan(0.02);
+    // Software WebGL needs the same scroll-settling budget as the browser evidence harness.
+    await expect.poll(async () => Math.abs((await state(page)).p - 0.34), { timeout: 60_000 }).toBeLessThan(0.02);
     await page.goto(`${route}?qa=1&shot=5`);
     await waitForJourney(page);
     await expect.poll(async () => (await state(page)).shot).toBe(5);
