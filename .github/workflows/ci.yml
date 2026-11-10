@@ -93,7 +93,8 @@ jobs:
         run: AGRISCOPE_PYTHON=.venv/bin/python bash scripts/validate.sh integration
 
   browser-regression:
-    runs-on: ubuntu-latest
+    # Playwright 1.54.2 supports Ubuntu 24.04 browser dependencies.
+    runs-on: ubuntu-24.04
 
     services:
       postgres:

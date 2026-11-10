@@ -22,7 +22,8 @@ permissions:
 
 jobs:
   cinematic-evidence:
-    runs-on: ubuntu-latest
+    # Playwright 1.54.2 supports Ubuntu 24.04 browser dependencies.
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
       - name: Check out exact PR head
