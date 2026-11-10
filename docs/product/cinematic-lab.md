@@ -1,5 +1,17 @@
 # Interactive cinematic lab
 
+## Current owner direction, 10 November 2026
+
+The shared preview now presents the same five orbital shots and field handoff as
+`/`, using `main.js` through `lab-main.js`. The active contract is the five-shot
+section in `cinematic-integration.md`. The former ten-chapter native descent,
+parcel hotspots, and comparison presentation below describe the earlier experiment.
+Its authored assets remain available for offline inspection. Browser acceptance
+now exercises the five-shot camera, handoff, accessible controls, and fallback on
+both routes.
+
+## Historical lab experiment
+
 Status: CONTRACT_READY. Owner mission: 23 October 2026.
 
 `/cinematic-lab` is an isolated browser prototype for developing AgriScope's

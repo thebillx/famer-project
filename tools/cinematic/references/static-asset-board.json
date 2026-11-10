@@ -25,9 +25,17 @@
       "capturedOrDownloadedAt": "2026-10-14T11:22:26.056102+00:00",
       "timeBasis": "Recorded local acquisition timestamp.",
       "intendedUse": "Bundled linear cloud density and bump data for independent cloud layers",
-      "sha256": "c15373b492a66f057e4fb1427c60d4cd42d34491b5154a6bab686ab0ad646a2b",
+      "sha256": "dc64a6fdad2ec0a23f10cfd57002f8d898a1f2cd891f3e7d3408d8d8fd341bbe",
       "sourceSha256": "c792eca228989d36ebb45d3ea6ff1198be5e21a25d70d2fbcb2124ffd14ba7f5",
-      "transformation": "Resized from 8192×4096 to 4096×2048; green density channel encoded JPEG quality 93, 4:4:4, no geographic relocation. Linear cloud density/bump data.",
+      "sourceDimensions": "8192×4096",
+      "runtimeDimensions": "2048×1024",
+      "runtimeBytes": 714957,
+      "priorRuntime": {
+        "dimensions": "4096×2048",
+        "bytes": 3570291,
+        "sha256": "c15373b492a66f057e4fb1427c60d4cd42d34491b5154a6bab686ab0ad646a2b"
+      },
+      "transformation": "Original 8192×4096 source → prior runtime 4096×2048 JPEG quality 93, 4:4:4 → current runtime 2048×1024 JPEG quality 93, mozjpeg, 4:4:4; no geographic relocation. Linear cloud density/bump data.",
       "licenseOrUsage": "CC BY 4.0: https://creativecommons.org/licenses/by/4.0/; see apps/web/public/cinematic/CREDITS.md."
     },
     {
@@ -218,6 +226,86 @@
       "licenseOrUsage": "NASA public domain via Wikimedia Commons. Reference evidence only; pixels are not incorporated into runtime or Blender assets."
     }
   ],
+  "retiredAuthoringArtifacts": {
+    "status": "temporary-authoring-artifacts",
+    "runtimeStatus": "Not loaded by the current five-shot entry graph.",
+    "retentionNote": "Public paths are retained for offline import, hash checks and exporter callers.",
+    "groups": [
+      {
+        "name": "Native descent payloads",
+        "bytes": 19063385,
+        "paths": [
+          "apps/web/public/cinematic/models/native-descent/field.glb",
+          "apps/web/public/cinematic/models/native-descent/field-world.hdr",
+          "apps/web/public/cinematic/models/native-descent/orbit.glb",
+          "apps/web/public/cinematic/models/native-descent/regional.glb",
+          "apps/web/public/cinematic/models/native-descent/clouds.glb"
+        ]
+      },
+      {
+        "name": "Inactive farmland/tree/Scene 4 meshes",
+        "bytes": 9078212,
+        "paths": [
+          "apps/web/public/cinematic/models/farmland.mesh.json",
+          "apps/web/public/cinematic/models/tree.mesh.json",
+          "apps/web/public/cinematic/models/scene4-regional.mesh.json",
+          "apps/web/public/cinematic/models/scene4-hero.mesh.json",
+          "apps/web/public/cinematic/models/scene4-context.mesh.json"
+        ]
+      },
+      {
+        "name": "Inactive regional atlas and crop/foil/leaf/soil/water surfaces",
+        "bytes": 2576036,
+        "paths": [
+          "apps/web/public/cinematic/textures/regional-landscape.png",
+          "apps/web/public/cinematic/textures/surfaces/crop-color.png",
+          "apps/web/public/cinematic/textures/surfaces/crop-normal.png",
+          "apps/web/public/cinematic/textures/surfaces/crop-roughness.png",
+          "apps/web/public/cinematic/textures/surfaces/foil-color.png",
+          "apps/web/public/cinematic/textures/surfaces/foil-normal.png",
+          "apps/web/public/cinematic/textures/surfaces/foil-roughness.png",
+          "apps/web/public/cinematic/textures/surfaces/leaf-color.png",
+          "apps/web/public/cinematic/textures/surfaces/leaf-normal.png",
+          "apps/web/public/cinematic/textures/surfaces/leaf-roughness.png",
+          "apps/web/public/cinematic/textures/surfaces/soil-color.png",
+          "apps/web/public/cinematic/textures/surfaces/soil-normal.png",
+          "apps/web/public/cinematic/textures/surfaces/soil-roughness.png",
+          "apps/web/public/cinematic/textures/surfaces/water-color.png",
+          "apps/web/public/cinematic/textures/surfaces/water-normal.png",
+          "apps/web/public/cinematic/textures/surfaces/water-roughness.png"
+        ]
+      },
+      {
+        "name": "Historical native/descent/Scene 4 modules",
+        "bytes": 78335,
+        "paths": [
+          "apps/web/public/cinematic/batch.js",
+          "apps/web/public/cinematic/demo-evidence.js",
+          "apps/web/public/cinematic/descent-atmosphere.js",
+          "apps/web/public/cinematic/descent-surface.js",
+          "apps/web/public/cinematic/native-assets.js",
+          "apps/web/public/cinematic/native-journey-manifest.js",
+          "apps/web/public/cinematic/native-journey.js",
+          "apps/web/public/cinematic/native-timeline.js",
+          "apps/web/public/cinematic/scene4-context.js",
+          "apps/web/public/cinematic/scene4-hero.js",
+          "apps/web/public/cinematic/scene4-regional.js",
+          "apps/web/public/cinematic/survey-corridor.js"
+        ]
+      }
+    ],
+    "totalBytes": 30795968,
+    "legacyManualTests": [
+      "tests/cinematic/native-assets.mjs",
+      "tests/cinematic/native-journey.mjs"
+    ],
+    "blenderAuthoringCallers": [
+      "tools/cinematic/blender/build_assets.py",
+      "tools/cinematic/blender/runtime_art_transfer.py",
+      "tools/cinematic/blender/surface_maps.py",
+      "tools/cinematic/blender/regional_map.py"
+    ]
+  },
   "rules": [
     "Reference imagery is guidance only unless its stated licence permits bundling.",
     "No Edolus, UNDP or AI-generated pixels are incorporated into runtime textures or geometry.",

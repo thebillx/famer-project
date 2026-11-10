@@ -1,5 +1,5 @@
 import * as THREE from './vendor.js';
-import {fieldHeight,TERRAIN_CURVE_DIVISOR} from './terrain.js';
+import {fieldHeight,TERRAIN_CURVE_DIVISOR} from './descent-surface.js';
 import {smooth} from './timeline.js';
 
 // Existing offline seed dates, values and masks. No public API or private field.

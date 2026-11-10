@@ -4,7 +4,7 @@ import {readFileSync,readdirSync,statSync} from 'node:fs';
 import * as THREE from '../../apps/web/public/cinematic/vendor.js';
 import {decodeMeshAsset} from '../../apps/web/public/cinematic/mesh-assets.js';
 import {buildEvidence,sampleEvidence} from '../../apps/web/public/cinematic/demo-evidence.js';
-import {fieldHeight,TERRAIN_CURVE_DIVISOR} from '../../apps/web/public/cinematic/terrain.js';
+import {fieldHeight,TERRAIN_CURVE_DIVISOR} from '../../apps/web/public/cinematic/descent-surface.js';
 let totalBytes=0,totalTriangles=0;
 const channelCenterline=[
  [-32.65,3.02],[-24,3.02],[-18.65,3.02],[-14,3.02],[-9.4,3.02],[-5.2,3.02],[-3,3.02],[-.8,3.02],

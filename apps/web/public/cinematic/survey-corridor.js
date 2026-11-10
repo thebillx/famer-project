@@ -1,7 +1,6 @@
 import * as THREE from './vendor.js';
 import {smooth} from './timeline.js';
-import {fieldHeight,TERRAIN_CURVE_DIVISOR} from './terrain.js';
-import {projectDescentSurface,descentSurface,descentCloudHeight} from './descent-surface.js';
+import {fieldHeight,TERRAIN_CURVE_DIVISOR,projectDescentSurface,descentSurface,descentCloudHeight} from './descent-surface.js';
 
 // Illustrative information transfer, not emitted illumination. Every packet,
 // cross-section and cloud state is a pure function of absolute scroll progress.

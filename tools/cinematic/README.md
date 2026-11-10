@@ -1,9 +1,15 @@
 # Editing the integrated journey
 
-The working source is `apps/web/public/cinematic/` (camera, spacecraft, Earth,
-terrain and mount lifecycle), with markup/styles in
+The current working source is the five-shot journey in
+`apps/web/public/cinematic/` (camera, spacecraft, Earth and mount lifecycle), with markup/styles in
 `apps/web/components/cinematic/`. These are shared by Next.js and the Vite preview.
 No ZIP generation or extraction is involved.
+
+The former native-descent, farmland/tree and Scene 4 authoring outputs remain at
+their public paths as temporary authoring artifacts for offline import, hash
+checks and exporter callers. The current five-shot entry graph does not load
+them; the exact inventory and byte totals are in
+`references/static-asset-board.json` and `docs/product/cinematic-integration.md`.
 
 From the owned integration or refinement worktree:
 
@@ -31,13 +37,16 @@ Focused checks (Chrome must be installed):
 
 ```sh
 node tests/cinematic/timeline.mjs
-node tests/cinematic/terrain.mjs
-node tests/cinematic/blender-assets.mjs
+node tests/cinematic/runtime-materials.mjs
 CINEMATIC_EVIDENCE=/absolute/evidence/path node tests/cinematic/browser.mjs
 CINEMATIC_EVIDENCE=/absolute/evidence/path ./node_modules/.bin/playwright test --config tests/cinematic/playwright.config.ts --reporter=line
 npm -w apps/web run typecheck
 npm -w apps/web run build
 ```
+
+Historical authoring checks (manual/legacy paths, not current runtime entry
+checks) are `tests/cinematic/native-assets.mjs`,
+`tests/cinematic/native-journey.mjs` and `tests/cinematic/blender-assets.mjs`.
 
 Stop the integration's own Next.js dev process before building into `.next`.
 The source prototype is retained at `/Users/bill/agriscope-cinematic`; new browser
@@ -45,11 +54,10 @@ screenshots/reports and original-file backups are under its
 `evidence/integration-20261010/`. The terrain, metrics and dates are illustrative;
 only the existing authenticated app handles real farm/field data.
 
-
-The current refinement adds original Blender meshes and a shorter ten-shot
-product story. See `blender/README.md` for editable .blend generation, standard
-GLB export and renders. Runtime assets are supplied as local mesh JSON;
-Blender is needed only to author/rebuild them, not to launch the website.
+Historical ten-shot and Blender refinement records remain in the product docs.
+See `tools/cinematic/blender/README.md` for editable .blend generation, standard
+GLB export and renders. Blender is needed only to author/rebuild historical
+artifacts, not to launch the current five-shot website.
 
 Login/register CTAs select the existing form with `?mode=login` or
 `?mode=register`. Home retains three concise supporting sections; `/overview`
