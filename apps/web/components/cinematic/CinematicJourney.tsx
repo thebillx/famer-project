@@ -9,7 +9,11 @@ const presentationMarkup = { __html: journeyMarkup };
 
 type JourneyModule = { mountJourney(root: HTMLElement): () => void };
 
-export function CinematicJourney() {
+type CinematicJourneyProps = {
+  mode?: "landing" | "lab";
+};
+
+export function CinematicJourney({ mode = "landing" }: CinematicJourneyProps) {
   const root = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -19,7 +23,7 @@ export function CinematicJourney() {
     if (!element) return;
     // Local native ESM keeps the supplied Three.js runtime outside the React bundle.
     // It also leaves the editable scene modules available to Vite and Next.js.
-    const moduleUrl = "/cinematic/main.js";
+    const moduleUrl = mode === "lab" ? "/cinematic/lab-main.js" : "/cinematic/main.js";
     void (import(/* webpackIgnore: true */ moduleUrl) as Promise<JourneyModule>)
       .then((module) => {
         if (!cancelled) dispose = module.mountJourney(element);
@@ -35,7 +39,14 @@ export function CinematicJourney() {
       cancelled = true;
       dispose?.();
     };
-  }, [journeyMarkup]);
+  }, [mode]);
 
-  return <div ref={root} className="cinematic static-mode" dangerouslySetInnerHTML={presentationMarkup} />;
+  return (
+    <div
+      ref={root}
+      className={`cinematic ${mode === "lab" ? "lab-mode " : ""}static-mode`}
+      data-cinematic-mode={mode}
+      dangerouslySetInnerHTML={presentationMarkup}
+    />
+  );
 }

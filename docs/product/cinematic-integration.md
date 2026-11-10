@@ -36,3 +36,9 @@ reference only, with no copied assets or visual-equivalence claim.
 Stop for unrelated owner edits, production data/credentials, package installation,
 backend/public API expansion, or deployment. LOCAL_NATIVE review covers the exact
 validated diff; deployment remains owner-controlled.
+
+The owner-approved 10 October Blender/storyboard refinement is governed by
+`cinematic-blender-refinement.md`. It replaces the original procedural spacecraft
+and the original demonstration metrics with original Blender meshes and existing
+offline fixture values/dates, and shortens the supporting home sections. The
+authenticated application and the full original `/overview` remain intact.

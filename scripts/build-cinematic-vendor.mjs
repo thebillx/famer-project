@@ -17,6 +17,8 @@ const addons = [
  ['RenderPass','postprocessing/RenderPass.js'],
  ['UnrealBloomPass','postprocessing/UnrealBloomPass.js'],
  ['OutputPass','postprocessing/OutputPass.js'],
+ ['GLTFLoader','loaders/GLTFLoader.js'],
+ ['RGBELoader','loaders/RGBELoader.js'],
  ['RoundedBoxGeometry','geometries/RoundedBoxGeometry.js'],
  ['mergeGeometries','utils/BufferGeometryUtils.js'],
 ];

@@ -56,7 +56,7 @@ function SectionIntro({
   );
 }
 
-export function LandingSections() {
+export function LandingSections({ compact = false }: { compact?: boolean }) {
   return (
     <>
       <section className={styles.section} id="how-it-works" aria-labelledby="how-title">
@@ -65,10 +65,10 @@ export function LandingSections() {
             headingId="how-title"
             eyebrow="เริ่มต้นอย่างเป็นขั้นตอน"
             title="จากขอบเขตแปลง สู่ข้อมูลที่พร้อมตรวจสอบ"
-            description="ขั้นตอนเรียบง่ายที่ทำให้สมาชิกในองค์กรใช้ข้อมูลแปลงชุดเดียวกัน และรู้ที่มาของข้อมูลดาวเทียมที่กำลังดู"
+            description={compact ? "สร้างฟาร์ม วาดขอบเขต แล้วติดตามแนวโน้ม NDVI ต่างวันที่ในพื้นที่ทำงานเดียวกัน" : "ขั้นตอนเรียบง่ายที่ทำให้สมาชิกในองค์กรใช้ข้อมูลแปลงชุดเดียวกัน และรู้ที่มาของข้อมูลดาวเทียมที่กำลังดู"}
           />
           <ol className={styles.stepsGrid}>
-            {howItWorksSteps.map((step) => (
+            {(compact ? cinematicSteps : howItWorksSteps).map((step) => (
               <li key={step.number} className={styles.stepCard}>
                 <span className={styles.stepNumber}>{step.number}</span>
                 <h3>{step.title}</h3>
@@ -79,7 +79,7 @@ export function LandingSections() {
         </div>
       </section>
 
-      <section className={`${styles.section} ${styles.featuresSection}`} id="features" aria-labelledby="features-title">
+      {!compact && <><section className={`${styles.section} ${styles.featuresSection}`} id="features" aria-labelledby="features-title">
         <div className={styles.container}>
           <SectionIntro
             headingId="features-title"
@@ -140,7 +140,7 @@ export function LandingSections() {
             <p className={styles.insightDisclaimer}>{sampleField.disclaimer}</p>
           </div>
         </div>
-      </section>
+      </section></>}
 
       <section className={`${styles.section} ${styles.trustSection}`} id="trust" aria-labelledby="trust-title">
         <div className={styles.container}>
@@ -162,7 +162,7 @@ export function LandingSections() {
           <aside className={styles.attribution} aria-label="ที่มาข้อมูลดาวเทียม">
             <strong>ที่มาข้อมูลดาวเทียม</strong>
             <p>
-              เมทาดาทาที่กล่าวถึงมาจาก Sentinel-2 Level-2A ผ่าน Copernicus Data Space Ecosystem โดย Sentinel-2 เป็นส่วนหนึ่งของโครงการ Copernicus ของสหภาพยุโรป
+              {compact ? "พื้นที่ทำงานใช้ข้อมูล Sentinel-2 Level-2A ผ่าน Copernicus Data Space Ecosystem ส่วนดาวเทียม พื้นแปลง วันที่ และค่า NDVI บนหน้านี้เป็นตัวอย่างจำลองเพื่ออธิบายวิธีใช้งาน" : "เมทาดาทาที่กล่าวถึงมาจาก Sentinel-2 Level-2A ผ่าน Copernicus Data Space Ecosystem โดย Sentinel-2 เป็นส่วนหนึ่งของโครงการ Copernicus ของสหภาพยุโรป"}
             </p>
           </aside>
         </div>
@@ -175,8 +175,8 @@ export function LandingSections() {
             <h2 id="cta-title">เริ่มจากขอบเขตที่ชัดเจน แล้วค่อยดูข้อมูลล่าสุด</h2>
           </div>
           <div className={styles.ctaActions}>
-            <Link className={`${styles.button} ${styles.buttonLight} ${styles.buttonLarge}`} href="/login">
-              สร้างบัญชีหรือเข้าสู่ระบบ
+            <Link className={`${styles.button} ${styles.buttonLight} ${styles.buttonLarge}`} href={compact ? "/login?mode=register" : "/login"}>
+              {compact ? "เริ่มติดตามแปลงของคุณ" : "สร้างบัญชีหรือเข้าสู่ระบบ"}
             </Link>
             <a className={`${styles.button} ${styles.buttonOnDark} ${styles.buttonLarge}`} href="#how-it-works">
               ดูวิธีใช้งานอีกครั้ง
@@ -188,7 +188,13 @@ export function LandingSections() {
   );
 }
 
-export function LandingFooter() {
+const cinematicSteps = [
+  { number: "01", title: "สร้างฟาร์มและวาดแปลง", description: "บันทึกขอบเขตในแผนที่ เพื่อใช้พื้นที่เดียวกันตลอดการติดตาม" },
+  { number: "02", title: "เลือกวันที่และตรวจคุณภาพ", description: "ดูรายการข้อมูลต่างวันที่ หากข้อมูลที่ใช้วัดได้ไม่พอ ระบบจะแสดงว่ายังสรุปไม่ได้" },
+  { number: "03", title: "เปรียบเทียบและวางแผนตรวจ", description: "ดู NDVI และตำแหน่งที่เปลี่ยนบนพื้นที่ร่วม แล้วนำหลักฐานไปตรวจแปลงต่อ" },
+];
+
+export function LandingFooter({ compact = false }: { compact?: boolean }) {
   return (
     <footer className={styles.footer}>
       <div className={`${styles.container} ${styles.footerGrid}`}>
@@ -197,7 +203,7 @@ export function LandingFooter() {
           <p>ข้อมูลดาวเทียมเพื่อช่วยวางแผนตรวจแปลง ไม่ใช่การวินิจฉัยสภาพพืช</p>
         </div>
         <nav aria-label="เมนูส่วนท้าย">
-          {landingNavItems.map((item) => (
+          {(compact ? [{ href: "#how-it-works", label: "วิธีใช้งาน" }, { href: "#trust", label: "ที่มาข้อมูล" }, { href: "/login?mode=login", label: "เข้าสู่ระบบ" }] : landingNavItems).map((item) => (
             <a key={item.href} href={item.href}>
               {item.label}
             </a>
