@@ -1,7 +1,6 @@
 import * as THREE from './vendor.js';
 import {decodeMeshAsset} from './mesh-assets.js';
-import {descentSurface} from './descent-surface.js';
-import {TERRAIN_CURVE_DIVISOR} from './terrain.js';
+import {descentSurface,TERRAIN_CURVE_DIVISOR} from './descent-surface.js';
 import {smooth} from './timeline.js';
 
 function tuneHeroMaterial(material,name,environment,flatten){

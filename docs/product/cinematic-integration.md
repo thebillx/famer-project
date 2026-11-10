@@ -1,5 +1,22 @@
 # Public cinematic journey integration
 
+## Current owner direction, 10 November 2026
+
+The active journey has five orbital shots on both `/` and `/cinematic-lab`.
+Their progress checkpoints are `0`, `.16`, `.34`, `.55`, and `.78`. The current
+Hermite sampler provides one continuous camera path and keeps Earth visible.
+At `.88` the single field handoff begins fading in and reaches full opacity at
+`.95`. It restores the explicitly requested `FIELD A–204` demonstration, trend
+disclosure, and `/login` link from `c9a1788`. The five shot names and Thai strings
+also come verbatim from that source. The journey is `520svh` with five rail buttons.
+
+The owner approved using current main and updating directly affected callers and
+tests. The runtime loads Earth textures and the authored spacecraft. Previous
+native descent assets and offline authoring tools remain available as historical
+work. The delivery for this change ends with a reviewed PR.
+
+## Historical integration record
+
 Status: CONTRACT_READY. Owner mission: 10 October 2026.
 
 Integrate the existing `/Users/bill/agriscope-cinematic` Vite/Three.js source into

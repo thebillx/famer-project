@@ -1,5 +1,16 @@
 # ADR-0014 — Integrate the authored hybrid descent into the cinematic lab
 
+## Runtime direction superseded on 10 November 2026
+
+The owner selected a five-shot orbital journey with one field handoff and approved
+updating its directly affected runtime and test dependencies on current main.
+Both `/` and `/cinematic-lab` use the existing native ESM renderer and authored
+spacecraft through the shared five-shot mount. The native descent described below
+is retained as historical authoring work. The current product contract is recorded
+in `docs/product/cinematic-integration.md`.
+
+## Original decision record
+
 Date 2026-11-10. Accepted implementation of the owner-authorized Blender GLB and hybrid imagery direction.
 
 ## Decision

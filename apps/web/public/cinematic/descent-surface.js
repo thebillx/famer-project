@@ -1,5 +1,9 @@
 import {smooth} from './timeline.js';
 
+// Curved-field geometry retained for authored assets and offline validation.
+export const TERRAIN_CURVE_DIVISOR=1800;
+export function fieldHeight(x,z){return -(x*x+z*z)/TERRAIN_CURVE_DIVISOR+.07+Math.sin(x*.115+.4)*.034+Math.cos(z*.097-.8)*.027+Math.sin((x+z)*.205)*.016;}
+
 // A tangent-preserving change of world scale. Earth and the incoming landscape
 // share this radius. The field uses one affine scale, preserving every triangle
 // interior and canal clearance throughout; its original scale is restored at .465.
