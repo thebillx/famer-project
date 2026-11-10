@@ -1,7 +1,7 @@
 "use client";
 
 import maplibregl, { LngLatBounds, type Map } from "maplibre-gl";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { FieldBoundary, GeoJsonMultiPolygon } from "../lib/types";
 import { unionBounds, type SpatialBounds } from "../lib/spatial-registration";
 import styles from "./observation-workspace.module.css";
@@ -127,7 +127,8 @@ export function SpatialEvidenceMap({
   const [mapError, setMapError] = useState(false);
   const [imageError, setImageError] = useState(false);
   const [retryToken, setRetryToken] = useState(0);
-  const extent = useMemo(() => unionBounds([fieldBounds(field), ...(before ? [before.bounds] : []), ...(after ? [after.bounds] : [])]), [after?.bounds, before?.bounds, field]);
+  const extent = unionBounds([fieldBounds(field), ...(before ? [before.bounds] : []), ...(after ? [after.bounds] : [])]);
+  const [west, south, east, north] = extent;
 
   useEffect(() => {
     const container = containerRef.current;
@@ -137,22 +138,22 @@ export function SpatialEvidenceMap({
     canvas.dataset.evidenceCanvas = "true";
     container.appendChild(canvas); canvasRef.current = canvas;
     const map = new maplibregl.Map({
-      container, style: STYLE_URL, center: [(extent[0] + extent[2]) / 2, (extent[1] + extent[3]) / 2], zoom: 14,
+      container, style: STYLE_URL, center: [(west + east) / 2, (south + north) / 2], zoom: 14,
       bearing: 0, pitch: 0, maxPitch: 0, dragRotate: false, touchPitch: false, attributionControl: { compact: true },
     });
     map.touchZoomRotate.disableRotation(); map.keyboard.disable(); mapRef.current = map;
-    const onLoad = () => { map.resize(); map.fitBounds(new LngLatBounds([extent[0], extent[1]], [extent[2], extent[3]]), { padding: 0, duration: 0 }); setMapError(false); setMapReady(true); };
+    const onLoad = () => { map.resize(); map.fitBounds(new LngLatBounds([west, south], [east, north]), { padding: 0, duration: 0 }); setMapError(false); setMapReady(true); };
     const onError = () => setMapError(true);
     map.on("load", onLoad); map.on("error", onError);
     const resize = new ResizeObserver(() => map.resize()); resize.observe(container);
     return () => { resize.disconnect(); map.off("load", onLoad); map.off("error", onError); map.remove(); if (mapRef.current === map) mapRef.current = null; canvas.remove(); canvasRef.current = null; setMapReady(false); };
-  }, [extent, retryToken]);
+  }, [west, south, east, north, retryToken]);
 
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady) return;
-    map.resize(); map.fitBounds(new LngLatBounds([extent[0], extent[1]], [extent[2], extent[3]]), { padding: 0, duration: 0 });
-  }, [extent, mapReady]);
+    map.resize(); map.fitBounds(new LngLatBounds([west, south], [east, north]), { padding: 0, duration: 0 });
+  }, [west, south, east, north, mapReady]);
 
   useEffect(() => {
     const map = mapRef.current; const canvas = canvasRef.current; const epoch = ++epochRef.current;
