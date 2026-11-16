@@ -42,8 +42,8 @@ export const BEATS = [
 |---:|---:|---|---|---|---|
 | 1 | 0.00 | FROM ORBIT TO YOUR FIELD | จากวงโคจร ถึงแปลงจริง | Establish the orbit-to-field promise and first orbital approach. | earth-limb → flyby |
 | 2 | 0.10 | EARTH OBSERVATION | ข้อมูลของโลก ในแต่ละช่วงเวลา | Show repeated Earth observation and temporal coverage. | chase → wing-traverse |
-| 3 | 0.22 | MULTISPECTRAL INSTRUMENT | อ่านแสง เพื่อมองการเปลี่ยนแปลง | Explain the instrument/payload and spectral signal. | payload → corridor |
-| 4 | 0.36 | THAILAND | จากภาพโลก สู่พื้นที่ของคุณ | Transition from orbital view to Thailand and regional tile. | departure → regional-tile |
+| 3 | 0.22 | MULTISPECTRAL INSTRUMENT | อ่านแสง เพื่อมองการเปลี่ยนแปลง | Explain the instrument/payload and spectral signal. | payload → departure |
+| 4 | 0.36 | THAILAND | จากภาพโลก สู่พื้นที่ของคุณ | Transition from orbital view to Thailand and regional tile. | thailand → regional-tile |
 | 5 | 0.46 | ATMOSPHERIC DESCENT | เข้าใกล้ แปลงที่สำคัญ | Descend from country/region toward agricultural land. This is explicitly a simulation. | descent → field-approach |
 | 6 | 0.56 | YOUR FIELD BOUNDARY | เริ่มต้น จากขอบเขตที่ชัดเจน | Establish the field boundary used for search and comparison. | boundary |
 | 7 | 0.65 | DATES AND QUALITY | ดูวันที่ ก่อนอ่านผล | Explain date pairing and data quality/assessability. | dates-quality |
@@ -65,7 +65,7 @@ Panel 2 begins at `p=.10`, between `flyby (.095)` and `chase (.135)`. Panel tran
 | payload | 0.220 | 3 | Instrument/payload reveal |
 | alignment | 0.265 | 3 | Payload alignment |
 | corridor | 0.300 | 3 | Orbital corridor passage |
-| departure | 0.330 | 4 | Departure toward geographic target |
+| departure | 0.330 | 3 | Departure toward geographic target; panel 4 does not begin until `p=.36` |
 | thailand | 0.360 | 4 | Thailand focus |
 | multispectral | 0.390 | 4 | Spectral/data layer cue |
 | regional-tile | 0.420 | 4 | Regional tile transition |
@@ -79,7 +79,16 @@ Panel 2 begins at `p=.10`, between `flyby (.095)` and `chase (.135)`. Panel tran
 
 ## Camera and scroll contract
 
-The source camera path has 17 keys. Values below are copied from `timeline.js@a118c28`; `pos` is camera position, `target` is look target, `fov` is degrees, and `roll` is radians.
+The source camera path has 17 keys. They are **not** required to equal the 19 beat checkpoints; the camera sampler interpolates between keys. Values below are copied from `timeline.js@a118c28`; `pos` is camera position, `target` is look target, `fov` is degrees, and `roll` is radians.
+
+The four beats without an exact camera key use interpolation:
+
+- `multispectral (.39)`: between camera keys `.36` and `.40`
+- `regional-tile (.42)`: between camera keys `.40` and `.46`
+- `field-approach (.51)`: between camera keys `.46` and `.56`
+- `workspace (.95)`: between camera keys `.86` and `1.00`
+
+The `.40` key is an intentional regional/data transition key inside panel 4; it is not an extra beat. The `1.00` key is the terminal camera key for the final panel hold; it is not an extra scene.
 
 | p | position | target | fov | roll |
 |---:|---|---|---:|---:|
@@ -112,7 +121,7 @@ const range = () => Math.max(1, $('journey').offsetHeight - innerHeight);
 const getProgress = () => clamp((scrollY - root.offsetTop) / range());
 ```
 
-The 750svh/600svh values determine layout height, while `offsetHeight - innerHeight` determines the runtime scroll range. A recovery must retain this measured-pixel model and recalculate on resize/address-bar changes before applying the camera/panel state; it must not derive progress from a fixed `svh` constant.
+The 750svh/600svh values determine layout height, while `offsetHeight - innerHeight` determines the runtime scroll range. A recovery must retain measured pixels but must not allow an address-bar resize to change `p` at the same user-visible point during an active scroll. The implementation must snapshot the current normalized progress before a viewport resize, debounce the resize, recompute the new range, and re-anchor the scroll position to the snapshot progress before resuming camera/panel updates. Orientation changes may intentionally re-anchor; ordinary iOS address-bar collapse must not cause a visible scene jump.
 
 ### Final hold
 
@@ -136,6 +145,10 @@ Implementation must provide continuous camera/panel state, visible narrative, an
 3. Scene 9: `ข้อมูลดาวเทียมอย่างเดียวไม่บอกสาเหตุ` — satellite data alone does not identify the cause.
 
 These statements must remain in the rendered journey, static fallback, and accessible narrative path.
+
+## Validation terminology
+
+The current `main` baseline report's `28 position/focus/FOV boundaries` is not `19 beats + 17 camera keys`. It comes from the five-shot baseline test: `CAMERA_KEYS.slice(1,-1)` contains 6 interior camera-key checkpoints, plus the extra `.55` payload checkpoint, tested across 4 aspect ratios: `(6 + 1) × 4 = 28`. The 10-scene recovery must report its own beat/key coverage separately.
 
 ## Acceptance
 
