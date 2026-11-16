@@ -103,6 +103,21 @@ The source camera path has 17 keys. Values below are copied from `timeline.js@a1
 
 Landing scroll height at the source commit is `750svh` (`.cinematic #journey`). The source also contains a mobile override of `600svh`; the lab has separate heights and is not the landing contract. The recovery must preserve the landing contract unless a new responsive decision is explicitly reviewed.
 
+### Progress calculation and viewport changes
+
+The source does **not** calculate `p` directly from the numeric `svh` value. In `main.js@a118c28`, progress is normalized from measured pixels:
+
+```js
+const range = () => Math.max(1, $('journey').offsetHeight - innerHeight);
+const getProgress = () => clamp((scrollY - root.offsetTop) / range());
+```
+
+The 750svh/600svh values determine layout height, while `offsetHeight - innerHeight` determines the runtime scroll range. A recovery must retain this measured-pixel model and recalculate on resize/address-bar changes before applying the camera/panel state; it must not derive progress from a fixed `svh` constant.
+
+### Final hold
+
+The `.95 → 1.0` interval is intentional. Panel 10 begins at `p=.95`; the final 5% holds the `AGRISCOPE WORKSPACE` narrative, CTA, final camera framing, and readable handoff long enough for the user to act. It is not an omitted scene or an unimplemented transition.
+
 ## Long intervals without a new beat
 
 These intervals are deliberate reading/transition candidates, not permission for a blank or frozen experience:
