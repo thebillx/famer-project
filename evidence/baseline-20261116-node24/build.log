@@ -1,0 +1,40 @@
+
+> @agriscope/web@0.1.0 build
+> next build
+
+   ▲ Next.js 15.5.22
+
+   Creating an optimized production build ...
+ ✓ Compiled successfully in 707ms
+   Linting and checking validity of types ...
+   Collecting page data ...
+   Generating static pages (0/10) ...
+   Generating static pages (2/10) 
+   Generating static pages (4/10) 
+   Generating static pages (7/10) 
+ ✓ Generating static pages (10/10)
+   Finalizing page optimization ...
+   Collecting build traces ...
+
+Route (app)                                 Size  First Load JS
+┌ ○ /                                    3.83 kB         110 kB
+├ ○ /_not-found                            991 B         104 kB
+├ ○ /cinematic-lab                       2.67 kB         105 kB
+├ ○ /farms                               4.95 kB         124 kB
+├ ƒ /farms/[id]                          14.9 kB         376 kB
+├ ƒ /farms/[id]/fields/new                5.8 kB         372 kB
+├ ○ /farms/new                           2.77 kB         144 kB
+├ ƒ /fields/[id]                         5.13 kB         374 kB
+├ ƒ /fields/[id]/compare                 1.09 kB         370 kB
+├ ○ /icon.svg                                0 B            0 B
+├ ○ /login                               5.79 kB         131 kB
+└ ○ /overview                            1.28 kB         107 kB
++ First Load JS shared by all             103 kB
+  ├ chunks/18-6904d02802e458a1.js        46.4 kB
+  ├ chunks/87c73c54-24122e7b92478d00.js  54.2 kB
+  └ other shared chunks (total)          1.96 kB
+
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+
