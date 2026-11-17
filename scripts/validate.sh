@@ -69,7 +69,10 @@ run_static() {
   "$PYTHON_BIN" -m ruff check apps/api packages tests
   "$PYTHON_BIN" -m pytest -q tests/unit tests/contract
   npm -w apps/web run typecheck
-  npm -w apps/web run build
+  build_log="$(mktemp)"
+  trap 'rm -f "$build_log"' RETURN
+  npm -w apps/web run build | tee "$build_log"
+  node scripts/check-cinematic-budget.mjs --build-log "$build_log"
   git diff --check
 }
 
