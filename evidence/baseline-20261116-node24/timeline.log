@@ -1,0 +1,4 @@
+PASS: 4004 camera samples, 28 position/focus/FOV boundaries across four aspects
+PASS Earth sphere remains in frame across the full camera/aspect sweep
+PASS 5 public shots: source copy, fixed craft pose, and reverse-stable progress deployment
+PASS payload framing: 204 camera/aspect samples keep all 73962 authored vertices in frame
