@@ -68,8 +68,8 @@ The requested evidence viewports are:
 
 Browser evidence captured on 18 November 2026 from the local Next server with headless Chrome, SwiftShader WebGL, and the QA seek point `p=0.95` (field handoff state). The three PNGs are stored as task artifacts:
 
-- `375x667.png` — SHA-256 `f40c8c656696c29069c6e8f8f92713f8e1b6f4575b45887999df6cedd1043c94`
-- `390x844.png` — SHA-256 `033d8fe88afc6781b403d89cdcb365d84e120deec2bda9226633008b116f2699`
-- `1440x900.png` — SHA-256 `7eee7e4490d87c05aebb3143985ddf98e21c4aa08320badf84a0c380e02d3b0d`
+- `375x667.png` — SHA-256 `8d1600a5e340ef065227a85979ddb99722a93b4ea62e61aba8769ba05c4cbd44`
+- `390x844.png` — SHA-256 `280e310ddb7cdfd6269ee793d7388045060416ff8c091e02d210ba0b704e6b80`
+- `1440x900.png` — SHA-256 `9b53a0e7082aead6cd2f4bfbacbfe4498628327afc9791d86a88f9c356bd4441`
 
 The capture exercised the WebGL runtime at all three viewports with no page or console errors. The repository Playwright Test runner remains unable to launch its bundled browser because the Playwright browser cache is absent; the capture used the installed Chrome channel directly.
