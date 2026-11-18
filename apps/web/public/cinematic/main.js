@@ -103,7 +103,8 @@ export function mountJourney(root) {
 
   function apply(p) {
     const key = sampleCamera(p,innerWidth/innerHeight);
-    const shot = SHOTS.reduce((current,item,index) => p>=item.p ? index : current,0);
+    // Treat one CSS pixel of scroll quantization as the authored checkpoint.
+    const shot = SHOTS.reduce((current,item,index) => p+1/range()>=item.p ? index : current,0);
     camera.position.copy(key.position);
     camera.fov = key.fov;
     camera.lookAt(key.target);
