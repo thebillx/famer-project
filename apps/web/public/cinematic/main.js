@@ -20,7 +20,8 @@ export function mountJourney(root) {
   let renderer,composer,scene,camera,earth,spacecraft,stars,craftFill;
   let disposed = false, initializing = false, active = false, assetEpoch = 0;
   let reduced = media.matches || params.get('motion') === 'reduce';
-  let progress = 0, target = 0, raf = 0, last = 0, frames = 0, shotIndex = -1;
+  let progress = 0, target = 0, raf = 0, resizeReset = 0, last = 0, frames = 0, shotIndex = -1;
+  let resizeProgress;
   let focusField = false;
 
   const range = () => Math.max(1,$('journey').offsetHeight-innerHeight);
@@ -327,12 +328,15 @@ export function mountJourney(root) {
   };
   listen(window,'resize',() => {
     if(!renderer || !active) return;
-    const preservedProgress = getProgress();
+    const preservedProgress = resizeProgress ?? getProgress();
+    resizeProgress = preservedProgress;
     resizeViewport();
     moveTo(preservedProgress);
     progress = target = preservedProgress;
     apply(progress);
     renderScene();
+    cancelAnimationFrame(resizeReset);
+    resizeReset = requestAnimationFrame(() => { resizeProgress = undefined; });
   });
   listen(window,'scroll',() => { target = getProgress(); },{passive:true});
   listen(document,'visibilitychange',() => { last = performance.now(); });

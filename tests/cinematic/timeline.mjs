@@ -16,7 +16,7 @@ assert.equal(new Set(SHOTS.map(shot=>shot.name)).size,5,'Every public shot has a
 assert.ok(SHOTS.every((shot,index)=>index===0||shot.p>SHOTS[index-1].p),'Public shots stay in strict journey order');
 const mainSource=readFileSync(new URL('../../apps/web/public/cinematic/main.js',import.meta.url),'utf8');
 assert.match(mainSource,/p\+1\/range\(\)>=item\.p \? index : current/,'Shot selection uses authored checkpoints with only CSS-pixel quantization tolerance');
-assert.match(mainSource,/const preservedProgress = getProgress\(\);[\s\S]*moveTo\(preservedProgress\);[\s\S]*progress = target = preservedProgress/,'Viewport resize snapshots and re-anchors journey progress');
+assert.match(mainSource,/const preservedProgress = resizeProgress \?\? getProgress\(\);[\s\S]*moveTo\(preservedProgress\);[\s\S]*progress = target = preservedProgress/,'Viewport resize snapshots and re-anchors journey progress');
 assert.match(mainSource,/innerWidth<=MOBILE_BREAKPOINT/,'Main runtime uses the shared mobile breakpoint');
 const nativeSource=readFileSync(new URL('../../apps/web/public/cinematic/native-journey.js',import.meta.url),'utf8');
 assert.match(nativeSource,/width <= MOBILE_BREAKPOINT/,'Native runtime uses the shared mobile breakpoint');
