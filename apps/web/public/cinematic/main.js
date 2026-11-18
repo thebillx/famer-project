@@ -356,6 +356,16 @@ export function mountJourney(root) {
     $('inspect-field').setAttribute('aria-expanded',String(!trend.hidden));
     $('inspect-field').textContent = trend.hidden ? 'ดูแนวโน้มแปลงตัวอย่าง' : 'ซ่อนแนวโน้มแปลงตัวอย่าง';
   });
+  for(const button of root.querySelectorAll('[data-observation-date]')) listen(button,'click',() => {
+    for(const option of root.querySelectorAll('[data-observation-date]')) option.setAttribute('aria-pressed',String(option===button));
+    $('pilot-date').textContent = button.dataset.observationDate;
+    $('pilot-ndvi').textContent = button.dataset.ndvi;
+    $('pilot-quality').textContent = button.dataset.quality;
+  });
+  listen($('map-point'),'click',() => {
+    const selected = $('map-point').getAttribute('aria-pressed') !== 'true';
+    $('map-point').setAttribute('aria-pressed',String(selected));
+  });
   for(const link of root.querySelectorAll('a[href^="#"]')) listen(link,'click',event => {
     const id = link.getAttribute('href').slice(1), checkpoint = HASH_PROGRESS[id];
     if(checkpoint===undefined) return;
