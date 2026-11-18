@@ -129,6 +129,11 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
     await page.goto(`${route}?qa=1&shot=5`);
     await waitForJourney(page);
     await expect.poll(async () => (await state(page)).shot).toBe(5);
+    const beforeViewportChange = await seek(page, 0.46);
+    await page.setViewportSize({ width: viewport.width, height: viewport.height - 80 });
+    await expect.poll(async () => (await state(page)).p).toBeCloseTo(beforeViewportChange.p, 2);
+    const afterViewportChange = await state(page);
+    expect(afterViewportChange.p).toBeCloseTo(beforeViewportChange.p, 2);
     await page.setViewportSize({ width: viewport.height, height: viewport.width });
     const resized = await seek(page, 0.78);
     expectRuntimeState(resized, { width: viewport.height, height: viewport.width });

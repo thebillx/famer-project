@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import * as THREE from '../../apps/web/public/cinematic/vendor.js';
 import {buildSpacecraft} from '../../apps/web/public/cinematic/spacecraft.js';
-import { sampleCamera, sampleSpacecraft, SHOTS, CAMERA_KEYS } from '../../apps/web/public/cinematic/timeline.js';
+import { sampleCamera, sampleSpacecraft, SHOTS, CAMERA_KEYS, MOBILE_BREAKPOINT } from '../../apps/web/public/cinematic/timeline.js';
+assert.equal(MOBILE_BREAKPOINT,760,'The runtime uses one shared mobile breakpoint');
 assert.deepEqual(SHOTS,[
  {p:0,name:'ORBITAL SILENCE',thai:'จากวงโคจร ถึงแปลงจริง',text:'มองเห็นความเปลี่ยนแปลงของแปลงเกษตร ผ่านภาพถ่ายดาวเทียม Sentinel-2'},
  {p:.16,name:'SOLAR WING',thai:'ทุกการเดินทาง เริ่มจากแสง',text:'พลังงานจากดวงอาทิตย์ ขับเคลื่อนภารกิจสำรวจโลก'},
@@ -13,6 +14,12 @@ assert.deepEqual(SHOTS,[
 assert.deepEqual(SHOTS.map(shot=>shot.p),[0,.16,.34,.55,.78]);
 assert.equal(new Set(SHOTS.map(shot=>shot.name)).size,5,'Every public shot has a unique stable name');
 assert.ok(SHOTS.every((shot,index)=>index===0||shot.p>SHOTS[index-1].p),'Public shots stay in strict journey order');
+const mainSource=readFileSync(new URL('../../apps/web/public/cinematic/main.js',import.meta.url),'utf8');
+assert.match(mainSource,/p>=item\.p \? index : current/,'Shot selection follows the authored outcome checkpoints without a pixel-derived offset');
+assert.match(mainSource,/const preservedProgress = getProgress\(\);[\s\S]*moveTo\(preservedProgress\);[\s\S]*progress = target = preservedProgress/,'Viewport resize snapshots and re-anchors journey progress');
+assert.match(mainSource,/innerWidth<=MOBILE_BREAKPOINT/,'Main runtime uses the shared mobile breakpoint');
+const nativeSource=readFileSync(new URL('../../apps/web/public/cinematic/native-journey.js',import.meta.url),'utf8');
+assert.match(nativeSource,/width <= MOBILE_BREAKPOINT/,'Native runtime uses the shared mobile breakpoint');
 const aspects=[1440/900,1276/1285,390/844,375/667];
 let samples=0,boundaries=0;
 for(const aspect of aspects){

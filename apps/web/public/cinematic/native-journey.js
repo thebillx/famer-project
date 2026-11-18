@@ -4,6 +4,7 @@ import {
   LEGACY_FIELD_CORNERS, clamp, nativeStageWeights, nativeTakeoverWeight,
   nativeTimeFromProgress, projectiveMap,
 } from './native-timeline.js';
+import {MOBILE_BREAKPOINT} from './timeline.js';
 
 const AUTHORED_ASPECT = 16 / 9;
 const EXPOSURE = 2 ** .15;
@@ -410,7 +411,7 @@ export async function createNativeJourney({renderer, signal, onAssetLoaded, boun
       const centeredOffsetY = (height - displayHeight) / 2;
       // Keep one stable portrait composition from arrival through the final
       // chapter, with the parcel between the heading and comparison controls.
-      const portrait = width < 760 && height > width;
+      const portrait = width <= MOBILE_BREAKPOINT && height > width;
       const fieldOffsetY = portrait ? height * .39 - screenTargets.field.y * displayHeight : centeredOffsetY;
       const offsetY = centeredOffsetY + (fieldOffsetY - centeredOffsetY) * stageWeights.field;
       crop = {
