@@ -3,7 +3,7 @@ import {buildSpacecraft} from './spacecraft.js';
 import {buildEarth,buildStarfield} from './earth.js';
 import {loadMeshData,loadSurfaceMaps} from './mesh-assets.js';
 import {spaceEnvironment} from './space-light.js';
-import {SHOTS,sampleCamera,sampleSpacecraft,clamp,smooth} from './timeline.js';
+import {SHOTS,sampleCamera,sampleSpacecraft,clamp,smooth,MOBILE_BREAKPOINT} from './timeline.js';
 
 const HASH_PROGRESS = {orbit:0,mission:.34,field:.95};
 
@@ -20,7 +20,8 @@ export function mountJourney(root) {
   let renderer,composer,scene,camera,earth,spacecraft,stars,craftFill;
   let disposed = false, initializing = false, active = false, assetEpoch = 0;
   let reduced = media.matches || params.get('motion') === 'reduce';
-  let progress = 0, target = 0, raf = 0, last = 0, frames = 0, shotIndex = -1;
+  let progress = 0, target = 0, raf = 0, resizeReset = 0, last = 0, frames = 0, shotIndex = -1;
+  let resizeProgress;
   let focusField = false;
 
   const range = () => Math.max(1,$('journey').offsetHeight-innerHeight);
@@ -88,7 +89,7 @@ export function mountJourney(root) {
   }
 
   function resizeViewport() {
-    renderer.setPixelRatio(Math.min(devicePixelRatio,innerWidth<760 ? 1.25 : 1.5));
+    renderer.setPixelRatio(Math.min(devicePixelRatio,innerWidth<=MOBILE_BREAKPOINT ? 1.25 : 1.5));
     renderer.setSize(innerWidth,innerHeight);
     composer.setSize(innerWidth,innerHeight);
     camera.aspect = innerWidth/innerHeight;
@@ -103,7 +104,7 @@ export function mountJourney(root) {
 
   function apply(p) {
     const key = sampleCamera(p,innerWidth/innerHeight);
-    // Account for the browser rounding an anchor's scroll offset to a CSS pixel.
+    // Treat one CSS pixel of scroll quantization as the authored checkpoint.
     const shot = SHOTS.reduce((current,item,index) => p+1/range()>=item.p ? index : current,0);
     camera.position.copy(key.position);
     camera.fov = key.fov;
@@ -266,7 +267,7 @@ export function mountJourney(root) {
       const sun = new THREE.DirectionalLight(0xffead4,1.85);
       sun.position.set(-30,30,18);
       sun.castShadow = true;
-      sun.shadow.mapSize.set(innerWidth<760 ? 1024 : 2048,innerWidth<760 ? 1024 : 2048);
+      sun.shadow.mapSize.set(innerWidth<=MOBILE_BREAKPOINT ? 1024 : 2048,innerWidth<=MOBILE_BREAKPOINT ? 1024 : 2048);
       Object.assign(sun.shadow.camera,{near:1,far:120,left:-19,right:19,top:25,bottom:-19});
       sun.shadow.bias = -.00012;
       sun.shadow.normalBias = .003;
@@ -327,10 +328,15 @@ export function mountJourney(root) {
   };
   listen(window,'resize',() => {
     if(!renderer || !active) return;
+    const preservedProgress = resizeProgress ?? getProgress();
+    resizeProgress = preservedProgress;
     resizeViewport();
-    progress = target = getProgress();
+    moveTo(preservedProgress);
+    progress = target = preservedProgress;
     apply(progress);
     renderScene();
+    cancelAnimationFrame(resizeReset);
+    resizeReset = requestAnimationFrame(() => { resizeProgress = undefined; });
   });
   listen(window,'scroll',() => { target = getProgress(); },{passive:true});
   listen(document,'visibilitychange',() => { last = performance.now(); });

@@ -1,5 +1,7 @@
 import * as THREE from './vendor.js';
 
+export const MOBILE_BREAKPOINT = 760;
+
 export const SHOTS = [
   {p:0, name:'ORBITAL SILENCE', thai:'จากวงโคจร ถึงแปลงจริง', text:'มองเห็นความเปลี่ยนแปลงของแปลงเกษตร ผ่านภาพถ่ายดาวเทียม Sentinel-2'},
   {p:.16, name:'SOLAR WING', thai:'ทุกการเดินทาง เริ่มจากแสง', text:'พลังงานจากดวงอาทิตย์ ขับเคลื่อนภารกิจสำรวจโลก'},
