@@ -28,6 +28,36 @@ These values are illustrative UI content, not provider data and not tenant data:
 
 No agronomic threshold, diagnosis, treatment, alert, live provider request, or authenticated field interpretation was inferred or added.
 
+## Implementation decisions not specified by T1/T2
+
+The following presentation and interaction values were selected for this pilot;
+they are not product or agronomic policy:
+
+- The pilot is revealed at the existing handoff progress (`p=0.88` to `p=0.95`)
+  and remains available through the final hold at `p=1.0`; no new scroll
+  checkpoint or audio timeline was introduced.
+- The synthetic map card is `105px` high on wide layouts and uses a `44px`
+  keyboard/touch target for the centered point. The point starts selected and
+  toggles `aria-pressed` on activation; its selection does not change data.
+- The two date controls use `36px` minimum height, start on `14 ก.พ. 2569`,
+  and update the date, NDVI, and quality fields in place. The comparison note
+  stays fixed so the same-location relationship remains visible after either
+  date is selected.
+- The field card uses the existing `350px` wide desktop panel and the existing
+  mobile `7%` side margins; its mobile max-height is `calc(100svh - 242px)`
+  with internal vertical scrolling. These values were chosen to keep the CTA
+  reachable at the requested viewport sizes.
+- The inferred visual treatment is the existing dark cinematic surface with
+  gold signal/selection accents; no new asset, animation, sound, or provider
+  request was added.
+- Reduced motion, JavaScript-disabled markup, and module/render failure use the
+  existing static fallback. The fallback repeats the three explanatory steps,
+  synthetic sample disclosure, safety boundary, and `/login` CTA; it does not
+  attempt to emulate the map interaction.
+- The pilot deliberately has no audio element, autoplay behavior, mute control,
+  or audio-dependent state. Scrolling and date selection are the only required
+  interaction paths.
+
 ## Capture matrix
 
 The requested evidence viewports are:
