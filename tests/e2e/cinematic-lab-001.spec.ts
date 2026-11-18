@@ -108,6 +108,16 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
     await expect(page.locator("#field-panel")).toBeVisible();
     await expect(page.locator("#narrative")).toHaveCSS("opacity", "0");
     await expect(page.locator(".field-handoff")).toHaveAttribute("href", "/login");
+    await expect(page.locator(".signal-row")).toContainText("RED + NIR");
+    await expect(page.locator(".pilot-map")).toHaveAttribute("aria-label", /จุดที่เลือก/);
+    await expect(page.locator("[data-observation-date]")).toHaveCount(2);
+    await expect(page.locator("#pilot-date")).toHaveText("14 ก.พ. 2569");
+    await expect(page.locator("#pilot-quality")).toContainText("เมฆ 3.2%");
+    await page.locator('[data-observation-date="28 ม.ค. 2569"]').click();
+    await expect(page.locator("#pilot-date")).toHaveText("28 ม.ค. 2569");
+    await expect(page.locator("#pilot-ndvi")).toHaveText("0.64");
+    await page.locator('[data-observation-date="14 ก.พ. 2569"]').click();
+    await expect(page.locator(".field-panel .note")).toContainText("ไม่ได้บอกสาเหตุ");
     const metrics = await page.locator("#field-panel .metrics b").allTextContents();
     expect(metrics.some((value) => value.includes("18.4"))).toBe(true);
     expect(metrics.some((value) => value.includes("0.71"))).toBe(true);
@@ -146,6 +156,9 @@ test("cinematic lab reduced motion and module failure keep a readable registrati
   await expect(page.locator("#fallback .static-sample")).toContainText("FIELD A–204");
   await expect(page.locator("#fallback .static-sample")).toContainText("18.4 ไร่");
   await expect(page.locator("#fallback .static-sample")).toContainText("NDVI เฉลี่ย 0.71");
+  await expect(page.locator("#fallback")).toContainText("แสงสีแดงและอินฟราเรด");
+  await expect(page.locator("#fallback")).toContainText("จุดเดิม 28 ม.ค. 2569");
+  await expect(page.locator("#fallback")).toContainText("ไม่ได้บอกสาเหตุ");
   await expect(page.locator("#fallback .text-link")).toHaveAttribute("href", "/login");
 
   await page.unrouteAll({ behavior: "ignoreErrors" });
