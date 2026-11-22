@@ -31,9 +31,33 @@ export function mountJourney(root) {
     if(diagnostic) $('diagnostics').textContent = JSON.stringify(state);
   }
 
+  function isVisibleFocusable(element) {
+    if(!(element instanceof HTMLElement) || element.hidden || element.inert) return false;
+    const style = getComputedStyle(element);
+    return element.getClientRects().length>0 && style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
+  }
+
+  function recoverFocus(previous,target) {
+    if(!(previous instanceof HTMLElement) || previous===document.body || isVisibleFocusable(previous)) return;
+    if(target instanceof HTMLElement && isVisibleFocusable(target)) target.focus({preventScroll:true});
+  }
+
+  function revealPanelControl(control) {
+    const panel = $('field-panel');
+    if(!(control instanceof HTMLElement) || !(panel instanceof HTMLElement)) return;
+    const panelRect = panel.getBoundingClientRect();
+    const controlRect = control.getBoundingClientRect();
+    // Keep the keyboard outline (3px plus its 4px offset) inside the panel.
+    const focusInset = 8;
+    const visibleTop = panelRect.top + panel.clientTop + focusInset;
+    const visibleBottom = panelRect.top + panel.clientTop + panel.clientHeight - focusInset;
+    if(controlRect.top < visibleTop) panel.scrollTop -= visibleTop-controlRect.top;
+    else if(controlRect.bottom > visibleBottom) panel.scrollTop += controlRect.bottom-visibleBottom;
+  }
+
   function showElement(element,opacity,focusTarget) {
     if(opacity < .5 && element.contains(document.activeElement)) {
-      focusTarget.focus({preventScroll:true});
+      if(focusTarget instanceof HTMLElement && isVisibleFocusable(focusTarget)) focusTarget.focus({preventScroll:true});
     }
     element.style.opacity = opacity;
     element.style.visibility = opacity > 0 ? 'visible' : 'hidden';
@@ -41,14 +65,12 @@ export function mountJourney(root) {
   }
 
   function fallback(reason,voluntary=false) {
+    const previousFocus = document.activeElement;
     active = false;
     cancelAnimationFrame(raf);
     root.classList.remove('preparing');
     root.classList.add('static-mode');
     $('fallback').hidden = false;
-    if($('field-panel').contains(document.activeElement) || $('rail').contains(document.activeElement)) {
-      $('fallback').focus({preventScroll:true});
-    }
     $('rail').inert = true;
     $('field-panel').inert = true;
     root.querySelector('.skip').href = '#fallback';
@@ -60,6 +82,7 @@ export function mountJourney(root) {
     $('motion').hidden = !voluntary;
     focusField = false;
     moveTo(0);
+    recoverFocus(previousFocus,$('fallback'));
     writeDiagnostics({ready:true,mode:'static',reason});
   }
 
@@ -128,7 +151,9 @@ export function mountJourney(root) {
     showElement($('narrative'),1-smooth(.84,.88,p),activeRail);
     showElement($('begin'),1-smooth(.035,.065,p),activeRail);
     if(focusField && fieldOpacity>=.5) {
-      $('inspect-field').focus({preventScroll:true});
+      const inspect = $('inspect-field');
+      inspect.focus({preventScroll:true});
+      revealPanelControl(inspect);
       focusField = false;
     }
 
@@ -176,6 +201,7 @@ export function mountJourney(root) {
   }
 
   function activate(initial=progress) {
+    const previousFocus = document.activeElement;
     root.classList.remove('static-mode','preparing');
     $('fallback').hidden = true;
     $('loading').hidden = true;
@@ -188,6 +214,7 @@ export function mountJourney(root) {
     progress = target;
     apply(progress);
     renderScene();
+    recoverFocus(previousFocus,$('motion'));
     active = true;
     last = performance.now();
     writeDiagnostics({ready:true,mode:'webgl'});
