@@ -238,6 +238,59 @@ async function assertMobileFieldPanel(page, viewport) {
 
 async function settle(page, progress) { await page.waitForFunction((value) => Math.abs(window.__agriscope.snapshot().p - value) < 0.001, progress, { timeout: 60000 }); }
 
+async function assertShortLandscapeLayout(page, viewport, progress) {
+  const layout = await page.evaluate(() => {
+    const rect = (selector) => {
+      const { top, bottom, left, right, height } = document.querySelector(selector).getBoundingClientRect();
+      return { top, bottom, left, right, height };
+    };
+    return {
+      header: rect('.cinematic header'), eyebrow: rect('#eyebrow'), title: rect('#title'),
+      description: rect('#description'), begin: rect('#begin'), footer: rect('.bottom-bar'),
+      rail: rect('#rail'), controls: [...document.querySelectorAll('.cinematic header a, .cinematic header button, #rail button')].map((element) => {
+        const { top, bottom, left, right, width, height } = element.getBoundingClientRect();
+        return { top, bottom, left, right, width, height };
+      }),
+    };
+  });
+  const label = `${viewport.width}x${viewport.height} at ${progress}`;
+  assert.ok(layout.eyebrow.top >= layout.header.bottom, `${label}: shot label clears the header`);
+  assert.ok(layout.title.top >= layout.eyebrow.bottom, `${label}: title clears the shot label`);
+  assert.ok(layout.description.top >= layout.title.bottom, `${label}: description clears the title`);
+  assert.ok(layout.description.bottom <= layout.footer.top, `${label}: description clears the footer`);
+  if (layout.rail.left < layout.title.right && layout.rail.right > layout.title.left) {
+    assert.ok(layout.eyebrow.top >= layout.rail.bottom, `${label}: narrative clears the horizontal rail`);
+  }
+  if (progress === 0) {
+    assert.ok(layout.begin.top >= layout.description.bottom, `${label}: start control clears the description`);
+    assert.ok(layout.begin.bottom <= layout.footer.top, `${label}: start control clears the footer`);
+    assert.ok(layout.begin.height >= 44, `${label}: start control keeps its touch target`);
+  }
+  assert.ok(layout.rail.top >= layout.header.bottom && layout.rail.bottom <= layout.footer.top, `${label}: rail stays between header and footer`);
+  for (const control of layout.controls) {
+    assert.ok(control.width >= 44 && control.height >= 44, `${label}: navigation retains 44px targets`);
+    assert.ok(control.top >= 0 && control.bottom <= viewport.height && control.left >= 0 && control.right <= viewport.width, `${label}: navigation stays inside the viewport`);
+  }
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${label}: no horizontal overflow`);
+}
+
+async function assertPanelFocusVisible(page, label) {
+  const bounds = await page.evaluate(() => {
+    const panel = document.querySelector('#field-panel');
+    const control = document.querySelector('#inspect-field');
+    const outer = panel.getBoundingClientRect(), inner = control.getBoundingClientRect();
+    return {
+      focused: document.activeElement === control,
+      top: inner.top, bottom: inner.bottom, left: inner.left, right: inner.right,
+      panelTop: outer.top + panel.clientTop, panelBottom: outer.top + panel.clientTop + panel.clientHeight,
+      panelLeft: outer.left + panel.clientLeft, panelRight: outer.left + panel.clientLeft + panel.clientWidth,
+    };
+  });
+  assert.equal(bounds.focused, true, `${label}: handoff focuses the trend disclosure`);
+  assert.ok(bounds.top >= bounds.panelTop && bounds.bottom <= bounds.panelBottom, `${label}: focused disclosure is visible inside the scrolling panel`);
+  assert.ok(bounds.left >= bounds.panelLeft && bounds.right <= bounds.panelRight, `${label}: focused disclosure is not horizontally clipped`);
+}
+
 async function userScroll(page, progress) {
   const targetTop = await page.evaluate((value) => {
     const root = document.querySelector(".cinematic"); const journey = document.querySelector("#journey");
@@ -356,6 +409,32 @@ try {
     report.viewports.push({ viewport, captures: ["0", ".16", ".34", ".55", ".78", ".95"], checks: ["five checkpoints and reverse pixel/state determinism", "globe/camera/geometry/render invariants", "handoff focus, trend, navigation, resize, scroll, and remount", ...(mobile ? ["mobile field-panel content-height, scroll cap, and reachable controls"] : [])] }); await context.close();
   }
 
+  for (const viewport of [{ width: 844, height: 390 }, { width: 667, height: 375 }, { width: 760, height: 390 }]) {
+    const context = await browser.newContext({ viewport }); contexts.push(context);
+    const page = await context.newPage(); const checked = monitor(page);
+    await page.goto(`${url}?qa=1`); await ready(page, viewport);
+    for (const progress of SHOT_POINTS) {
+      await checkpoint(page, progress);
+      await assertShortLandscapeLayout(page, viewport, progress);
+      if (progress === 0 || progress === 0.78) await save(page, `${viewport.width}x${viewport.height}-landscape-${progress}`);
+    }
+    await checkpoint(page, 0);
+    await page.getByRole('link', { name: 'แปลงเกษตร', exact: true }).focus();
+    await page.keyboard.press('Enter');
+    await settle(page, HANDOFF);
+    await assertPanelFocusVisible(page, `${viewport.width}x${viewport.height}`);
+    const handoffScroll = await page.evaluate(() => scrollY);
+    await page.keyboard.press('Enter');
+    assert.equal(await page.locator('#inspect-field').getAttribute('aria-expanded'), 'true');
+    await assertPanelFocusVisible(page, 'expanded trend');
+    assert.equal(await page.evaluate(() => scrollY), handoffScroll, 'Trend interaction does not move the outer journey');
+    assert.ok(Math.abs((await state(page)).p - HANDOFF) < 0.001, 'Focused handoff preserves its camera checkpoint');
+    await save(page, `${viewport.width}x${viewport.height}-landscape-handoff-focus`);
+    assert.deepEqual(checked.networkErrors, []);
+    await context.close();
+  }
+  report.checks.push('short landscape keeps all five narratives and navigation clear; handoff focus remains visible without moving the camera');
+
   const textureCap = 4096;
   let page;
   const lowGpu = await browser.newContext({ viewport: viewports[1] }); contexts.push(lowGpu);
@@ -389,7 +468,28 @@ try {
   assert.deepEqual(lowGpuMonitor.runtimeErrors, [], "Low GPU-cap runtime has no WebGL or shader errors");
   await lowGpu.close(); report.checks.push("4096px maxTextureSize cap preserves real WebGL rendering and texture dimensions");
 
-  const reduced = await browser.newContext({ viewport: viewports[1], reducedMotion: "reduce" }); contexts.push(reduced); page = await reduced.newPage(); monitor(page); await page.goto(`${url}?qa=1`); await staticReady(page); assert.equal(await page.locator("#motion").getAttribute("aria-pressed"), "true"); await page.locator("#resume").click(); await ready(page, viewports[1]); report.checks.push("reduced motion fallback and opt-in"); await reduced.close();
+  const reduced = await browser.newContext({ viewport: viewports[1], reducedMotion: "reduce" }); contexts.push(reduced);
+  page = await reduced.newPage(); monitor(page); await page.goto(`${url}?qa=1`); await staticReady(page);
+  assert.equal(await page.locator("#motion").getAttribute("aria-pressed"), "true");
+  await page.locator('#resume').focus(); await page.keyboard.press('Enter'); await ready(page, viewports[1]);
+  assert.equal(await page.evaluate(() => document.activeElement?.id), 'motion', 'Resume transfers keyboard focus to the visible motion control');
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.reload(); await ready(page, viewports[1]);
+  await checkpoint(page, 0);
+  await page.locator('#begin').focus();
+  assert.equal(await page.evaluate(() => document.activeElement?.id), 'begin');
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.waitForFunction(() => window.__agriscope.snapshot().mode === 'static');
+  assert.equal(await page.locator('#fallback').isVisible(), true);
+  assert.equal(await page.evaluate(() => document.activeElement?.id), 'fallback', 'System reduced motion recovers focus from the hidden narrative');
+  await page.keyboard.press('Tab');
+  assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('href')), '/login', 'Keyboard navigation continues within the visible fallback');
+  await page.emulateMedia({ reducedMotion: 'no-preference' }); await ready(page, viewports[1]);
+  await page.locator('.cinematic header .login-link').focus();
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.waitForFunction(() => window.__agriscope.snapshot().mode === 'static');
+  assert.equal(await page.locator('.cinematic header .login-link').evaluate((element) => document.activeElement === element), true, 'Fallback preserves focus on navigation that remains visible');
+  report.checks.push('reduced motion fallback and keyboard opt-in preserve visible focus in both directions'); await reduced.close();
   const motionParam = await browser.newContext({ viewport: viewports[1] }); contexts.push(motionParam); page = await motionParam.newPage(); monitor(page); await page.goto(`${url}?qa=1&motion=reduce`); await staticReady(page); assert.equal(await page.locator("#motion").getAttribute("aria-pressed"), "true"); await page.locator("#resume").click(); await ready(page, viewports[1]); report.checks.push("motion=reduce query fallback and opt-in"); await motionParam.close();
   const nojs = await browser.newContext({ viewport: viewports[1], javaScriptEnabled: false }); contexts.push(nojs); page = await nojs.newPage(); await page.goto(url); assert.equal(await page.locator("#fallback").isVisible(), true); assert.equal(await page.locator(".cinematic canvas").count(), 0); assert.equal(await page.locator("#motion").isVisible(), false); assert.equal(await page.locator("#fallback .text-link").getAttribute("href"), "/login"); await assertStaticSample(page); report.checks.push("no-JavaScript synthetic sample and CTA"); await nojs.close();
   for (const failure of ["module", "webgl", "texture"]) {
