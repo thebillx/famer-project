@@ -497,7 +497,11 @@ try {
     if (failure === "module") await page.route("**/cinematic/main.js", (route) => { intercepted += 1; return route.abort(); });
     if (failure === "webgl") await page.addInitScript(() => { const original = HTMLCanvasElement.prototype.getContext; HTMLCanvasElement.prototype.getContext = function getContext(type, ...args) { if (type.includes("webgl")) return null; return original.call(this, type, ...args); }; });
     if (failure === "texture") await page.route("**/cinematic/textures/earth-day.jpg", (route) => { intercepted += 1; return route.abort(); });
-    await page.goto(`${url}?qa=1`); if (failure === "module") { await page.waitForSelector("#fallback-reason"); assert.match(await page.locator("#fallback-reason").textContent(), /โหลดประสบการณ์ 3D ไม่สำเร็จ/); } else await staticReady(page);
+    await page.goto(`${url}?qa=1`);
+    if (failure === "module") {
+      await page.locator("#fallback-reason").filter({ hasText: /โหลดประสบการณ์ 3D ไม่สำเร็จ/ }).waitFor({ state: "visible" });
+      assert.match(await page.locator("#fallback-reason").textContent(), /โหลดประสบการณ์ 3D ไม่สำเร็จ/);
+    } else await staticReady(page);
     if (failure !== "webgl") assert.equal(intercepted, 1); assert.equal(await page.locator("#resume").isVisible(), false); assert.equal(await page.locator(".cinematic canvas").count(), 0); await assertStaticSample(page); assertFailureErrors(failure, failureMonitor.runtimeErrors); await context.close(); report.checks.push(`${failure} fallback remains readable`);
   }
   const resizeFailure = await browser.newContext({ viewport: viewports[1] }); contexts.push(resizeFailure); page = await resizeFailure.newPage(); const resizeFailureMonitor = monitor(page, false);
